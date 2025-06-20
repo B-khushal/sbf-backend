@@ -22,6 +22,7 @@ app.use(cors({
   origin: [
     'http://localhost:8080',
     'https://sbflorist.in',
+    'https://sbf-backend.onrender.com',
     'https://www.sbflorist.in'
   ],
   credentials: true,
