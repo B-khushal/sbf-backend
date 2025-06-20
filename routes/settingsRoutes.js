@@ -1,0 +1,27 @@
+const express = require('express');
+const router = express.Router();
+const settingsController = require('../controllers/settingsController');
+const { protect, admin } = require('../middleware/authMiddleware');
+
+// Get all home sections (public)
+router.get('/home-sections', settingsController.getHomeSections);
+
+// Protected admin routes for home sections
+router.put('/home-sections', protect, admin, settingsController.updateHomeSections);
+router.put('/home-sections/:sectionId', protect, admin, settingsController.updateHomeSection);
+router.put('/home-sections/reorder', protect, admin, settingsController.reorderHomeSections);
+router.put('/home-sections/:sectionId/content', protect, admin, settingsController.updateSectionContent);
+
+// Categories management routes
+router.get('/categories', settingsController.getCategories);
+router.put('/categories', protect, admin, settingsController.updateCategories);
+
+// Header settings routes
+router.get('/header', settingsController.getHeaderSettings);
+router.put('/header', protect, admin, settingsController.updateHeaderSettings);
+
+// Footer settings routes
+router.get('/footer', settingsController.getFooterSettings);
+router.put('/footer', protect, admin, settingsController.updateFooterSettings);
+
+module.exports = router;
