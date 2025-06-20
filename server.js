@@ -21,7 +21,8 @@ const app = express();
 app.use(cors({
   origin: [
     'http://localhost:8080',
-    'http://sbflorist.in'
+    'https://sbflorist.in',
+    'https://www.sbflorist.in'
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
