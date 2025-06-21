@@ -19,16 +19,51 @@ const app = express();
 
 // CORS configuration
 app.use(cors({
-  origin: [
-    'http://localhost:8080',
-    'https://sbflorist.in',
-    'https://sbf-backend.onrender.com',
-    'https://www.sbflorist.in'
-  ],
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
+      'http://localhost:8080',
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'https://sbflorist.in',
+      'https://www.sbflorist.in',
+      'https://sbf-backend.onrender.com'
+    ];
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      return callback(null, true);
+    } else {
+      console.log('CORS blocked origin:', origin);
+      return callback(new Error('Not allowed by CORS'), false);
+    }
+  },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: [
+    'Content-Type', 
+    'Authorization', 
+    'X-Requested-With',
+    'Accept',
+    'Origin',
+    'Access-Control-Request-Method',
+    'Access-Control-Request-Headers'
+  ],
+  exposedHeaders: ['Content-Length', 'X-Foo', 'X-Bar'],
+  maxAge: 86400, // 24 hours
+  preflightContinue: false,
+  optionsSuccessStatus: 200
 }));
+
+// Handle preflight requests explicitly
+app.options('*', cors());
+
+// Debug middleware for CORS
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.path} - Origin: ${req.get('Origin') || 'No Origin'}`);
+  next();
+});
 
 // Middleware
 app.use(express.json());
@@ -45,13 +80,39 @@ app.use('/api/settings', require('./routes/settingsRoutes'));
 app.use('/api/dashboard', require('./routes/dashboardRoutes'));
 app.use('/api/analytics', require('./routes/analyticsRoutes'));
 
+// Root endpoint
+app.get('/', (req, res) => {
+  res.status(200).json({
+    message: 'SBF Backend API is running',
+    version: '1.0.0',
+    timestamp: new Date().toISOString(),
+    endpoints: {
+      health: '/health',
+      api: '/api'
+    }
+  });
+});
+
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.status(200).json({
     status: 'OK',
+    message: 'Server is healthy',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development',
-    uptime: process.uptime()
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+    cors: {
+      enabled: true,
+      allowedOrigins: [
+        'http://localhost:8080',
+        'http://localhost:3000', 
+        'http://localhost:5173',
+        'https://sbflorist.in',
+        'https://www.sbflorist.in',
+        'https://sbf-backend.onrender.com'
+      ]
+    }
   });
 });
 
@@ -76,6 +137,13 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🔗 Health check: http://localhost:${PORT}/health`);
+  console.log(`📡 CORS enabled for production domains`);
+  console.log(`🗄️ Database: ${process.env.MONGO_URI ? 'Connected' : 'Using default connection'}`);
   console.log(`Access the server from other devices using: http://YOUR_IP:${PORT}`);
+}).on('error', (err) => {
+  console.error('❌ Server failed to start:', err);
+  process.exit(1);
 });
