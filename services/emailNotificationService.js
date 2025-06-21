@@ -24,7 +24,7 @@ const initEmailService = () => {
       return null;
     }
     
-    emailTransporter = nodemailer.createTransporter(EMAIL_CONFIG);
+    const transporter = nodemailer.createTransport(EMAIL_CONFIG);
     console.log('✅ Email service initialized successfully');
     return emailTransporter;
   } catch (error) {
