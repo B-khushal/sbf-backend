@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const puppeteer = require('puppeteer');
 
 // Initialize email service
 let emailTransporter = null;
@@ -65,6 +66,40 @@ const formatTime = (timeSlot) => {
   }
   
   return timeSlot;
+};
+
+// Generate PDF from HTML
+const generateInvoicePDF = async (htmlContent, orderNumber) => {
+  let browser;
+  try {
+    browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
+    
+    const page = await browser.newPage();
+    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+    
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: {
+        top: '20px',
+        right: '20px',
+        bottom: '20px',
+        left: '20px'
+      }
+    });
+    
+    return pdfBuffer;
+  } catch (error) {
+    console.error('❌ Failed to generate PDF:', error);
+    throw error;
+  } finally {
+    if (browser) {
+      await browser.close();
+    }
+  }
 };
 
 // Generate comprehensive email template
@@ -504,11 +539,14 @@ const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
     </tr>
   `).join('');
 
-  // Calculate tax amounts
+  // Calculate tax amounts only if there are shipping charges
   const subtotal = order.totalAmount || 0;
-  const cgst = subtotal * 0.025; // 2.5% CGST
-  const sgst = subtotal * 0.025; // 2.5% SGST
-  const shippingCharges = 100; // Standard shipping
+  const shippingCharges = order.shippingCharges || 0;
+  
+  // Only calculate GST if there are shipping charges
+  const hasShipping = shippingCharges > 0;
+  const cgst = hasShipping ? shippingCharges * 0.025 : 0; // 2.5% CGST only on shipping
+  const sgst = hasShipping ? shippingCharges * 0.025 : 0; // 2.5% SGST only on shipping
   const grandTotal = subtotal + cgst + sgst + shippingCharges;
   
   return `
@@ -517,7 +555,7 @@ const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
     <head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Delivery Confirmation & Invoice - SBF</title>
+      <title>Delivery Confirmation & Invoice - Spring Blossoms Florist</title>
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
@@ -697,56 +735,56 @@ const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
         
         <div class="content">
           <div class="delivery-status">
-            <h2>✅ Delivered</h2>
-            <p>Your order #${order.orderNumber} has been delivered successfully!</p>
-            <p style="margin-top: 10px;"><strong>Delivered on:</strong> ${formatDate(new Date())}</p>
+            <h2>✅ Delivery Completed</h2>
+            <p>Your order has been successfully delivered on ${formatDate(new Date())}</p>
           </div>
 
           <div class="thank-you">
-            <h3>Thank You for Your Business!</h3>
-            <p>We hope you love your beautiful arrangement. Please find your invoice below for your records.</p>
+            <h3>Thank You for Your Order!</h3>
+            <p>We hope you love your beautiful floral arrangement. Please find your invoice below.</p>
           </div>
-          
-          <!-- INVOICE SECTION -->
+
           <div class="invoice-section">
             <div class="company-header">
               <h1>Spring Blossoms Florist</h1>
               <div class="company-details">
-                Door No. 12-2-786/A & B, Najam Centre, Pillar No. 32, Rethi Bowli, Mehdipatnam, Hyderabad, Telangana 500028<br>
-                GSTIN: 36ABCDE1234F1Z5<br>
-                Phone: +91 8978412570 | Email: support@springblossoms.com<br>
-                Website: www.springblossomsflorist.com
+                <p><strong>Door No. 12-2-786/A & B, Najam Centre, Pillar No. 32</strong></p>
+                <p>Rethi Bowli, Mehdipatnam, Hyderabad, Telangana 500028</p>
+                <p>GSTIN: 36ABCDE1234F1Z5 | Phone: +91 8978412570</p>
+                <p>Email: 2006sbf@gmail.com</p>
               </div>
             </div>
 
             <div class="invoice-header">
               <div class="invoice-details">
                 <h3>INVOICE</h3>
-                <p><strong>Invoice No:</strong> INV-${order.orderNumber}</p>
-                <p><strong>Invoice Date:</strong> ${formatDate(new Date())}</p>
+                <p><strong>Invoice #:</strong> INV-${order.orderNumber}</p>
+                <p><strong>Date:</strong> ${formatDate(new Date())}</p>
+                <p><strong>Order #:</strong> ${order.orderNumber}</p>
+              </div>
+              
+              <div class="invoice-details">
+                <h3>Order Information</h3>
+                <p><strong>Order Date:</strong> ${formatDate(order.createdAt)}</p>
+                <p><strong>Delivery Date:</strong> ${formatDate(order.shippingDetails?.deliveryDate || new Date())}</p>
+                <p><strong>Time Slot:</strong> ${formatTime(order.shippingDetails?.timeSlot)}</p>
               </div>
             </div>
 
             <div class="bill-to">
-              <h4>Bill To:</h4>
-              <p><strong>${customer.name.toUpperCase()}</strong></p>
-              <p>Email: ${customer.email}</p>
-              <p>Phone: ${customer.phone}</p>
-              <p>Billing Address: ${order.shippingDetails.address}, ${order.shippingDetails.city}, ${order.shippingDetails.state} ${order.shippingDetails.zipCode}</p>
+              <h4>📍 Delivery Address:</h4>
+              <p><strong>${order.shippingDetails?.fullName || customer.name}</strong></p>
+              <p>${order.shippingDetails?.address}</p>
+              ${order.shippingDetails?.apartment ? `<p>${order.shippingDetails.apartment}</p>` : ''}
+              <p>${order.shippingDetails?.city}, ${order.shippingDetails?.state} ${order.shippingDetails?.zipCode}</p>
+              <p>📞 ${order.shippingDetails?.phone}</p>
             </div>
 
             <div class="bill-to">
-              <h4>Ship To:</h4>
-              <p><strong>${order.shippingDetails.fullName.toUpperCase()}</strong></p>
-              <p>Phone: ${order.shippingDetails.phone}</p>
-              <p>Delivery Address: ${order.shippingDetails.address}, ${order.shippingDetails.city}, ${order.shippingDetails.state} ${order.shippingDetails.zipCode}</p>
-            </div>
-
-            <div class="bill-to">
-              <h4>Delivery Information:</h4>
-              <p><strong>Delivery Date:</strong> ${formatDate(order.deliveredAt || new Date())}</p>
-              <p><strong>Time Slot:</strong> ${order.shippingDetails.timeSlot || 'Standard Delivery'}</p>
-              ${order.shippingDetails.notes ? `<p><strong>Delivery Notes:</strong> ${order.shippingDetails.notes}</p>` : ''}
+              <h4>👤 Customer Information:</h4>
+              <p><strong>${customer.name}</strong></p>
+              <p>📧 ${customer.email}</p>
+              ${customer.phone ? `<p>📞 ${customer.phone}</p>` : ''}
             </div>
 
             <h4 style="margin-top: 30px; margin-bottom: 15px;">Order Details</h4>
@@ -779,18 +817,20 @@ const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
                 <span>Subtotal</span>
                 <span>₹${(subtotal * 86.1).toFixed(2)}</span>
               </div>
-              <div class="total-row">
-                <span>CGST (2.5%)</span>
-                <span>₹${(cgst * 86.1).toFixed(2)}</span>
-              </div>
-              <div class="total-row">
-                <span>SGST (2.5%)</span>
-                <span>₹${(sgst * 86.1).toFixed(2)}</span>
-              </div>
-              <div class="total-row">
-                <span>Shipping Charges</span>
-                <span>₹${shippingCharges.toFixed(2)}</span>
-              </div>
+              ${hasShipping ? `
+                <div class="total-row">
+                  <span>Shipping Charges</span>
+                  <span>₹${shippingCharges.toFixed(2)}</span>
+                </div>
+                <div class="total-row">
+                  <span>CGST (2.5% on shipping)</span>
+                  <span>₹${(cgst).toFixed(2)}</span>
+                </div>
+                <div class="total-row">
+                  <span>SGST (2.5% on shipping)</span>
+                  <span>₹${(sgst).toFixed(2)}</span>
+                </div>
+              ` : ''}
               
               <div class="grand-total">
                 <div class="total-row">
@@ -814,7 +854,7 @@ const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
           <p>We appreciate your order and hope you enjoyed our flowers.</p>
           <p>For any questions regarding your order or our products, please don't hesitate to contact us.</p>
           <p style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
-            📧 support@springblossoms.com | 📞 +91 8978412570<br>
+            📧 2006sbf@gmail.com | 📞 +91 8978412570<br>
             Business Hours: Monday - Saturday, 9 AM - 6 PM IST
           </p>
           <p style="margin-top: 15px; font-size: 12px; color: #9ca3af;">
@@ -841,14 +881,32 @@ const sendDeliveryConfirmationWithInvoice = async (orderData) => {
       return { success: false, error: 'No customer email address provided' };
     }
 
+    console.log('📄 Generating PDF invoice...');
+    
+    // Generate HTML content for the invoice
+    const htmlContent = generateDeliveryConfirmationWithInvoiceEmail(orderData);
+    
+    // Generate PDF
+    const pdfBuffer = await generateInvoicePDF(htmlContent, order.orderNumber);
+    
+    console.log('✅ PDF invoice generated successfully');
+
     const mailOptions = {
       from: {
         name: 'Spring Blossoms Florist',
-        address: EMAIL_CONFIG.auth.user
+        address: '2006sbf@gmail.com'
       },
       to: customer.email,
-      subject: `🎉 Order Delivered & Invoice #${order.orderNumber} - Spring Blossoms Florist`,
-      html: generateDeliveryConfirmationWithInvoiceEmail(orderData),
+      cc: '2006sbf@gmail.com', // Send copy to business email
+      subject: `🎉 Order Delivered & Invoice #INV-${order.orderNumber} - Spring Blossoms Florist`,
+      html: htmlContent,
+      attachments: [
+        {
+          filename: `Invoice-${order.orderNumber}.pdf`,
+          content: pdfBuffer,
+          contentType: 'application/pdf'
+        }
+      ],
       text: `Delivery Confirmation & Invoice - Spring Blossoms Florist
 
 Dear ${customer.name},
@@ -857,24 +915,27 @@ Great news! Your order #${order.orderNumber} has been delivered successfully!
 
 Order Details:
 - Order Number: ${order.orderNumber}
+- Invoice Number: INV-${order.orderNumber}
 - Total Amount: ${formatCurrency(order.totalAmount, order.currency)}
 - Delivered On: ${formatDate(new Date())}
 
 Delivery Address:
-${order.shippingDetails.fullName}
-${order.shippingDetails.address}
-${order.shippingDetails.city}, ${order.shippingDetails.state} ${order.shippingDetails.zipCode}
+${order.shippingDetails?.fullName || customer.name}
+${order.shippingDetails?.address}
+${order.shippingDetails?.city}, ${order.shippingDetails?.state} ${order.shippingDetails?.zipCode}
 
 Thank you for choosing Spring Blossoms Florist! We hope you love your beautiful arrangement.
 
-For any questions, please contact us at support@springblossoms.com or call +91 8978412570.
+Please find your detailed invoice attached as a PDF.
+
+For any questions, please contact us at 2006sbf@gmail.com or call +91 8978412570.
 
 Best regards,
 Spring Blossoms Florist Team`
     };
 
     const result = await emailTransporter.sendMail(mailOptions);
-    console.log('✅ Delivery confirmation email with invoice sent successfully:', result.messageId);
+    console.log('✅ Delivery confirmation email with PDF invoice sent successfully:', result.messageId);
     
     return { success: true, messageId: result.messageId };
   } catch (error) {
@@ -900,13 +961,13 @@ const sendEmailNotification = async (orderData) => {
       try {
         const customerMailOptions = {
       from: {
-        name: 'SBF Store',
-        address: EMAIL_CONFIG.auth.user
+        name: 'Spring Blossoms Florist',
+        address: '2006sbf@gmail.com'
       },
       to: customer.email,
-      subject: `🎉 Order Confirmed #${order.orderNumber} - SBF Store`,
+              subject: `🎉 Order Confirmed #${order.orderNumber} - Spring Blossoms Florist`,
       html: generateOrderConfirmationEmail(orderData),
-      text: `Order Confirmation - SBF Store
+              text: `Order Confirmation - Spring Blossoms Florist
 
 Hi ${customer.name},
 
@@ -925,10 +986,10 @@ ${order.shippingDetails.apartment ? order.shippingDetails.apartment : ''}
 ${order.shippingDetails.city}, ${order.shippingDetails.state} ${order.shippingDetails.zipCode}
 Phone: ${order.shippingDetails.phone}
 
-Thank you for choosing SBF! We'll keep you updated on your order status.
+Thank you for choosing Spring Blossoms Florist! We'll keep you updated on your order status.
 
 Best regards,
-SBF Team`
+Spring Blossoms Florist Team`
     };
 
         const customerResult = await emailTransporter.sendMail(customerMailOptions);
@@ -965,13 +1026,13 @@ SBF Team`
     try {
       const adminMailOptions = {
         from: {
-          name: 'SBF Order System',
-          address: EMAIL_CONFIG.auth.user
+          name: 'Spring Blossoms Florist Order System',
+          address: '2006sbf@gmail.com'
         },
         to: adminEmail,
         subject: `🚨 New Order Alert #${order.orderNumber} - ${formatCurrency(order.totalAmount, order.currency)}`,
         html: generateAdminOrderNotificationEmail(orderData),
-        text: `New Order Alert - SBF Admin
+        text: `New Order Alert - Spring Blossoms Florist Admin
 
 Order #${order.orderNumber} has been placed!
 
@@ -990,7 +1051,7 @@ ${order.shippingDetails.city}, ${order.shippingDetails.state} ${order.shippingDe
 
 Please process this order promptly.
 
-SBF Order Management System`
+Spring Blossoms Florist Order Management System`
       };
 
       const adminResult = await emailTransporter.sendMail(adminMailOptions);
