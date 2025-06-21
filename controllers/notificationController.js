@@ -8,7 +8,7 @@ exports.getNotifications = async (req, res) => {
     // Build query based on user role
     let query = {};
     
-    if (req.user.isAdmin) {
+    if (req.user.role === 'admin') {
       // Admin gets all admin notifications (no userId filter for admin notifications)
       query = { 
         $or: [
@@ -51,7 +51,7 @@ exports.markAsRead = async (req, res) => {
   try {
     let notification;
     
-    if (req.user.isAdmin) {
+    if (req.user.role === 'admin') {
       // Admin can mark any admin notification as read
       notification = await Notification.findById(req.params.id);
     } else {
@@ -79,7 +79,7 @@ exports.markAllAsRead = async (req, res) => {
   try {
     let updateQuery;
     
-    if (req.user.isAdmin) {
+    if (req.user.role === 'admin') {
       // Admin marks all admin notifications as read
       updateQuery = { 
         $or: [
@@ -105,7 +105,7 @@ exports.clearReadNotifications = async (req, res) => {
   try {
     let deleteQuery;
     
-    if (req.user.isAdmin) {
+    if (req.user.role === 'admin') {
       // Admin clears read admin notifications
       deleteQuery = {
         $or: [
@@ -131,7 +131,7 @@ exports.deleteNotification = async (req, res) => {
   try {
     let notification;
     
-    if (req.user.isAdmin) {
+    if (req.user.role === 'admin') {
       // Admin can delete any admin notification
       notification = await Notification.findOneAndDelete({
         _id: req.params.id,
@@ -161,8 +161,21 @@ exports.deleteNotification = async (req, res) => {
 // Test notification endpoint for debugging
 exports.createTestNotification = async (req, res) => {
   try {
-    if (!req.user.isAdmin) {
-      return res.status(403).json({ message: 'Admin access required' });
+    console.log('Test notification request - User:', {
+      id: req.user._id,
+      role: req.user.role,
+      isAdmin: req.user.isAdmin,
+      email: req.user.email
+    });
+
+    // Check admin status (use role instead of isAdmin for consistency)
+    if (req.user.role !== 'admin') {
+      console.log('Access denied - User role:', req.user.role);
+      return res.status(403).json({ 
+        message: 'Admin access required',
+        userRole: req.user.role,
+        requiredRole: 'admin'
+      });
     }
 
     const testNotification = new Notification({

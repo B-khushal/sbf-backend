@@ -32,6 +32,58 @@ router.delete('/:id', deleteNotification);
 // Create test notification (admin only)
 router.post('/test', admin, createTestNotification);
 
+// Debug endpoint to check user status
+router.get('/debug/user', protect, (req, res) => {
+  res.json({
+    success: true,
+    user: {
+      id: req.user._id,
+      email: req.user.email,
+      name: req.user.name,
+      role: req.user.role,
+      isAdmin: req.user.isAdmin,
+      createdAt: req.user.createdAt
+    },
+    isAdminByRole: req.user.role === 'admin',
+    isAdminByProperty: req.user.isAdmin,
+    middleware: {
+      adminCheckPasses: req.user.role === 'admin'
+    }
+  });
+});
+
+// Temporary endpoint to promote current user to admin (for testing)
+router.post('/debug/make-admin', protect, async (req, res) => {
+  try {
+    const User = require('../models/User');
+    
+    // Update current user to admin
+    await User.findByIdAndUpdate(req.user._id, { role: 'admin' });
+    
+    // Refresh user data
+    const updatedUser = await User.findById(req.user._id).select('-password');
+    
+    res.json({
+      success: true,
+      message: 'User promoted to admin successfully',
+      user: {
+        id: updatedUser._id,
+        email: updatedUser.email,
+        name: updatedUser.name,
+        role: updatedUser.role,
+        createdAt: updatedUser.createdAt
+      }
+    });
+  } catch (error) {
+    console.error('Error promoting user to admin:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error promoting user to admin',
+      error: error.message
+    });
+  }
+});
+
 // Test email service
 router.get('/test-email', admin, async (req, res) => {
   try {
