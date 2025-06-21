@@ -229,7 +229,7 @@ const getOrderById = async (req, res) => {
     const order = await Order.findById(req.params.id)
       .populate({
         path: 'items.product',
-        select: 'name price images sku discount' // Include all needed fields
+        select: 'title price images sku discount' // Include all needed fields
       })
       .populate('user', 'name email');
 
@@ -299,7 +299,7 @@ const updateOrderToDelivered = async (req, res) => {
 const getUserOrders = async (req, res) => {
   try {
     const orders = await Order.find({ user: req.user._id })
-      .populate('items.product', 'name')
+      .populate('items.product', 'title images price discount')
       .sort({ createdAt: -1 });
 
     res.json(orders);
