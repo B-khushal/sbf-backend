@@ -32,6 +32,8 @@ app.use(cors({
       'https://sbf-backend.onrender.com'
     ];
     
+    console.log(`CORS Check - Origin: ${origin}, Allowed: ${allowedOrigins.includes(origin)}`);
+    
     if (allowedOrigins.indexOf(origin) !== -1) {
       return callback(null, true);
     } else {
@@ -59,9 +61,36 @@ app.use(cors({
 // Handle preflight requests explicitly
 app.options('*', cors());
 
+// Additional CORS headers for problematic requests
+app.use((req, res, next) => {
+  const origin = req.get('Origin');
+  const allowedOrigins = [
+    'http://localhost:8080',
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'https://sbflorist.in',
+    'https://www.sbflorist.in',
+    'https://sbf-backend.onrender.com'
+  ];
+
+  if (allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+  }
+  
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS,PATCH');
+  res.header('Access-Control-Allow-Headers', 'Origin,X-Requested-With,Content-Type,Accept,Authorization,Cache-Control,Pragma');
+  
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(200);
+  } else {
+    next();
+  }
+});
+
 // Debug middleware for CORS
 app.use((req, res, next) => {
-  console.log(`${req.method} ${req.path} - Origin: ${req.get('Origin') || 'No Origin'}`);
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path} - Origin: ${req.get('Origin') || 'No Origin'}`);
   next();
 });
 
@@ -104,6 +133,7 @@ app.get('/health', (req, res) => {
     memory: process.memoryUsage(),
     cors: {
       enabled: true,
+      origin: req.get('Origin') || 'No Origin',
       allowedOrigins: [
         'http://localhost:8080',
         'http://localhost:3000', 
@@ -112,6 +142,21 @@ app.get('/health', (req, res) => {
         'https://www.sbflorist.in',
         'https://sbf-backend.onrender.com'
       ]
+    }
+  });
+});
+
+// CORS test endpoint
+app.get('/cors-test', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'CORS is working correctly',
+    origin: req.get('Origin') || 'No Origin',
+    timestamp: new Date().toISOString(),
+    headers: {
+      'Access-Control-Allow-Origin': res.get('Access-Control-Allow-Origin'),
+      'Access-Control-Allow-Credentials': res.get('Access-Control-Allow-Credentials'),
+      'Access-Control-Allow-Methods': res.get('Access-Control-Allow-Methods')
     }
   });
 });
