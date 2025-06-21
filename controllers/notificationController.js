@@ -158,6 +158,51 @@ exports.deleteNotification = async (req, res) => {
   }
 };
 
+// Test notification endpoint for debugging
+exports.createTestNotification = async (req, res) => {
+  try {
+    if (!req.user.isAdmin) {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+
+    const testNotification = new Notification({
+      type: 'order',
+      title: '🧪 Test Notification',
+      message: `Test notification created at ${new Date().toLocaleString()}. This is to verify the notification system is working properly.`,
+      userId: null, // Admin notification
+      read: false,
+      metadata: {
+        test: true,
+        createdBy: req.user._id,
+        timestamp: new Date().toISOString()
+      }
+    });
+    
+    await testNotification.save();
+    console.log('Test notification created successfully:', testNotification._id);
+    
+    res.status(201).json({
+      success: true,
+      message: 'Test notification created successfully',
+      notification: {
+        id: testNotification._id,
+        type: testNotification.type,
+        title: testNotification.title,
+        message: testNotification.message,
+        createdAt: testNotification.createdAt,
+        isRead: testNotification.read
+      }
+    });
+  } catch (error) {
+    console.error('Error creating test notification:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Error creating test notification',
+      error: error.message 
+    });
+  }
+};
+
 // Create order confirmation notification (used internally)
 exports.createOrderNotification = async (orderData) => {
   try {

@@ -499,14 +499,14 @@ const sendEmailNotification = async (orderData) => {
     if (customer.email) {
       try {
         const customerMailOptions = {
-          from: {
-            name: 'SBF Store',
-            address: EMAIL_CONFIG.auth.user
-          },
-          to: customer.email,
-          subject: `🎉 Order Confirmed #${order.orderNumber} - SBF Store`,
-          html: generateOrderConfirmationEmail(orderData),
-          text: `Order Confirmation - SBF Store
+      from: {
+        name: 'SBF Store',
+        address: EMAIL_CONFIG.auth.user
+      },
+      to: customer.email,
+      subject: `🎉 Order Confirmed #${order.orderNumber} - SBF Store`,
+      html: generateOrderConfirmationEmail(orderData),
+      text: `Order Confirmation - SBF Store
 
 Hi ${customer.name},
 
@@ -529,7 +529,7 @@ Thank you for choosing SBF! We'll keep you updated on your order status.
 
 Best regards,
 SBF Team`
-        };
+    };
 
         const customerResult = await emailTransporter.sendMail(customerMailOptions);
         console.log('✅ Customer email sent successfully to:', customer.email);
@@ -617,7 +617,7 @@ SBF Order Management System`
     const allSuccessful = results.every(result => result.success);
     const someSuccessful = results.some(result => result.success);
     
-    return {
+    return { 
       success: allSuccessful,
       partialSuccess: someSuccessful && !allSuccessful,
       results: results,

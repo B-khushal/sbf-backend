@@ -6,7 +6,8 @@ const {
   markAsRead,
   markAllAsRead,
   clearReadNotifications,
-  deleteNotification
+  deleteNotification,
+  createTestNotification
 } = require('../controllers/notificationController');
 const { testEmailService, sendTestEmail, getEmailConfig } = require('../services/emailNotificationService');
 
@@ -28,8 +29,11 @@ router.delete('/read', clearReadNotifications);
 // Delete a notification
 router.delete('/:id', deleteNotification);
 
+// Create test notification (admin only)
+router.post('/test', admin, createTestNotification);
+
 // Test email service
-router.get('/test', admin, async (req, res) => {
+router.get('/test-email', admin, async (req, res) => {
   try {
     const testResult = await testEmailService();
     
