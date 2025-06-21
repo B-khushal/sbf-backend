@@ -897,6 +897,72 @@ const getDeliveryCalendar = async (req, res) => {
   }
 };
 
+// @desc    Test delivery email functionality
+// @route   POST /api/orders/test-delivery-email
+// @access  Private/Admin
+const testDeliveryEmail = async (req, res) => {
+  try {
+    const { orderId } = req.body;
+    
+    if (!orderId) {
+      return res.status(400).json({ message: 'Order ID is required' });
+    }
+
+    const order = await Order.findById(orderId).populate('items.product');
+    
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    // Get customer details
+    const User = require('../models/User');
+    const customer = await User.findById(order.user);
+    
+    if (!customer || !customer.email) {
+      return res.status(400).json({ message: 'Customer or customer email not found' });
+    }
+
+    console.log('🧪 Testing delivery email for order:', order.orderNumber);
+    console.log('📧 Customer email:', customer.email);
+    
+    // Prepare delivery notification data
+    const deliveryNotificationData = {
+      order: order,
+      customer: {
+        name: customer.name,
+        email: customer.email,
+        phone: customer.phone || order.shippingDetails.phone
+      },
+      items: order.items
+    };
+
+    // Send delivery confirmation email with invoice
+    const { sendDeliveryConfirmationWithInvoice } = require('../services/emailNotificationService');
+    const emailResult = await sendDeliveryConfirmationWithInvoice(deliveryNotificationData);
+    
+    console.log('🧪 Test email result:', emailResult);
+    
+    if (emailResult.success) {
+      res.json({ 
+        success: true, 
+        message: 'Test delivery email sent successfully',
+        orderNumber: order.orderNumber,
+        customerEmail: customer.email,
+        messageId: emailResult.messageId
+      });
+    } else {
+      res.status(500).json({ 
+        success: false, 
+        message: 'Failed to send test delivery email',
+        error: emailResult.error 
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error in test delivery email:', error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
 module.exports = {
   createOrder,
   getNextOrderNumber,
@@ -910,4 +976,5 @@ module.exports = {
   verifyRazorpayPayment: verifyRazorpayPaymentHandler,
   getUpcomingDeliveries,
   getDeliveryCalendar,
+  testDeliveryEmail,
 };

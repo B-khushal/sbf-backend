@@ -14,6 +14,7 @@ const {
   verifyRazorpayPayment,
   getUpcomingDeliveries,
   getDeliveryCalendar,
+  testDeliveryEmail,
 } = require('../controllers/orderController');
 
 router.post('/', protect, createOrder);
@@ -23,6 +24,9 @@ router.get('/myorders', protect, getUserOrders);
 // New date and delivery focused routes
 router.get('/upcoming-deliveries', protect, admin, getUpcomingDeliveries);
 router.get('/delivery-calendar', protect, admin, getDeliveryCalendar);
+
+// Test delivery email route
+router.post('/test-delivery-email', protect, admin, testDeliveryEmail);
 
 router.route('/:id')
   .get(protect, getOrderById);
