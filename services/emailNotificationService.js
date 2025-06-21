@@ -750,7 +750,7 @@ const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
               <div class="company-details">
                 <p><strong>Door No. 12-2-786/A & B, Najam Centre, Pillar No. 32</strong></p>
                 <p>Rethi Bowli, Mehdipatnam, Hyderabad, Telangana 500028</p>
-                <p>GSTIN: 36ABCDE1234F1Z5 | Phone: +91 8978412570</p>
+                <p>GSTIN: 36ABCDE1234F1Z5 | Phone: 9849589710</p>
                 <p>Email: 2006sbf@gmail.com</p>
               </div>
             </div>
@@ -854,7 +854,7 @@ const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
           <p>We appreciate your order and hope you enjoyed our flowers.</p>
           <p>For any questions regarding your order or our products, please don't hesitate to contact us.</p>
           <p style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
-            📧 2006sbf@gmail.com | 📞 +91 8978412570<br>
+            📧 2006sbf@gmail.com | 📞 9849589710<br>
             Business Hours: Monday - Saturday, 9 AM - 6 PM IST
           </p>
           <p style="margin-top: 15px; font-size: 12px; color: #9ca3af;">
@@ -928,7 +928,7 @@ Thank you for choosing Spring Blossoms Florist! We hope you love your beautiful 
 
 Please find your detailed invoice attached as a PDF.
 
-For any questions, please contact us at 2006sbf@gmail.com or call +91 8978412570.
+For any questions, please contact us at 2006sbf@gmail.com or call 9849589710.
 
 Best regards,
 Spring Blossoms Florist Team`
