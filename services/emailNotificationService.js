@@ -542,15 +542,18 @@ const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
     </tr>
   `).join('');
 
-  // Calculate tax amounts only if there are shipping charges
-  const subtotal = order.totalAmount || 0;
-  const shippingCharges = order.shippingCharges || 0;
+  // Calculate proper subtotal from items
+  const itemsSubtotal = items.reduce((sum, item) => {
+    return sum + ((item.finalPrice || item.price) * item.quantity);
+  }, 0);
+  
+  const shippingCharges = order.shippingFee || order.shippingCharges || 0;
   
   // Only calculate GST if there are shipping charges
   const hasShipping = shippingCharges > 0;
   const cgst = hasShipping ? shippingCharges * 0.025 : 0; // 2.5% CGST only on shipping
   const sgst = hasShipping ? shippingCharges * 0.025 : 0; // 2.5% SGST only on shipping
-  const grandTotal = subtotal + cgst + sgst + shippingCharges;
+  const grandTotal = itemsSubtotal + shippingCharges + cgst + sgst;
   
   return `
     <!DOCTYPE html>
@@ -808,8 +811,8 @@ const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
                       <div style="font-size: 12px; color: #6b7280;">A beautiful arrangement of premium flowers</div>
                     </td>
                     <td style="text-align: center;">${item.quantity}</td>
-                    <td style="text-align: right;">₹${((item.finalPrice || item.price) * 86.1).toFixed(2)}</td>
-                    <td style="text-align: right;">₹${((item.finalPrice || item.price) * item.quantity * 86.1).toFixed(2)}</td>
+                    <td style="text-align: right;">₹${(item.finalPrice || item.price).toFixed(2)}</td>
+                    <td style="text-align: right;">₹${((item.finalPrice || item.price) * item.quantity).toFixed(2)}</td>
                   </tr>
                 `).join('')}
               </tbody>
@@ -818,7 +821,7 @@ const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
             <div class="total-section">
               <div class="total-row">
                 <span>Subtotal</span>
-                <span>₹${(subtotal * 86.1).toFixed(2)}</span>
+                <span>₹${(itemsSubtotal).toFixed(2)}</span>
               </div>
               ${hasShipping ? `
                 <div class="total-row">
@@ -838,7 +841,7 @@ const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
               <div class="grand-total">
                 <div class="total-row">
                   <span>GRAND TOTAL</span>
-                  <span>₹${(grandTotal * 86.1).toFixed(2)}</span>
+                  <span>₹${(grandTotal).toFixed(2)}</span>
                 </div>
               </div>
             </div>
