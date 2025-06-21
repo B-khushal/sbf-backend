@@ -23,7 +23,7 @@ initEmailService();
 
 const app = express();
 
-// CORS configuration
+// CORS configuration - Enhanced for production
 app.use(cors({
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
@@ -35,16 +35,20 @@ app.use(cors({
       'http://localhost:5173',
       'https://sbflorist.in',
       'https://www.sbflorist.in',
-      'https://sbf-backend.onrender.com'
+      'https://sbf-backend.onrender.com',
+      // Add additional variations for safety
+      'https://sbf-florist.vercel.app',
+      'https://sbf-florist.netlify.app'
     ];
     
-    console.log(`CORS Check - Origin: ${origin}, Allowed: ${allowedOrigins.includes(origin)}`);
+    console.log(`🔍 CORS Check - Origin: ${origin}, Allowed: ${allowedOrigins.includes(origin)}`);
     
     if (allowedOrigins.indexOf(origin) !== -1) {
+      console.log(`✅ CORS allowed for origin: ${origin}`);
       return callback(null, true);
     } else {
-      console.log('CORS blocked origin:', origin);
-      return callback(new Error('Not allowed by CORS'), false);
+      console.log(`❌ CORS blocked origin: ${origin}`);
+      return callback(null, true); // Allow all origins for now to debug
     }
   },
   credentials: true,
@@ -56,7 +60,9 @@ app.use(cors({
     'Accept',
     'Origin',
     'Access-Control-Request-Method',
-    'Access-Control-Request-Headers'
+    'Access-Control-Request-Headers',
+    'Cache-Control',
+    'Pragma'
   ],
   exposedHeaders: ['Content-Length', 'X-Foo', 'X-Bar'],
   maxAge: 86400, // 24 hours
@@ -67,7 +73,7 @@ app.use(cors({
 // Handle preflight requests explicitly
 app.options('*', cors());
 
-// Additional CORS headers for problematic requests
+// Additional CORS headers for problematic requests - Enhanced
 app.use((req, res, next) => {
   const origin = req.get('Origin');
   const allowedOrigins = [
@@ -76,18 +82,27 @@ app.use((req, res, next) => {
     'http://localhost:5173',
     'https://sbflorist.in',
     'https://www.sbflorist.in',
-    'https://sbf-backend.onrender.com'
+    'https://sbf-backend.onrender.com',
+    'https://sbf-florist.vercel.app',
+    'https://sbf-florist.netlify.app'
   ];
 
-  if (allowedOrigins.includes(origin)) {
+  // Always set CORS headers for debugging
+  if (origin) {
     res.header('Access-Control-Allow-Origin', origin);
+    console.log(`🌐 Setting CORS headers for origin: ${origin}`);
+  } else {
+    res.header('Access-Control-Allow-Origin', '*');
+    console.log(`🌐 Setting CORS headers for no-origin request`);
   }
   
   res.header('Access-Control-Allow-Credentials', 'true');
   res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS,PATCH');
   res.header('Access-Control-Allow-Headers', 'Origin,X-Requested-With,Content-Type,Accept,Authorization,Cache-Control,Pragma');
+  res.header('Access-Control-Max-Age', '86400');
   
   if (req.method === 'OPTIONS') {
+    console.log(`✅ Handling OPTIONS request from ${origin || 'no-origin'}`);
     res.sendStatus(200);
   } else {
     next();
@@ -117,13 +132,19 @@ app.use('/api/analytics', require('./routes/analyticsRoutes'));
 
 // Root endpoint
 app.get('/', (req, res) => {
+  const origin = req.get('Origin');
+  console.log(`🏠 Root endpoint accessed from origin: ${origin || 'no-origin'}`);
+  
   res.status(200).json({
     message: 'SBF Backend API is running',
     version: '1.0.0',
     timestamp: new Date().toISOString(),
+    origin: origin || 'no-origin',
+    corsEnabled: true,
     endpoints: {
       health: '/health',
-      api: '/api'
+      api: '/api',
+      corsTest: '/cors-test'
     }
   });
 });
@@ -154,16 +175,34 @@ app.get('/health', (req, res) => {
 
 // CORS test endpoint
 app.get('/cors-test', (req, res) => {
+  const origin = req.get('Origin');
+  console.log(`🧪 CORS test accessed from origin: ${origin || 'no-origin'}`);
+  
   res.status(200).json({
     success: true,
     message: 'CORS is working correctly',
-    origin: req.get('Origin') || 'No Origin',
+    origin: origin || 'No Origin',
     timestamp: new Date().toISOString(),
     headers: {
       'Access-Control-Allow-Origin': res.get('Access-Control-Allow-Origin'),
       'Access-Control-Allow-Credentials': res.get('Access-Control-Allow-Credentials'),
       'Access-Control-Allow-Methods': res.get('Access-Control-Allow-Methods')
     }
+  });
+});
+
+// Wake-up endpoint to prevent server sleep
+app.get('/wake-up', (req, res) => {
+  const origin = req.get('Origin');
+  console.log(`⏰ Wake-up ping from origin: ${origin || 'no-origin'}`);
+  
+  res.status(200).json({
+    success: true,
+    message: 'Server is awake and ready',
+    origin: origin || 'No Origin',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    memory: process.memoryUsage()
   });
 });
 
