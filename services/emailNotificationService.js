@@ -349,8 +349,144 @@ const generateOrderConfirmationEmail = (orderData) => {
   `;
 };
 
-// Send email notification
+// Generate admin notification email template
+const generateAdminOrderNotificationEmail = (orderData) => {
+  const { order, customer, items } = orderData;
+  
+  const itemsList = items.map(item => `
+    <tr style="border-bottom: 1px solid #e5e7eb;">
+      <td style="padding: 12px; text-align: left;">
+        <div style="font-weight: 600; color: #374151;">
+          ${item.product.name || item.product.title}
+        </div>
+        ${item.product.sku ? `<div style="font-size: 12px; color: #6b7280;">SKU: ${item.product.sku}</div>` : ''}
+      </td>
+      <td style="padding: 12px; text-align: center; font-weight: 500;">
+        ${item.quantity}
+      </td>
+      <td style="padding: 12px; text-align: right; font-weight: 600; color: #374151;">
+        ${formatCurrency(item.finalPrice || item.price, order.currency)}
+      </td>
+    </tr>
+  `).join('');
+  
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>New Order Alert - SBF Admin</title>
+    </head>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #374151; background-color: #f9fafb; margin: 0; padding: 20px;">
+      <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+        
+        <!-- Header -->
+        <div style="background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%); color: white; padding: 30px; text-align: center;">
+          <h1 style="font-size: 24px; margin-bottom: 8px; font-weight: 700;">🚨 New Order Alert</h1>
+          <p style="font-size: 16px; opacity: 0.9;">Order #${order.orderNumber}</p>
+        </div>
+        
+        <!-- Content -->
+        <div style="padding: 30px;">
+          
+          <!-- Order Summary -->
+          <div style="background: #fef2f2; padding: 20px; border-radius: 8px; margin-bottom: 25px; border-left: 4px solid #dc2626;">
+            <h2 style="color: #1f2937; margin-bottom: 15px; font-size: 20px;">Order Details</h2>
+            <div style="display: flex; justify-content: space-between; padding: 8px 0;">
+              <span><strong>Order Number:</strong></span>
+              <span style="color: #374151;">${order.orderNumber}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 8px 0;">
+              <span><strong>Order Date:</strong></span>
+              <span style="color: #374151;">${formatDate(order.createdAt)}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 8px 0;">
+              <span><strong>Total Amount:</strong></span>
+              <span style="color: #dc2626; font-weight: bold; font-size: 18px;">${formatCurrency(order.totalAmount, order.currency)}</span>
+            </div>
+          </div>
+          
+          <!-- Customer Details -->
+          <div style="background: #f8fafc; padding: 20px; border-radius: 8px; margin: 25px 0;">
+            <h3 style="color: #1f2937; margin-bottom: 15px; font-size: 18px;">Customer Information</h3>
+            <div style="line-height: 1.8; color: #4b5563;">
+              <div><strong>Name:</strong> ${customer.name}</div>
+              <div><strong>Email:</strong> ${customer.email}</div>
+              <div><strong>Phone:</strong> ${customer.phone}</div>
+            </div>
+          </div>
+          
+          <!-- Delivery Details -->
+          <div style="background: #f8fafc; padding: 20px; border-radius: 8px; margin: 25px 0;">
+            <h3 style="color: #1f2937; margin-bottom: 15px; font-size: 18px;">Delivery Information</h3>
+            <div style="line-height: 1.8; color: #4b5563;">
+              <div><strong>Address:</strong> ${order.shippingDetails.fullName}</div>
+              <div>${order.shippingDetails.address}</div>
+              ${order.shippingDetails.apartment ? `<div>${order.shippingDetails.apartment}</div>` : ''}
+              <div>${order.shippingDetails.city}, ${order.shippingDetails.state} ${order.shippingDetails.zipCode}</div>
+              <div><strong>Phone:</strong> ${order.shippingDetails.phone}</div>
+              <div><strong>Delivery Date:</strong> ${formatDate(order.shippingDetails.deliveryDate)}</div>
+              <div><strong>Time Slot:</strong> ${formatTime(order.shippingDetails.timeSlot)}</div>
+              ${order.shippingDetails.notes ? `<div><strong>Notes:</strong> ${order.shippingDetails.notes}</div>` : ''}
+            </div>
+          </div>
+          
+          <!-- Items -->
+          <div style="margin: 25px 0;">
+            <h3 style="color: #1f2937; margin-bottom: 15px; font-size: 18px; border-bottom: 2px solid #e5e7eb; padding-bottom: 8px;">Order Items</h3>
+            <table style="width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);">
+              <thead>
+                <tr style="background: #f3f4f6;">
+                  <th style="padding: 15px 12px; text-align: left; font-weight: 600; color: #374151; font-size: 14px;">Product</th>
+                  <th style="padding: 15px 12px; text-align: center; font-weight: 600; color: #374151; font-size: 14px;">Qty</th>
+                  <th style="padding: 15px 12px; text-align: right; font-weight: 600; color: #374151; font-size: 14px;">Price</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${itemsList}
+                <tr style="background: #fef2f2 !important; font-weight: 700; font-size: 16px;">
+                  <td style="padding: 20px 12px !important; color: #dc2626 !important;" colspan="2">Total Amount</td>
+                  <td style="padding: 20px 12px !important; color: #dc2626 !important; text-align: right;">${formatCurrency(order.totalAmount, order.currency)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          
+          ${order.giftDetails ? `
+            <div style="background: #fef7ff; padding: 20px; border-radius: 8px; margin: 25px 0; border-left: 4px solid #a855f7;">
+              <h3 style="color: #1f2937; margin-bottom: 15px; font-size: 18px;">🎁 Gift Order</h3>
+              <div style="margin-bottom: 10px;">
+                <strong>Recipient:</strong> ${order.giftDetails.recipientName || 'Not specified'}
+              </div>
+              <div style="background: white; padding: 15px; border-radius: 6px; font-style: italic;">
+                <strong>Gift Message:</strong> "${order.giftDetails.message}"
+              </div>
+            </div>
+          ` : ''}
+          
+        </div>
+        
+        <!-- Footer -->
+        <div style="background: #f9fafb; padding: 30px; text-align: center; border-top: 1px solid #e5e7eb;">
+          <h3 style="color: #1f2937; margin-bottom: 10px;">Action Required</h3>
+          <p style="margin-bottom: 20px;">Please process this order and prepare for delivery.</p>
+          
+          <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb; font-size: 12px; color: #9ca3af;">
+            <p>This is an automated admin notification from SBF Order Management System.</p>
+            <p>&copy; ${new Date().getFullYear()} SBF. All rights reserved.</p>
+          </div>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+};
+
+// Send email notification to both customer and admin
 const sendEmailNotification = async (orderData) => {
+  const results = [];
+  
   try {
     if (!emailTransporter) {
       console.log('⚠️  Email service not available, skipping email notification');
@@ -359,21 +495,18 @@ const sendEmailNotification = async (orderData) => {
 
     const { customer, order } = orderData;
     
-    // Validate required data
-    if (!customer.email) {
-      console.warn('⚠️  No email address provided for customer');
-      return { success: false, error: 'No email address provided' };
-    }
-
-    const mailOptions = {
-      from: {
-        name: 'SBF Store',
-        address: EMAIL_CONFIG.auth.user
-      },
-      to: customer.email,
-      subject: `🎉 Order Confirmed #${order.orderNumber} - SBF Store`,
-      html: generateOrderConfirmationEmail(orderData),
-      text: `Order Confirmation - SBF Store
+    // Send email to customer
+    if (customer.email) {
+      try {
+        const customerMailOptions = {
+          from: {
+            name: 'SBF Store',
+            address: EMAIL_CONFIG.auth.user
+          },
+          to: customer.email,
+          subject: `🎉 Order Confirmed #${order.orderNumber} - SBF Store`,
+          html: generateOrderConfirmationEmail(orderData),
+          text: `Order Confirmation - SBF Store
 
 Hi ${customer.name},
 
@@ -396,23 +529,107 @@ Thank you for choosing SBF! We'll keep you updated on your order status.
 
 Best regards,
 SBF Team`
-    };
+        };
 
-    const result = await emailTransporter.sendMail(mailOptions);
-    console.log('✅ Email notification sent successfully to:', customer.email);
-    console.log('📧 Message ID:', result.messageId);
+        const customerResult = await emailTransporter.sendMail(customerMailOptions);
+        console.log('✅ Customer email sent successfully to:', customer.email);
+        console.log('📧 Customer email Message ID:', customerResult.messageId);
+        
+        results.push({
+          type: 'customer',
+          success: true,
+          messageId: customerResult.messageId,
+          recipient: customer.email
+        });
+      } catch (customerError) {
+        console.error('❌ Failed to send customer email:', customerError);
+        results.push({
+          type: 'customer',
+          success: false,
+          error: customerError.message,
+          recipient: customer.email
+        });
+      }
+    } else {
+      console.warn('⚠️  No customer email address provided');
+      results.push({
+        type: 'customer',
+        success: false,
+        error: 'No customer email address provided',
+        recipient: 'N/A'
+      });
+    }
+
+    // Send email to admin
+    const adminEmail = '2006sbf@gmail.com';
+    try {
+      const adminMailOptions = {
+        from: {
+          name: 'SBF Order System',
+          address: EMAIL_CONFIG.auth.user
+        },
+        to: adminEmail,
+        subject: `🚨 New Order Alert #${order.orderNumber} - ${formatCurrency(order.totalAmount, order.currency)}`,
+        html: generateAdminOrderNotificationEmail(orderData),
+        text: `New Order Alert - SBF Admin
+
+Order #${order.orderNumber} has been placed!
+
+Customer: ${customer.name}
+Email: ${customer.email}
+Phone: ${customer.phone}
+Total Amount: ${formatCurrency(order.totalAmount, order.currency)}
+Delivery Date: ${formatDate(order.shippingDetails.deliveryDate)}
+Time Slot: ${formatTime(order.shippingDetails.timeSlot)}
+
+Delivery Address:
+${order.shippingDetails.fullName}
+${order.shippingDetails.address}
+${order.shippingDetails.apartment ? order.shippingDetails.apartment : ''}
+${order.shippingDetails.city}, ${order.shippingDetails.state} ${order.shippingDetails.zipCode}
+
+Please process this order promptly.
+
+SBF Order Management System`
+      };
+
+      const adminResult = await emailTransporter.sendMail(adminMailOptions);
+      console.log('✅ Admin email sent successfully to:', adminEmail);
+      console.log('📧 Admin email Message ID:', adminResult.messageId);
+      
+      results.push({
+        type: 'admin',
+        success: true,
+        messageId: adminResult.messageId,
+        recipient: adminEmail
+      });
+    } catch (adminError) {
+      console.error('❌ Failed to send admin email:', adminError);
+      results.push({
+        type: 'admin',
+        success: false,
+        error: adminError.message,
+        recipient: adminEmail
+      });
+    }
+
+    // Return overall result
+    const allSuccessful = results.every(result => result.success);
+    const someSuccessful = results.some(result => result.success);
     
-    return { 
-      success: true, 
-      messageId: result.messageId,
-      recipient: customer.email
+    return {
+      success: allSuccessful,
+      partialSuccess: someSuccessful && !allSuccessful,
+      results: results,
+      summary: `${results.filter(r => r.success).length}/${results.length} emails sent successfully`
     };
+    
   } catch (error) {
-    console.error('❌ Failed to send email notification:', error);
+    console.error('❌ Failed to send email notifications:', error);
     return { 
       success: false, 
       error: error.message,
-      recipient: customer.email 
+      results: results
     };
   }
 };
