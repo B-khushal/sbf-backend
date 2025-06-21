@@ -87,9 +87,25 @@ const orderSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['pending', 'processing', 'completed', 'cancelled', 'delivered'],
-    default: 'pending'
+    enum: ['order_placed', 'received', 'being_made', 'out_for_delivery', 'delivered', 'cancelled'],
+    default: 'order_placed'
   },
+  trackingHistory: [{
+    status: {
+      type: String,
+      enum: ['order_placed', 'received', 'being_made', 'out_for_delivery', 'delivered', 'cancelled'],
+      required: true
+    },
+    timestamp: {
+      type: Date,
+      default: Date.now
+    },
+    message: String,
+    updatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    }
+  }],
   stockUpdated: {
     type: Boolean,
     default: false
@@ -108,6 +124,25 @@ orderSchema.pre('save', async function(next) {
     const day = date.getDate().toString().padStart(2, '0');
     this.orderNumber = `ORD-${year}${month}${day}-${(count + 1).toString().padStart(3, '0')}`;
   }
+  
+  // Track status changes
+  if (this.isModified('status') || this.isNew) {
+    const statusMessages = {
+      'order_placed': 'Order has been placed successfully',
+      'received': 'Order has been received and is being reviewed',
+      'being_made': 'Your beautiful arrangement is being prepared',
+      'out_for_delivery': 'Order is out for delivery',
+      'delivered': 'Order has been delivered successfully',
+      'cancelled': 'Order has been cancelled'
+    };
+    
+    this.trackingHistory.push({
+      status: this.status,
+      message: statusMessages[this.status] || `Status updated to ${this.status}`,
+      timestamp: new Date()
+    });
+  }
+  
   next();
 });
 

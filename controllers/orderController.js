@@ -88,7 +88,7 @@ const createOrder = async (req, res) => {
       currency: currency || 'INR',
       currencyRate: currencyRate || 1,
       originalCurrency: originalCurrency || currency || 'INR',
-      status: 'pending'
+      status: 'order_placed'
     };
 
     // Add gift details if present
@@ -479,8 +479,8 @@ const updateOrderStatus = async (req, res) => {
       order.deliveredAt = Date.now();
     }
 
-    // Update stock when order is confirmed (completed)
-    if (status === 'completed' && previousStatus !== 'completed' && !order.stockUpdated) {
+    // Update stock when order is confirmed (being_made or delivered)
+    if ((status === 'being_made' || status === 'delivered') && !['being_made', 'delivered'].includes(previousStatus) && !order.stockUpdated) {
       console.log('Order confirmed, updating stock for items:', order.items);
       
       for (const item of order.items) {
@@ -530,8 +530,8 @@ const updateOrderStatus = async (req, res) => {
       }
     }
 
-    // Restore stock if order is cancelled from completed status
-    if (status === 'cancelled' && previousStatus === 'completed' && order.stockUpdated) {
+    // Restore stock if order is cancelled from being_made or delivered status
+    if (status === 'cancelled' && ['being_made', 'delivered'].includes(previousStatus) && order.stockUpdated) {
       console.log('Order cancelled from completed status, restoring stock for items:', order.items);
       
       for (const item of order.items) {
@@ -649,7 +649,7 @@ const getUpcomingDeliveries = async (req, res) => {
         $gte: now,
         $lte: futureDate
       },
-      status: { $in: ['pending', 'processing', 'completed'] } // Exclude cancelled and delivered
+      status: { $in: ['order_placed', 'received', 'being_made', 'out_for_delivery'] } // Exclude cancelled and delivered
     })
     .populate('user', 'name email')
     .populate('items.product', 'title images price')
