@@ -1,5 +1,5 @@
 const nodemailer = require('nodemailer');
-const puppeteer = require('puppeteer');
+const pdf = require('html-pdf');
 
 // Initialize email service
 let emailTransporter = null;
@@ -29,7 +29,7 @@ const initEmailService = () => {
     console.log('✅ Email service initialized successfully');
     return emailTransporter;
   } catch (error) {
-    console.error('❌ Failed to initialize email service:', error);
+    console.error('❌ Failed to initialize email service:', error.message);
     return null;
   }
 };
@@ -69,37 +69,40 @@ const formatTime = (timeSlot) => {
 };
 
 // Generate PDF from HTML
-const generateInvoicePDF = async (htmlContent, orderNumber) => {
-  let browser;
-  try {
-    browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
-    
-    const page = await browser.newPage();
-    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
-    
-    const pdfBuffer = await page.pdf({
+const generateInvoicePDF = (htmlContent, orderNumber) => {
+  return new Promise((resolve, reject) => {
+    const options = {
       format: 'A4',
-      printBackground: true,
-      margin: {
-        top: '20px',
-        right: '20px',
-        bottom: '20px',
-        left: '20px'
+      orientation: 'portrait',
+      border: {
+        top: '0.5in',
+        right: '0.5in',
+        bottom: '0.5in',
+        left: '0.5in'
+      },
+      header: {
+        height: '20mm'
+      },
+      footer: {
+        height: '20mm'
+      },
+      type: 'pdf',
+      quality: '75',
+      httpHeaders: {
+        'Content-Type': 'text/html; charset=utf-8'
+      }
+    };
+
+    pdf.create(htmlContent, options).toBuffer((err, buffer) => {
+      if (err) {
+        console.error('❌ Failed to generate PDF:', err);
+        reject(err);
+      } else {
+        console.log('✅ PDF generated successfully');
+        resolve(buffer);
       }
     });
-    
-    return pdfBuffer;
-  } catch (error) {
-    console.error('❌ Failed to generate PDF:', error);
-    throw error;
-  } finally {
-    if (browser) {
-      await browser.close();
-    }
-  }
+  });
 };
 
 // Generate comprehensive email template
@@ -368,9 +371,9 @@ const generateOrderConfirmationEmail = (orderData) => {
           
           <div class="contact-info">
             <p><strong>Need help?</strong></p>
-            <p>📧 Email: support@sbf.com</p>
-            <p>📞 Phone: +91-XXXX-XXXX</p>
-            <p>🌐 Website: www.sbf.com</p>
+            <p>📧 Email: 2006sbf@gmail.com</p>
+            <p>📞 Phone: 9849589710</p>
+            <p>🌐 Website: www.sbflorist.com</p>
           </div>
           
           <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb; font-size: 12px; color: #9ca3af;">
