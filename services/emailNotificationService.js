@@ -24,7 +24,7 @@ const initEmailService = () => {
       return null;
     }
     
-    const transporter = nodemailer.createTransport(EMAIL_CONFIG);
+    emailTransporter = nodemailer.createTransporter(EMAIL_CONFIG);
     console.log('✅ Email service initialized successfully');
     return emailTransporter;
   } catch (error) {
@@ -730,6 +730,7 @@ module.exports = {
   testEmailService,
   sendTestEmail,
   getEmailConfig,
+  initEmailService,
   formatCurrency,
   formatDate,
   formatTime

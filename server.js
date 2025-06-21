@@ -8,12 +8,18 @@ const path = require('path');
 // Load environment variables
 dotenv.config();
 
+// Initialize email service
+const { initEmailService, testEmailService } = require('./services/emailNotificationService');
+
 // Connect to database
 connectDB().then(() => {
   console.log('Database connected successfully');
 }).catch((error) => {
   console.error('Database connection error:', error);
 });
+
+// Initialize email service
+initEmailService();
 
 const app = express();
 

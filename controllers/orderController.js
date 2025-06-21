@@ -126,29 +126,50 @@ const createOrder = async (req, res) => {
         items: populatedOrder.items
       };
 
-      // Send email notification
+      // Send email notification (includes both customer and admin emails)
       const emailResult = await sendEmailNotification(notificationData);
-      
       console.log('Email notification result:', emailResult);
       
-      // Create admin notification for the order
+      // Create admin notification for real-time updates
       try {
-        await createOrderNotification({
+        const adminNotification = await createOrderNotification({
           orderId: savedOrder._id,
           orderNumber: savedOrder.orderNumber,
           customerName: customer.name,
-          amount: savedOrder.totalAmount
+          amount: savedOrder.totalAmount,
+          currency: savedOrder.currency || 'INR'
         });
-        console.log('Admin notification created successfully for order:', savedOrder.orderNumber);
+        console.log('✅ Admin notification created successfully for order:', savedOrder.orderNumber);
+        
+        // Store in a global variable for real-time polling (optional backup)
+        global.latestNotifications = global.latestNotifications || [];
+        global.latestNotifications.unshift({
+          id: adminNotification.id || `order-${Date.now()}`,
+          type: 'order',
+          title: '🎉 New Order Received!',
+          message: `Order ${savedOrder.orderNumber} placed by ${customer.name}. Amount: ${savedOrder.currency === 'INR' ? '₹' : '$'}${savedOrder.totalAmount}`,
+          createdAt: new Date().toISOString(),
+          isRead: false,
+          orderId: savedOrder._id,
+          orderNumber: savedOrder.orderNumber
+        });
+        
+        // Keep only last 50 notifications in memory
+        if (global.latestNotifications.length > 50) {
+          global.latestNotifications = global.latestNotifications.slice(0, 50);
+        }
+        
+        console.log('📨 Notification added to global notifications for real-time polling');
+        
       } catch (adminNotificationError) {
-        console.error('Error creating admin notification:', adminNotificationError);
+        console.error('❌ Error creating admin notification:', adminNotificationError);
       }
       
       // Add notification status to response
       savedOrder.emailNotificationStatus = emailResult;
       
     } catch (notificationError) {
-      console.error('Error sending order notifications:', notificationError);
+      console.error('❌ Error sending order notifications:', notificationError);
       // Don't fail the order creation if notifications fail
     }
 

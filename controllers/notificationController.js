@@ -30,15 +30,29 @@ exports.getNotifications = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(50); // Limit to last 50 notifications
     
+    // Also include global notifications for admins (real-time backup)
+    let allNotifications = notifications.map(notification => ({
+      id: notification._id,
+      type: notification.type || 'system',
+      title: notification.title,
+      message: notification.message,
+      createdAt: notification.createdAt,
+      isRead: notification.read || false
+    }));
+    
+    // Add global notifications for admins (for real-time updates)
+    if (req.user.role === 'admin' && global.latestNotifications) {
+      const globalNotifications = global.latestNotifications
+        .filter(n => since ? new Date(n.createdAt) > new Date(since) : true)
+        .filter(n => !allNotifications.some(existing => existing.id === n.id));
+      
+      allNotifications = [...globalNotifications, ...allNotifications];
+    }
+    
+    console.log(`📨 Returning ${allNotifications.length} notifications for ${req.user.role} user`);
+    
     res.json({ 
-      notifications: notifications.map(notification => ({
-        id: notification._id,
-        type: notification.type || 'system',
-        title: notification.title,
-        message: notification.message,
-        createdAt: notification.createdAt,
-        isRead: notification.read || false
-      }))
+      notifications: allNotifications.slice(0, 50) // Limit to 50 total
     });
   } catch (error) {
     console.error('Error fetching notifications:', error);
@@ -219,25 +233,29 @@ exports.createTestNotification = async (req, res) => {
 // Create order confirmation notification (used internally)
 exports.createOrderNotification = async (orderData) => {
   try {
+    const currency = orderData.currency || 'INR';
+    const currencySymbol = currency === 'INR' ? '₹' : '$';
+    
     const notification = new Notification({
       type: 'order',
       title: '🎉 New Order Received!',
-      message: `Order ${orderData.orderNumber} has been placed by ${orderData.customerName}. Amount: $${orderData.amount}`,
+      message: `Order ${orderData.orderNumber} has been placed by ${orderData.customerName}. Amount: ${currencySymbol}${orderData.amount}`,
       userId: null, // Admin notification (no specific user)
       read: false,
       metadata: {
         orderId: orderData.orderId,
         orderNumber: orderData.orderNumber,
         customerName: orderData.customerName,
-        amount: orderData.amount
+        amount: orderData.amount,
+        currency: currency
       }
     });
     
     await notification.save();
-    console.log('Order notification created for admin:', orderData.orderNumber);
+    console.log('✅ Order notification created for admin:', orderData.orderNumber);
     return notification;
   } catch (error) {
-    console.error('Error creating order notification:', error);
+    console.error('❌ Error creating order notification:', error);
     throw error;
   }
 };
