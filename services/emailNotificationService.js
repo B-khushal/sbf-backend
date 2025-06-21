@@ -483,6 +483,406 @@ const generateAdminOrderNotificationEmail = (orderData) => {
   `;
 };
 
+// Generate delivery confirmation email template with invoice
+const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
+  const { order, customer, items } = orderData;
+  
+  const itemsList = items.map(item => `
+    <tr style="border-bottom: 1px solid #e5e7eb;">
+      <td style="padding: 12px; text-align: left;">
+        <div style="font-weight: 600; color: #374151;">
+          ${item.product.name || item.product.title}
+        </div>
+        ${item.product.sku ? `<div style="font-size: 12px; color: #6b7280;">SKU: ${item.product.sku}</div>` : ''}
+      </td>
+      <td style="padding: 12px; text-align: center; font-weight: 500;">
+        ${item.quantity}
+      </td>
+      <td style="padding: 12px; text-align: right; font-weight: 600; color: #374151;">
+        ${formatCurrency(item.finalPrice || item.price, order.currency)}
+      </td>
+    </tr>
+  `).join('');
+
+  // Calculate tax amounts
+  const subtotal = order.totalAmount || 0;
+  const cgst = subtotal * 0.025; // 2.5% CGST
+  const sgst = subtotal * 0.025; // 2.5% SGST
+  const shippingCharges = 100; // Standard shipping
+  const grandTotal = subtotal + cgst + sgst + shippingCharges;
+  
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Delivery Confirmation & Invoice - SBF</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; 
+          line-height: 1.6; 
+          color: #374151; 
+          background-color: #f9fafb;
+        }
+        .container { 
+          max-width: 700px; 
+          margin: 0 auto; 
+          background-color: #ffffff;
+          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        .header { 
+          background: linear-gradient(135deg, #10b981 0%, #059669 100%); 
+          color: white; 
+          padding: 40px 30px; 
+          text-align: center; 
+        }
+        .header h1 { 
+          font-size: 28px; 
+          margin-bottom: 8px; 
+          font-weight: 700;
+        }
+        .header p { 
+          font-size: 16px; 
+          opacity: 0.9;
+        }
+        .content { 
+          padding: 30px; 
+        }
+        .delivery-status { 
+          background: #ecfdf5; 
+          border: 2px solid #10b981;
+          padding: 20px; 
+          border-radius: 12px; 
+          margin-bottom: 25px;
+          text-align: center;
+        }
+        .delivery-status h2 { 
+          color: #065f46; 
+          margin-bottom: 10px; 
+          font-size: 24px;
+        }
+        .delivery-status p { 
+          color: #047857; 
+          font-size: 16px;
+        }
+        .invoice-section {
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
+          border-radius: 12px;
+          padding: 25px;
+          margin: 25px 0;
+        }
+        .company-header {
+          text-align: center;
+          border-bottom: 2px solid #e2e8f0;
+          padding-bottom: 20px;
+          margin-bottom: 25px;
+        }
+        .company-header h1 {
+          color: #1e40af;
+          font-size: 28px;
+          margin-bottom: 5px;
+        }
+        .company-details {
+          color: #64748b;
+          font-size: 14px;
+          line-height: 1.6;
+        }
+        .invoice-header {
+          display: flex;
+          justify-content: space-between;
+          margin-bottom: 25px;
+          flex-wrap: wrap;
+        }
+        .invoice-details h3 {
+          color: #1f2937;
+          font-size: 20px;
+          margin-bottom: 10px;
+        }
+        .invoice-details p {
+          margin: 5px 0;
+          color: #6b7280;
+        }
+        .bill-to {
+          background: white;
+          padding: 20px;
+          border-radius: 8px;
+          margin: 20px 0;
+          border-left: 4px solid #3b82f6;
+        }
+        .bill-to h4 {
+          color: #1f2937;
+          margin-bottom: 10px;
+          font-size: 16px;
+        }
+        .items-table { 
+          width: 100%; 
+          border-collapse: collapse; 
+          background: white;
+          border-radius: 8px;
+          overflow: hidden;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+          margin: 20px 0;
+        }
+        .items-table th { 
+          background: #f1f5f9; 
+          padding: 15px 12px; 
+          text-align: left; 
+          font-weight: 600;
+          color: #374151;
+          font-size: 14px;
+          border-bottom: 2px solid #e2e8f0;
+        }
+        .items-table td {
+          padding: 12px;
+          border-bottom: 1px solid #e5e7eb;
+        }
+        .total-section {
+          background: white;
+          padding: 20px;
+          border-radius: 8px;
+          margin-top: 20px;
+        }
+        .total-row {
+          display: flex;
+          justify-content: space-between;
+          padding: 8px 0;
+          border-bottom: 1px solid #e5e7eb;
+        }
+        .grand-total {
+          background: #f0f9ff;
+          padding: 15px;
+          border-radius: 8px;
+          margin-top: 10px;
+          border: 2px solid #0ea5e9;
+        }
+        .grand-total .total-row {
+          font-weight: 700;
+          font-size: 18px;
+          color: #0369a1;
+          border: none;
+        }
+        .footer { 
+          background: #f9fafb; 
+          text-align: center; 
+          padding: 30px; 
+          border-top: 1px solid #e5e7eb;
+        }
+        .footer p { 
+          margin: 8px 0; 
+          color: #6b7280;
+        }
+        .thank-you {
+          background: #fef7cd;
+          border: 1px solid #f59e0b;
+          border-radius: 8px;
+          padding: 20px;
+          margin: 25px 0;
+          text-align: center;
+        }
+        .thank-you h3 {
+          color: #92400e;
+          margin-bottom: 10px;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>🎉 Order Delivered Successfully!</h1>
+          <p>Thank you for choosing Spring Blossoms Florist</p>
+        </div>
+        
+        <div class="content">
+          <div class="delivery-status">
+            <h2>✅ Delivered</h2>
+            <p>Your order #${order.orderNumber} has been delivered successfully!</p>
+            <p style="margin-top: 10px;"><strong>Delivered on:</strong> ${formatDate(new Date())}</p>
+          </div>
+
+          <div class="thank-you">
+            <h3>Thank You for Your Business!</h3>
+            <p>We hope you love your beautiful arrangement. Please find your invoice below for your records.</p>
+          </div>
+          
+          <!-- INVOICE SECTION -->
+          <div class="invoice-section">
+            <div class="company-header">
+              <h1>Spring Blossoms Florist</h1>
+              <div class="company-details">
+                Door No. 12-2-786/A & B, Najam Centre, Pillar No. 32, Rethi Bowli, Mehdipatnam, Hyderabad, Telangana 500028<br>
+                GSTIN: 36ABCDE1234F1Z5<br>
+                Phone: +91 8978412570 | Email: support@springblossoms.com<br>
+                Website: www.springblossomsflorist.com
+              </div>
+            </div>
+
+            <div class="invoice-header">
+              <div class="invoice-details">
+                <h3>INVOICE</h3>
+                <p><strong>Invoice No:</strong> INV-${order.orderNumber}</p>
+                <p><strong>Invoice Date:</strong> ${formatDate(new Date())}</p>
+              </div>
+            </div>
+
+            <div class="bill-to">
+              <h4>Bill To:</h4>
+              <p><strong>${customer.name.toUpperCase()}</strong></p>
+              <p>Email: ${customer.email}</p>
+              <p>Phone: ${customer.phone}</p>
+              <p>Billing Address: ${order.shippingDetails.address}, ${order.shippingDetails.city}, ${order.shippingDetails.state} ${order.shippingDetails.zipCode}</p>
+            </div>
+
+            <div class="bill-to">
+              <h4>Ship To:</h4>
+              <p><strong>${order.shippingDetails.fullName.toUpperCase()}</strong></p>
+              <p>Phone: ${order.shippingDetails.phone}</p>
+              <p>Delivery Address: ${order.shippingDetails.address}, ${order.shippingDetails.city}, ${order.shippingDetails.state} ${order.shippingDetails.zipCode}</p>
+            </div>
+
+            <div class="bill-to">
+              <h4>Delivery Information:</h4>
+              <p><strong>Delivery Date:</strong> ${formatDate(order.deliveredAt || new Date())}</p>
+              <p><strong>Time Slot:</strong> ${order.shippingDetails.timeSlot || 'Standard Delivery'}</p>
+              ${order.shippingDetails.notes ? `<p><strong>Delivery Notes:</strong> ${order.shippingDetails.notes}</p>` : ''}
+            </div>
+
+            <h4 style="margin-top: 30px; margin-bottom: 15px;">Order Details</h4>
+            <table class="items-table">
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th style="text-align: center;">Quantity</th>
+                  <th style="text-align: right;">Price (₹)</th>
+                  <th style="text-align: right;">Total (₹)</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${items.map(item => `
+                  <tr>
+                    <td>
+                      <div style="font-weight: 600;">${item.product.name || item.product.title}</div>
+                      <div style="font-size: 12px; color: #6b7280;">A beautiful arrangement of premium flowers</div>
+                    </td>
+                    <td style="text-align: center;">${item.quantity}</td>
+                    <td style="text-align: right;">₹${((item.finalPrice || item.price) * 86.1).toFixed(2)}</td>
+                    <td style="text-align: right;">₹${((item.finalPrice || item.price) * item.quantity * 86.1).toFixed(2)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+
+            <div class="total-section">
+              <div class="total-row">
+                <span>Subtotal</span>
+                <span>₹${(subtotal * 86.1).toFixed(2)}</span>
+              </div>
+              <div class="total-row">
+                <span>CGST (2.5%)</span>
+                <span>₹${(cgst * 86.1).toFixed(2)}</span>
+              </div>
+              <div class="total-row">
+                <span>SGST (2.5%)</span>
+                <span>₹${(sgst * 86.1).toFixed(2)}</span>
+              </div>
+              <div class="total-row">
+                <span>Shipping Charges</span>
+                <span>₹${shippingCharges.toFixed(2)}</span>
+              </div>
+              
+              <div class="grand-total">
+                <div class="total-row">
+                  <span>GRAND TOTAL</span>
+                  <span>₹${(grandTotal * 86.1).toFixed(2)}</span>
+                </div>
+              </div>
+            </div>
+
+            <div style="margin-top: 25px; padding: 15px; background: #f0f9ff; border-radius: 8px;">
+              <h4 style="color: #1f2937; margin-bottom: 10px;">Payment Information:</h4>
+              <p><strong>Method:</strong> Razorpay (Online Payment)</p>
+              <p><strong>Status:</strong> Completed</p>
+              ${order.paymentDetails?.paymentId ? `<p><strong>Transaction ID:</strong> ${order.paymentDetails.paymentId}</p>` : ''}
+            </div>
+          </div>
+        </div>
+        
+        <div class="footer">
+          <h3 style="color: #1f2937; margin-bottom: 15px;">Thank you for your business!</h3>
+          <p>We appreciate your order and hope you enjoyed our flowers.</p>
+          <p>For any questions regarding your order or our products, please don't hesitate to contact us.</p>
+          <p style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+            📧 support@springblossoms.com | 📞 +91 8978412570<br>
+            Business Hours: Monday - Saturday, 9 AM - 6 PM IST
+          </p>
+          <p style="margin-top: 15px; font-size: 12px; color: #9ca3af;">
+            Terms and conditions apply. For our return and refund policy, please visit www.springblossomsflorist.com/returns.
+          </p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+};
+
+// Send delivery confirmation email with invoice
+const sendDeliveryConfirmationWithInvoice = async (orderData) => {
+  try {
+    if (!emailTransporter) {
+      console.log('⚠️  Email service not available, skipping delivery confirmation email');
+      return { success: false, error: 'Email service not configured' };
+    }
+
+    const { customer, order } = orderData;
+    
+    if (!customer.email) {
+      return { success: false, error: 'No customer email address provided' };
+    }
+
+    const mailOptions = {
+      from: {
+        name: 'Spring Blossoms Florist',
+        address: EMAIL_CONFIG.auth.user
+      },
+      to: customer.email,
+      subject: `🎉 Order Delivered & Invoice #${order.orderNumber} - Spring Blossoms Florist`,
+      html: generateDeliveryConfirmationWithInvoiceEmail(orderData),
+      text: `Delivery Confirmation & Invoice - Spring Blossoms Florist
+
+Dear ${customer.name},
+
+Great news! Your order #${order.orderNumber} has been delivered successfully!
+
+Order Details:
+- Order Number: ${order.orderNumber}
+- Total Amount: ${formatCurrency(order.totalAmount, order.currency)}
+- Delivered On: ${formatDate(new Date())}
+
+Delivery Address:
+${order.shippingDetails.fullName}
+${order.shippingDetails.address}
+${order.shippingDetails.city}, ${order.shippingDetails.state} ${order.shippingDetails.zipCode}
+
+Thank you for choosing Spring Blossoms Florist! We hope you love your beautiful arrangement.
+
+For any questions, please contact us at support@springblossoms.com or call +91 8978412570.
+
+Best regards,
+Spring Blossoms Florist Team`
+    };
+
+    const result = await emailTransporter.sendMail(mailOptions);
+    console.log('✅ Delivery confirmation email with invoice sent successfully:', result.messageId);
+    
+    return { success: true, messageId: result.messageId };
+  } catch (error) {
+    console.error('❌ Failed to send delivery confirmation email:', error);
+    return { success: false, error: error.message };
+  }
+};
+
 // Send email notification to both customer and admin
 const sendEmailNotification = async (orderData) => {
   const results = [];
@@ -733,5 +1133,6 @@ module.exports = {
   initEmailService,
   formatCurrency,
   formatDate,
-  formatTime
+  formatTime,
+  sendDeliveryConfirmationWithInvoice
 };

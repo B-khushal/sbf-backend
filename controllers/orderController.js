@@ -6,7 +6,7 @@ const { createOrder: createRazorpayOrder, verifyPayment } = require('../services
 const Notification = require('../models/Notification');
 const { admin } = require('../middleware/authMiddleware');
 const { createOrderNotification } = require('./notificationController');
-const { sendEmailNotification } = require('../services/emailNotificationService');
+const { sendEmailNotification, sendDeliveryConfirmationWithInvoice } = require('../services/emailNotificationService');
 
 
 // @desc    Create new order
@@ -548,6 +548,45 @@ const updateOrderStatus = async (req, res) => {
         await notification.save();
       } catch (notificationError) {
         console.error('Error creating stock update notification:', notificationError);
+      }
+    }
+
+    // Send delivery confirmation email with invoice when order is delivered
+    if (status === 'delivered' && previousStatus !== 'delivered') {
+      console.log('🚚 Order delivered, sending delivery confirmation email with invoice...');
+      
+      try {
+        // Get customer details
+        const User = require('../models/User');
+        const customer = await User.findById(order.user);
+        
+        if (customer && customer.email) {
+          // Prepare delivery notification data
+          const deliveryNotificationData = {
+            order: order,
+            customer: {
+              name: customer.name,
+              email: customer.email,
+              phone: customer.phone || order.shippingDetails.phone
+            },
+            items: order.items
+          };
+
+          // Send delivery confirmation email with invoice
+          const { sendDeliveryConfirmationWithInvoice } = require('../services/emailNotificationService');
+          const emailResult = await sendDeliveryConfirmationWithInvoice(deliveryNotificationData);
+          
+          if (emailResult.success) {
+            console.log('✅ Delivery confirmation email with invoice sent successfully to:', customer.email);
+          } else {
+            console.error('❌ Failed to send delivery confirmation email:', emailResult.error);
+          }
+        } else {
+          console.warn('⚠️  No customer email found for delivery confirmation');
+        }
+      } catch (deliveryEmailError) {
+        console.error('❌ Error sending delivery confirmation email:', deliveryEmailError);
+        // Don't fail the order status update if email fails
       }
     }
 
