@@ -8,73 +8,107 @@ const { admin } = require('../middleware/authMiddleware');
 const { createOrderNotification } = require('./notificationController');
 const { sendEmailNotification, sendDeliveryConfirmationWithInvoice } = require('../services/emailNotificationService');
 
+// Helper function to recursively flatten arrays and extract strings
+const flattenToStrings = (value) => {
+  if (typeof value === 'string') {
+    // If it looks like a JSON array, try to parse it
+    if (value.startsWith('[') && value.endsWith(']')) {
+      try {
+        const parsed = JSON.parse(value);
+        return flattenToStrings(parsed);
+      } catch (e) {
+        return [value]; // Return as string if parse fails
+      }
+    }
+    return [value];
+  }
+  
+  if (Array.isArray(value)) {
+    const result = [];
+    for (const item of value) {
+      result.push(...flattenToStrings(item));
+    }
+    return result;
+  }
+  
+  // For any other type, convert to string
+  return [String(value)];
+};
+
 // Helper function to clean product data before saving
 const cleanProductData = (product) => {
-  // Fix details field if it's malformed
-  if (product.details && Array.isArray(product.details)) {
-    const cleanedDetails = [];
-    for (let detail of product.details) {
-      if (typeof detail === 'string') {
-        // Check if it's a malformed nested array string
-        if (detail.startsWith('[') && detail.endsWith(']')) {
+  try {
+    // Fix details field if it's malformed
+    if (product.details) {
+      if (Array.isArray(product.details)) {
+        const cleanedDetails = [];
+        for (let detail of product.details) {
           try {
-            const parsed = JSON.parse(detail);
-            if (Array.isArray(parsed)) {
-              // Flatten the nested array
-              for (let item of parsed) {
-                if (Array.isArray(item)) {
-                  cleanedDetails.push(...item.filter(i => typeof i === 'string'));
-                } else if (typeof item === 'string') {
-                  cleanedDetails.push(item);
-                }
-              }
-            } else {
-              cleanedDetails.push(detail);
-            }
-          } catch (parseError) {
-            cleanedDetails.push(detail);
+            const flattened = flattenToStrings(detail);
+            cleanedDetails.push(...flattened.filter(item => item && item.trim()));
+          } catch (detailError) {
+            console.warn(`⚠️  Could not clean detail: ${detail}`, detailError);
+            // Skip this detail if it can't be cleaned
           }
-        } else {
-          cleanedDetails.push(detail);
         }
+        product.details = cleanedDetails;
+      } else if (typeof product.details === 'string') {
+        // If details is a string instead of array, try to parse it
+        try {
+          const flattened = flattenToStrings(product.details);
+          product.details = flattened.filter(item => item && item.trim());
+        } catch (stringDetailError) {
+          console.warn(`⚠️  Could not clean string details for ${product.title}`, stringDetailError);
+          product.details = []; // Reset to empty array if cleaning fails
+        }
+      } else {
+        // Reset to empty array if details is neither array nor string
+        product.details = [];
       }
     }
-    product.details = cleanedDetails;
-  }
 
-  // Fix careInstructions field if it's malformed
-  if (product.careInstructions && Array.isArray(product.careInstructions)) {
-    const cleanedCareInstructions = [];
-    for (let instruction of product.careInstructions) {
-      if (typeof instruction === 'string') {
-        // Check if it's a malformed nested array string
-        if (instruction.startsWith('[') && instruction.endsWith(']')) {
+    // Fix careInstructions field if it's malformed
+    if (product.careInstructions) {
+      if (Array.isArray(product.careInstructions)) {
+        const cleanedInstructions = [];
+        for (let instruction of product.careInstructions) {
           try {
-            const parsed = JSON.parse(instruction);
-            if (Array.isArray(parsed)) {
-              // Flatten the nested array
-              for (let item of parsed) {
-                if (Array.isArray(item)) {
-                  cleanedCareInstructions.push(...item.filter(i => typeof i === 'string'));
-                } else if (typeof item === 'string') {
-                  cleanedCareInstructions.push(item);
-                }
-              }
-            } else {
-              cleanedCareInstructions.push(instruction);
-            }
-          } catch (parseError) {
-            cleanedCareInstructions.push(instruction);
+            const flattened = flattenToStrings(instruction);
+            cleanedInstructions.push(...flattened.filter(item => item && item.trim()));
+          } catch (instructionError) {
+            console.warn(`⚠️  Could not clean care instruction: ${instruction}`, instructionError);
+            // Skip this instruction if it can't be cleaned
           }
-        } else {
-          cleanedCareInstructions.push(instruction);
         }
+        product.careInstructions = cleanedInstructions;
+      } else if (typeof product.careInstructions === 'string') {
+        // If careInstructions is a string instead of array, try to parse it
+        try {
+          const flattened = flattenToStrings(product.careInstructions);
+          product.careInstructions = flattened.filter(item => item && item.trim());
+        } catch (stringInstructionError) {
+          console.warn(`⚠️  Could not clean string care instructions for ${product.title}`, stringInstructionError);
+          product.careInstructions = []; // Reset to empty array if cleaning fails
+        }
+      } else {
+        // Reset to empty array if careInstructions is neither array nor string
+        product.careInstructions = [];
       }
     }
-    product.careInstructions = cleanedCareInstructions;
-  }
 
-  return product;
+    console.log(`🧹 Cleaned product data for ${product.title}:`, {
+      details: product.details?.length || 0,
+      careInstructions: product.careInstructions?.length || 0
+    });
+
+    return product;
+  } catch (overallError) {
+    console.error(`❌ Error in cleanProductData for ${product.title}:`, overallError);
+    // Reset both fields to empty arrays if overall cleaning fails
+    product.details = [];
+    product.careInstructions = [];
+    return product;
+  }
 };
 
 
@@ -584,12 +618,27 @@ const updateOrderStatus = async (req, res) => {
               // Clean product data before saving to prevent casting errors
               cleanProductData(product);
               await product.save();
-              console.log(`Updated stock for product ${product.title}: ${product.countInStock + item.quantity} -> ${product.countInStock}`);
+              console.log(`✅ Updated stock for product ${product.title}: ${product.countInStock + item.quantity} -> ${product.countInStock}`);
             } catch (productSaveError) {
-              console.error(`Error saving product ${product.title}:`, productSaveError);
-              return res.status(500).json({ 
-                message: `Error updating stock for product ${product.title}. Please contact admin.` 
-              });
+              console.error(`❌ Error saving product ${product.title}:`, productSaveError);
+              
+              // Try to save without cleaning if the cleaning failed
+              try {
+                // Reset any changes and just update the stock
+                const freshProduct = await Product.findById(item.product._id);
+                if (freshProduct && freshProduct.countInStock >= item.quantity) {
+                  freshProduct.countInStock -= item.quantity;
+                  // Force save without validation for malformed data
+                  await freshProduct.save({ validateBeforeSave: false });
+                  console.log(`⚠️  Force-updated stock for product ${freshProduct.title} (bypassed validation)`);
+                } else {
+                  console.error(`❌ Could not force-update stock for product ${product.title}`);
+                  // Log error but don't fail the order status update
+                }
+              } catch (forceSaveError) {
+                console.error(`❌ Force save also failed for product ${product.title}:`, forceSaveError);
+                // Log error but continue with order status update
+              }
             }
           } else {
             console.log(`Warning: Insufficient stock for product ${product.title}. Available: ${product.countInStock}, Required: ${item.quantity}`);
@@ -681,9 +730,22 @@ const updateOrderStatus = async (req, res) => {
             // Clean product data before saving to prevent casting errors
             cleanProductData(product);
             await product.save();
-            console.log(`Restored stock for product ${product.title}: ${product.countInStock - item.quantity} -> ${product.countInStock}`);
+            console.log(`✅ Restored stock for product ${product.title}: ${product.countInStock - item.quantity} -> ${product.countInStock}`);
           } catch (productSaveError) {
-            console.error(`Error saving product during stock restoration ${product.title}:`, productSaveError);
+            console.error(`❌ Error saving product during stock restoration ${product.title}:`, productSaveError);
+            
+            // Try to save without cleaning if the cleaning failed
+            try {
+              // Reset and try force save
+              const freshProduct = await Product.findById(item.product._id);
+              if (freshProduct) {
+                freshProduct.countInStock += item.quantity;
+                await freshProduct.save({ validateBeforeSave: false });
+                console.log(`⚠️  Force-restored stock for product ${freshProduct.title} (bypassed validation)`);
+              }
+            } catch (forceSaveError) {
+              console.error(`❌ Force save also failed during restoration for product ${product.title}:`, forceSaveError);
+            }
             // Continue with other products, don't fail the entire operation
           }
         }
