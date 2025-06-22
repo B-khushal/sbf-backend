@@ -652,16 +652,36 @@ const updateOrderStatus = async (req, res) => {
       // Mark stock as updated
       order.stockUpdated = true;
 
-      // Create order confirmation notification for admin
+      // Create status change notification for admin based on new status
       try {
-        await createOrderNotification({
-          orderId: order._id,
-          orderNumber: order.orderNumber,
-          customerName: order.shippingDetails?.fullName || 'Unknown Customer',
-          amount: order.totalAmount
-        });
+        const { createAdminNotification } = require('./notificationController');
+        let statusTitle, statusMessage;
+        
+        if (status === 'being_made') {
+          statusTitle = '👨‍🍳 Order In Production!';
+          statusMessage = `Order ${order.orderNumber} is now being prepared for ${order.shippingDetails?.fullName || 'customer'}.`;
+        } else if (status === 'delivered') {
+          statusTitle = '✅ Order Ready for Delivery!';
+          statusMessage = `Order ${order.orderNumber} is ready for delivery to ${order.shippingDetails?.fullName || 'customer'}.`;
+        }
+        
+        if (statusTitle && statusMessage) {
+          await createAdminNotification({
+            type: 'info',
+            title: statusTitle,
+            message: statusMessage,
+            metadata: {
+              orderId: order._id,
+              orderNumber: order.orderNumber,
+              customerName: order.shippingDetails?.fullName,
+              newStatus: status,
+              previousStatus: previousStatus
+            }
+          });
+          console.log(`✅ Status change notification created: ${order.orderNumber} -> ${status}`);
+        }
       } catch (notificationError) {
-        console.error('Error creating order notification:', notificationError);
+        console.error('Error creating status change notification:', notificationError);
       }
 
       // Create notification for stock update
@@ -681,6 +701,25 @@ const updateOrderStatus = async (req, res) => {
     // Send delivery confirmation email with invoice when order is delivered
     if (status === 'delivered' && previousStatus !== 'delivered') {
       console.log('🚚 Order delivered, sending delivery confirmation email with invoice...');
+      
+      // Create delivery notification for admin
+      try {
+        const { createAdminNotification } = require('./notificationController');
+        await createAdminNotification({
+          type: 'info',
+          title: '🚚 Order Delivered!',
+          message: `Order ${order.orderNumber} has been successfully delivered to ${order.shippingDetails?.fullName || 'customer'}.`,
+          metadata: {
+            orderId: order._id,
+            orderNumber: order.orderNumber,
+            customerName: order.shippingDetails?.fullName,
+            deliveredAt: new Date().toISOString()
+          }
+        });
+        console.log('✅ Delivery notification created for admin:', order.orderNumber);
+      } catch (notificationError) {
+        console.error('Error creating delivery notification:', notificationError);
+      }
       
       try {
         // Get customer details
