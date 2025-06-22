@@ -89,6 +89,73 @@ const getThumbnailUrl = (publicId, size = 300) => {
   });
 };
 
+// Generate square images with AI generative fill background
+const getSquareImageUrl = (publicId, size = 400) => {
+  return cloudinary.url(publicId, {
+    transformation: [
+      {
+        aspect_ratio: "1:1",
+        gravity: "center",
+        background: "gen_fill",
+        crop: "pad"
+      },
+      {
+        width: size,
+        height: size,
+        crop: "scale"
+      },
+      {
+        quality: "auto:best"
+      },
+      {
+        fetch_format: "auto"
+      }
+    ]
+  });
+};
+
+// Generate enhanced product images with generative fill for consistent ratios
+const getEnhancedProductImageUrl = (publicId, options = {}) => {
+  const {
+    width = 800,
+    height = 600,
+    aspectRatio = "4:3",
+    useGenFill = true
+  } = options;
+
+  const transformations = [];
+
+  // First transformation: Apply generative fill if requested
+  if (useGenFill) {
+    transformations.push({
+      aspect_ratio: aspectRatio,
+      gravity: "center",
+      background: "gen_fill",
+      crop: "pad"
+    });
+  }
+
+  // Second transformation: Resize to target dimensions
+  transformations.push({
+    width: width,
+    height: height,
+    crop: "scale"
+  });
+
+  // Third transformation: Optimize quality and format
+  transformations.push({
+    quality: "auto:best"
+  });
+
+  transformations.push({
+    fetch_format: "auto"
+  });
+
+  return cloudinary.url(publicId, {
+    transformation: transformations
+  });
+};
+
 // Delete image from Cloudinary
 const deleteFromCloudinary = async (publicId) => {
   try {
@@ -107,4 +174,6 @@ module.exports = {
   deleteFromCloudinary,
   getOptimizedImageUrl,
   getThumbnailUrl,
+  getSquareImageUrl,
+  getEnhancedProductImageUrl,
 }; 
