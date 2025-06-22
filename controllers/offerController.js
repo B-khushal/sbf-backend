@@ -1,7 +1,7 @@
 const Offer = require('../models/Offer');
 
 // Get all active offers
-exports.getActiveOffers = async (req, res) => {
+const getActiveOffers = async (req, res) => {
   try {
     const currentDate = new Date();
     const offers = await Offer.find({
@@ -16,7 +16,7 @@ exports.getActiveOffers = async (req, res) => {
 };
 
 // Get all offers (for admin)
-exports.getAllOffers = async (req, res) => {
+const getAllOffers = async (req, res) => {
   try {
     const offers = await Offer.find().sort({ createdAt: -1 });
     res.json(offers);
@@ -26,7 +26,7 @@ exports.getAllOffers = async (req, res) => {
 };
 
 // Create new offer
-exports.createOffer = async (req, res) => {
+const createOffer = async (req, res) => {
   const offer = new Offer(req.body);
   try {
     const newOffer = await offer.save();
@@ -37,7 +37,7 @@ exports.createOffer = async (req, res) => {
 };
 
 // Update offer
-exports.updateOffer = async (req, res) => {
+const updateOffer = async (req, res) => {
   try {
     const offer = await Offer.findById(req.params.id);
     if (!offer) {
@@ -56,13 +56,13 @@ exports.updateOffer = async (req, res) => {
 };
 
 // Delete offer
-exports.deleteOffer = async (req, res) => {
+const deleteOffer = async (req, res) => {
   try {
     const offer = await Offer.findById(req.params.id);
     if (!offer) {
       return res.status(404).json({ message: 'Offer not found' });
     }
-    await offer.remove();
+    await offer.deleteOne();
     res.json({ message: 'Offer deleted successfully' });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -70,7 +70,7 @@ exports.deleteOffer = async (req, res) => {
 };
 
 // Toggle offer status
-exports.toggleOfferStatus = async (req, res) => {
+const toggleOfferStatus = async (req, res) => {
   try {
     const offer = await Offer.findById(req.params.id);
     if (!offer) {
@@ -86,6 +86,7 @@ exports.toggleOfferStatus = async (req, res) => {
   }
 };
 
+// Export all controller functions
 module.exports = {
   getActiveOffers,
   getAllOffers,
