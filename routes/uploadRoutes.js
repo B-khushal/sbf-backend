@@ -36,7 +36,25 @@ const upload = multer({ storage, fileFilter, limits: { fileSize: 5 * 1024 * 1024
 // @access  Private/Admin
 router.post("/", protect, admin, upload.single("image"), (req, res) => {
   if (!req.file) return res.status(400).json({ message: "No file uploaded" });
-  res.json({ imageUrl: `/${req.file.path.replace(/\\/g, "/")}` });
+  
+  // Construct the image URL properly
+  const imagePath = req.file.path.replace(/\\/g, "/");
+  const imageUrl = `/uploads/${req.file.filename}`;
+  
+  console.log('📸 File uploaded successfully:', {
+    originalName: req.file.originalname,
+    filename: req.file.filename,
+    path: req.file.path,
+    size: req.file.size,
+    imageUrl: imageUrl
+  });
+  
+  res.json({ 
+    imageUrl: imageUrl,
+    filename: req.file.filename,
+    originalName: req.file.originalname,
+    size: req.file.size
+  });
 });
 
 module.exports = router;

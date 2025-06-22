@@ -79,18 +79,14 @@ const productSchema = mongoose.Schema(
       required: true,
       default: 0,
     },
-    details: [
-      {
-        type: [String],
-        default: []
-      }
-    ],
-    careInstructions: [
-      {
-        type: String,
-        default: []
-      }
-    ],
+    details: {
+      type: [String],
+      default: []
+    },
+    careInstructions: {
+      type: [String],
+      default: []
+    },
     isFeatured: {
       type: Boolean,
       default: false,

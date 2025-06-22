@@ -88,13 +88,13 @@ const createProduct = async (req, res) => {
     let processedDetails = [];
     if (req.body.details) {
       if (Array.isArray(req.body.details)) {
-        // If it's already an array, wrap each item in another array
-        processedDetails = req.body.details.map(detail => 
-          Array.isArray(detail) ? detail : [detail]
+        // Filter out empty strings and keep as simple array
+        processedDetails = req.body.details.filter(detail => 
+          detail && typeof detail === 'string' && detail.trim()
         );
       } else if (typeof req.body.details === 'object') {
         // If it's an object (from frontend form), convert to array format
-        processedDetails = [Object.values(req.body.details).filter(detail => detail && detail.trim())];
+        processedDetails = Object.values(req.body.details).filter(detail => detail && detail.trim());
       }
     }
 
@@ -170,13 +170,13 @@ const updateProduct = async (req, res) => {
     let processedDetails;
     if (req.body.details) {
       if (Array.isArray(req.body.details)) {
-        // If it's already an array, wrap each item in another array
-        processedDetails = req.body.details.map(detail => 
-          Array.isArray(detail) ? detail : [detail]
+        // Filter out empty strings and keep as simple array
+        processedDetails = req.body.details.filter(detail => 
+          detail && typeof detail === 'string' && detail.trim()
         );
       } else if (typeof req.body.details === 'object') {
         // If it's an object (from frontend form), convert to array format
-        processedDetails = [Object.values(req.body.details).filter(detail => detail && detail.trim())];
+        processedDetails = Object.values(req.body.details).filter(detail => detail && detail.trim());
       }
     }
 
