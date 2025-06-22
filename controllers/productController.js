@@ -1,4 +1,75 @@
+const asyncHandler = require('express-async-handler');
 const Product = require("../models/Product");
+const User = require('../models/User');
+
+// Helper function to clean product data before saving
+const cleanProductData = (product) => {
+  // Fix details field if it's malformed
+  if (product.details && Array.isArray(product.details)) {
+    const cleanedDetails = [];
+    for (let detail of product.details) {
+      if (typeof detail === 'string') {
+        // Check if it's a malformed nested array string
+        if (detail.startsWith('[') && detail.endsWith(']')) {
+          try {
+            const parsed = JSON.parse(detail);
+            if (Array.isArray(parsed)) {
+              // Flatten the nested array
+              for (let item of parsed) {
+                if (Array.isArray(item)) {
+                  cleanedDetails.push(...item.filter(i => typeof i === 'string'));
+                } else if (typeof item === 'string') {
+                  cleanedDetails.push(item);
+                }
+              }
+            } else {
+              cleanedDetails.push(detail);
+            }
+          } catch (parseError) {
+            cleanedDetails.push(detail);
+          }
+        } else {
+          cleanedDetails.push(detail);
+        }
+      }
+    }
+    product.details = cleanedDetails;
+  }
+
+  // Fix careInstructions field if it's malformed
+  if (product.careInstructions && Array.isArray(product.careInstructions)) {
+    const cleanedCareInstructions = [];
+    for (let instruction of product.careInstructions) {
+      if (typeof instruction === 'string') {
+        // Check if it's a malformed nested array string
+        if (instruction.startsWith('[') && instruction.endsWith(']')) {
+          try {
+            const parsed = JSON.parse(instruction);
+            if (Array.isArray(parsed)) {
+              // Flatten the nested array
+              for (let item of parsed) {
+                if (Array.isArray(item)) {
+                  cleanedCareInstructions.push(...item.filter(i => typeof i === 'string'));
+                } else if (typeof item === 'string') {
+                  cleanedCareInstructions.push(item);
+                }
+              }
+            } else {
+              cleanedCareInstructions.push(instruction);
+            }
+          } catch (parseError) {
+            cleanedCareInstructions.push(instruction);
+          }
+        } else {
+          cleanedCareInstructions.push(instruction);
+        }
+      }
+    }
+    product.careInstructions = cleanedCareInstructions;
+  }
+
+  return product;
+};
 
 // @desc Fetch all products (with pagination and filtering)
 // @route GET /api/products

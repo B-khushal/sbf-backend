@@ -8,6 +8,75 @@ const { admin } = require('../middleware/authMiddleware');
 const { createOrderNotification } = require('./notificationController');
 const { sendEmailNotification, sendDeliveryConfirmationWithInvoice } = require('../services/emailNotificationService');
 
+// Helper function to clean product data before saving
+const cleanProductData = (product) => {
+  // Fix details field if it's malformed
+  if (product.details && Array.isArray(product.details)) {
+    const cleanedDetails = [];
+    for (let detail of product.details) {
+      if (typeof detail === 'string') {
+        // Check if it's a malformed nested array string
+        if (detail.startsWith('[') && detail.endsWith(']')) {
+          try {
+            const parsed = JSON.parse(detail);
+            if (Array.isArray(parsed)) {
+              // Flatten the nested array
+              for (let item of parsed) {
+                if (Array.isArray(item)) {
+                  cleanedDetails.push(...item.filter(i => typeof i === 'string'));
+                } else if (typeof item === 'string') {
+                  cleanedDetails.push(item);
+                }
+              }
+            } else {
+              cleanedDetails.push(detail);
+            }
+          } catch (parseError) {
+            cleanedDetails.push(detail);
+          }
+        } else {
+          cleanedDetails.push(detail);
+        }
+      }
+    }
+    product.details = cleanedDetails;
+  }
+
+  // Fix careInstructions field if it's malformed
+  if (product.careInstructions && Array.isArray(product.careInstructions)) {
+    const cleanedCareInstructions = [];
+    for (let instruction of product.careInstructions) {
+      if (typeof instruction === 'string') {
+        // Check if it's a malformed nested array string
+        if (instruction.startsWith('[') && instruction.endsWith(']')) {
+          try {
+            const parsed = JSON.parse(instruction);
+            if (Array.isArray(parsed)) {
+              // Flatten the nested array
+              for (let item of parsed) {
+                if (Array.isArray(item)) {
+                  cleanedCareInstructions.push(...item.filter(i => typeof i === 'string'));
+                } else if (typeof item === 'string') {
+                  cleanedCareInstructions.push(item);
+                }
+              }
+            } else {
+              cleanedCareInstructions.push(instruction);
+            }
+          } catch (parseError) {
+            cleanedCareInstructions.push(instruction);
+          }
+        } else {
+          cleanedCareInstructions.push(instruction);
+        }
+      }
+    }
+    product.careInstructions = cleanedCareInstructions;
+  }
+
+  return product;
+};
+
 
 // @desc    Create new order
 // @route   POST /api/orders
@@ -510,11 +579,20 @@ const updateOrderStatus = async (req, res) => {
           // Check if we have enough stock
           if (product.countInStock >= item.quantity) {
             product.countInStock -= item.quantity;
-            await product.save();
-            console.log(`Updated stock for product ${product.title}: ${product.countInStock + item.quantity} -> ${product.countInStock}`);
+            
+            try {
+              // Clean product data before saving to prevent casting errors
+              cleanProductData(product);
+              await product.save();
+              console.log(`Updated stock for product ${product.title}: ${product.countInStock + item.quantity} -> ${product.countInStock}`);
+            } catch (productSaveError) {
+              console.error(`Error saving product ${product.title}:`, productSaveError);
+              return res.status(500).json({ 
+                message: `Error updating stock for product ${product.title}. Please contact admin.` 
+              });
+            }
           } else {
             console.log(`Warning: Insufficient stock for product ${product.title}. Available: ${product.countInStock}, Required: ${item.quantity}`);
-            // You could throw an error here or handle it differently
             return res.status(400).json({ 
               message: `Insufficient stock for product ${product.title}. Available: ${product.countInStock}, Required: ${item.quantity}` 
             });
@@ -598,8 +676,16 @@ const updateOrderStatus = async (req, res) => {
         const product = await Product.findById(item.product._id);
         if (product) {
           product.countInStock += item.quantity;
-          await product.save();
-          console.log(`Restored stock for product ${product.title}: ${product.countInStock - item.quantity} -> ${product.countInStock}`);
+          
+          try {
+            // Clean product data before saving to prevent casting errors
+            cleanProductData(product);
+            await product.save();
+            console.log(`Restored stock for product ${product.title}: ${product.countInStock - item.quantity} -> ${product.countInStock}`);
+          } catch (productSaveError) {
+            console.error(`Error saving product during stock restoration ${product.title}:`, productSaveError);
+            // Continue with other products, don't fail the entire operation
+          }
         }
       }
 
