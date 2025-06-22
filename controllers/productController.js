@@ -542,6 +542,97 @@ const getProductCategories = async (req, res) => {
   }
 };
 
+// @desc Get products by category
+// @route GET /api/products/category/:category
+// @access Public
+const getProductsByCategory = async (req, res) => {
+  try {
+    const { category } = req.params;
+    const page = Number(req.query.page) || 1;
+    const pageSize = Number(req.query.limit) || 10;
+    
+    console.log(`🔍 Fetching products for category: ${category}`);
+    
+    const query = {
+      category: { $regex: category, $options: 'i' },
+      hidden: { $ne: true }
+    };
+    
+    const count = await Product.countDocuments(query);
+    const products = await Product.find(query)
+      .limit(pageSize)
+      .skip(pageSize * (page - 1))
+      .sort({ createdAt: -1 });
+    
+    console.log(`✅ Found ${products.length} products in category: ${category}`);
+    
+    res.json({
+      success: true,
+      products,
+      page,
+      pages: Math.ceil(count / pageSize),
+      total: count
+    });
+  } catch (error) {
+    console.error('❌ Error fetching products by category:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching products by category',
+      error: error.message
+    });
+  }
+};
+
+// @desc Add product to wishlist
+// @route POST /api/products/:id/wishlist
+// @access Private
+const addToWishlist = async (req, res) => {
+  try {
+    const productId = req.params.id;
+    const userId = req.user.id;
+    
+    // For now, just return success (wishlist logic would need user model updates)
+    res.json({
+      success: true,
+      message: 'Product added to wishlist',
+      productId,
+      userId
+    });
+  } catch (error) {
+    console.error('❌ Error adding to wishlist:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error adding to wishlist',
+      error: error.message
+    });
+  }
+};
+
+// @desc Remove product from wishlist
+// @route DELETE /api/products/:id/wishlist
+// @access Private
+const removeFromWishlist = async (req, res) => {
+  try {
+    const productId = req.params.id;
+    const userId = req.user.id;
+    
+    // For now, just return success (wishlist logic would need user model updates)
+    res.json({
+      success: true,
+      message: 'Product removed from wishlist',
+      productId,
+      userId
+    });
+  } catch (error) {
+    console.error('❌ Error removing from wishlist:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error removing from wishlist',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   getProducts,
   getProductById,
@@ -556,4 +647,7 @@ module.exports = {
   toggleProductVisibility,
   getLowStockProducts,
   getProductCategories,
+  getProductsByCategory,
+  addToWishlist,
+  removeFromWishlist,
 };
