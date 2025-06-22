@@ -916,7 +916,7 @@ const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
             Business Hours: Monday - Saturday, 9 AM - 6 PM IST
           </p>
           <p style="margin-top: 15px; font-size: 12px; color: #9ca3af;">
-            Terms and conditions apply. For our return and refund policy, please visit www.springblossomsflorist.com/returns.
+            Terms and conditions apply. For our return and refund policy, please visit www.sbflorist.in/returns.
           </p>
         </div>
       </div>
