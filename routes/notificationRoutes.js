@@ -7,7 +7,9 @@ const {
   markAllAsRead,
   clearReadNotifications,
   deleteNotification,
-  createTestNotification
+  createTestNotification,
+  showNotificationsOnLogin,
+  getNotificationStats
 } = require('../controllers/notificationController');
 const { testEmailService, sendTestEmail, getEmailConfig } = require('../services/emailNotificationService');
 
@@ -25,6 +27,12 @@ router.put('/read-all', markAllAsRead);
 
 // Clear read notifications
 router.delete('/read', clearReadNotifications);
+
+// Show notifications on login
+router.post('/show-on-login', showNotificationsOnLogin);
+
+// Get notification statistics
+router.get('/stats', getNotificationStats);
 
 // Delete a notification
 router.delete('/:id', deleteNotification);

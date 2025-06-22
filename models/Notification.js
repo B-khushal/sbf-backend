@@ -23,6 +23,14 @@ const notificationSchema = new mongoose.Schema({
     ref: 'User',
     required: false // Admin notifications don't have specific user
   },
+  hiddenUntil: {
+    type: Date,
+    default: null // When null, notification is visible. When set, hidden until this date.
+  },
+  hiddenFromSession: {
+    type: String,
+    default: null // Session ID that hid this notification
+  },
   metadata: {
     type: Object,
     default: {} // Additional data for notifications

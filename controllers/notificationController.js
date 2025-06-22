@@ -3,7 +3,7 @@ const Notification = require('../models/Notification');
 // Get all notifications for a user or admin
 exports.getNotifications = async (req, res) => {
   try {
-    const { since } = req.query;
+    const { since, showHistory, sessionId } = req.query;
     
     // Build query based on user role
     let query = {};
@@ -26,9 +26,27 @@ exports.getNotifications = async (req, res) => {
       query.createdAt = { $gt: new Date(since) };
     }
     
+    // Handle visibility based on showHistory flag
+    if (showHistory === 'true') {
+      // Show all notifications (history view)
+    } else {
+      // Normal view - hide notifications that were cleared in this session
+      // or hide notifications with hiddenUntil date in the future
+      const now = new Date();
+      query.$and = [
+        {
+          $or: [
+            { hiddenUntil: null },
+            { hiddenUntil: { $lte: now } },
+            { hiddenFromSession: { $ne: sessionId } }
+          ]
+        }
+      ];
+    }
+    
     const notifications = await Notification.find(query)
       .sort({ createdAt: -1 })
-      .limit(50); // Limit to last 50 notifications
+      .limit(showHistory === 'true' ? 100 : 50); // Show more in history mode
     
     // Also include global notifications for admins (real-time backup)
     let allNotifications = notifications.map(notification => ({
@@ -37,11 +55,12 @@ exports.getNotifications = async (req, res) => {
       title: notification.title,
       message: notification.message,
       createdAt: notification.createdAt,
-      isRead: notification.read || false
+      isRead: notification.read || false,
+      isHidden: notification.hiddenUntil && notification.hiddenUntil > new Date()
     }));
     
-    // Add global notifications for admins (for real-time updates)
-    if (req.user.role === 'admin' && global.latestNotifications) {
+    // Add global notifications for admins (for real-time updates) - only in normal view
+    if (req.user.role === 'admin' && showHistory !== 'true' && global.latestNotifications) {
       const globalNotifications = global.latestNotifications
         .filter(n => since ? new Date(n.createdAt) > new Date(since) : true)
         .filter(n => !allNotifications.some(existing => existing.id === n.id));
@@ -49,10 +68,11 @@ exports.getNotifications = async (req, res) => {
       allNotifications = [...globalNotifications, ...allNotifications];
     }
     
-    console.log(`📨 Returning ${allNotifications.length} notifications for ${req.user.role} user`);
+    const limitCount = showHistory === 'true' ? 100 : 50;
+    console.log(`📨 Returning ${allNotifications.length} notifications for ${req.user.role} user (history: ${showHistory})`);
     
     res.json({ 
-      notifications: allNotifications.slice(0, 50) // Limit to 50 total
+      notifications: allNotifications.slice(0, limitCount)
     });
   } catch (error) {
     console.error('Error fetching notifications:', error);
@@ -114,14 +134,15 @@ exports.markAllAsRead = async (req, res) => {
   }
 };
 
-// Clear read notifications
+// Clear read notifications (hide until login)
 exports.clearReadNotifications = async (req, res) => {
   try {
-    let deleteQuery;
+    const { sessionId } = req.body;
+    let updateQuery;
     
     if (req.user.role === 'admin') {
       // Admin clears read admin notifications
-      deleteQuery = {
+      updateQuery = {
         $or: [
           { type: { $in: ['admin', 'order', 'system'] }, userId: null },
           { type: { $in: ['admin', 'order', 'system'] }, userId: { $exists: false } }
@@ -130,13 +151,54 @@ exports.clearReadNotifications = async (req, res) => {
       };
     } else {
       // Regular users clear their own read notifications
-      deleteQuery = { userId: req.user._id, read: true };
+      updateQuery = { userId: req.user._id, read: true };
     }
     
-    await Notification.deleteMany(deleteQuery);
-    res.json({ message: 'Read notifications cleared' });
+    // Set hiddenUntil to next login (set to far future, will be reset on login)
+    // and store the session that cleared them
+    const farFuture = new Date('2099-12-31');
+    await Notification.updateMany(updateQuery, { 
+      hiddenUntil: farFuture,
+      hiddenFromSession: sessionId
+    });
+    
+    res.json({ message: 'Read notifications cleared (hidden until next login)' });
   } catch (error) {
     res.status(500).json({ message: 'Error clearing read notifications' });
+  }
+};
+
+// Show notifications on login (reset hiddenUntil for new session)
+exports.showNotificationsOnLogin = async (req, res) => {
+  try {
+    const { sessionId } = req.body;
+    let updateQuery;
+    
+    if (req.user.role === 'admin') {
+      updateQuery = {
+        $or: [
+          { type: { $in: ['admin', 'order', 'system'] }, userId: null },
+          { type: { $in: ['admin', 'order', 'system'] }, userId: { $exists: false } }
+        ],
+        hiddenUntil: { $exists: true, $ne: null }
+      };
+    } else {
+      updateQuery = { 
+        userId: req.user._id,
+        hiddenUntil: { $exists: true, $ne: null }
+      };
+    }
+    
+    // Reset hiddenUntil to null for new session, only show new notifications
+    // Keep notifications hidden that were cleared in previous sessions
+    const loginTime = new Date();
+    await Notification.updateMany(updateQuery, { 
+      $unset: { hiddenUntil: "", hiddenFromSession: "" }
+    });
+    
+    res.json({ message: 'Notifications visibility reset for new session' });
+  } catch (error) {
+    res.status(500).json({ message: 'Error resetting notification visibility' });
   }
 };
 
@@ -172,61 +234,74 @@ exports.deleteNotification = async (req, res) => {
   }
 };
 
-// Test notification endpoint for debugging
+// Create test notification (for admin testing)
 exports.createTestNotification = async (req, res) => {
   try {
-    console.log('Test notification request - User:', {
-      id: req.user._id,
-      role: req.user.role,
-      isAdmin: req.user.isAdmin,
-      email: req.user.email
-    });
-
-    // Check admin status (use role instead of isAdmin for consistency)
+    const { title, message, type } = req.body;
+    
+    // Only admin can create test notifications
     if (req.user.role !== 'admin') {
-      console.log('Access denied - User role:', req.user.role);
-      return res.status(403).json({ 
-        message: 'Admin access required',
-        userRole: req.user.role,
-        requiredRole: 'admin'
-      });
+      return res.status(403).json({ message: 'Access denied' });
     }
-
-    const testNotification = new Notification({
-      type: 'order',
-      title: '🧪 Test Notification',
-      message: `Test notification created at ${new Date().toLocaleString()}. This is to verify the notification system is working properly.`,
+    
+    const notification = new Notification({
+      type: type || 'system',
+      title: title || '🧪 Test Notification',
+      message: message || 'This is a test notification to verify the system is working correctly.',
       userId: null, // Admin notification
-      read: false,
-      metadata: {
-        test: true,
-        createdBy: req.user._id,
-        timestamp: new Date().toISOString()
-      }
+      read: false
     });
     
-    await testNotification.save();
-    console.log('Test notification created successfully:', testNotification._id);
+    await notification.save();
     
+    console.log('Test notification created:', notification.title);
     res.status(201).json({
-      success: true,
       message: 'Test notification created successfully',
       notification: {
-        id: testNotification._id,
-        type: testNotification.type,
-        title: testNotification.title,
-        message: testNotification.message,
-        createdAt: testNotification.createdAt,
-        isRead: testNotification.read
+        id: notification._id,
+        type: notification.type,
+        title: notification.title,
+        message: notification.message,
+        createdAt: notification.createdAt,
+        isRead: notification.read
       }
     });
   } catch (error) {
     console.error('Error creating test notification:', error);
-    res.status(500).json({ 
-      success: false,
-      message: 'Error creating test notification',
-      error: error.message 
+    res.status(500).json({ message: 'Error creating test notification' });
+  }
+};
+
+// Get notification statistics
+exports.getNotificationStats = async (req, res) => {
+  try {
+    let query = {};
+    
+    if (req.user.role === 'admin') {
+      query = {
+        $or: [
+          { type: { $in: ['admin', 'order', 'system'] }, userId: null },
+          { type: { $in: ['admin', 'order', 'system'] }, userId: { $exists: false } }
+        ]
+      };
+    } else {
+      query = { userId: req.user._id };
+    }
+    
+    const [totalCount, unreadCount, readCount] = await Promise.all([
+      Notification.countDocuments(query),
+      Notification.countDocuments({ ...query, read: false }),
+      Notification.countDocuments({ ...query, read: true })
+    ]);
+    
+    res.json({
+      total: totalCount,
+      unread: unreadCount,
+      read: readCount
     });
+  } catch (error) {
+    console.error('Error fetching notification statistics:', error);
+    res.status(500).json({ message: 'Error fetching notification statistics' });
   }
 };
 

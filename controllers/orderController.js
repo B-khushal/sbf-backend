@@ -48,12 +48,12 @@ const createOrder = async (req, res) => {
 
     let sequence = '001';
     if (lastOrder) {
-      // Extract the sequence number from the last order
-      const lastSequence = parseInt(lastOrder.orderNumber.split('-')[1]);
+      // Extract the sequence number from the last order (positions 4-6 in YYMMDDDDD format)
+      const lastSequence = parseInt(lastOrder.orderNumber.substring(4, 7));
       sequence = (lastSequence + 1).toString().padStart(3, '0');
     }
 
-    const orderNumber = `${year}${month}-${sequence}-${day}`;
+    const orderNumber = `${year}${month}${sequence}${day}`;
 
     // Create the order object with all required fields
     const orderData = {
@@ -197,16 +197,16 @@ const getNextOrderNumber = async (req, res) => {
     const day = date.getDate().toString().padStart(2, '0');
     
     const lastOrder = await Order.findOne({
-      orderNumber: new RegExp(`^${year}${month}${day}`)
+      orderNumber: new RegExp(`^${year}${month}`)
     }, {}, { sort: { 'orderNumber': -1 } });
 
     let sequence = '001';
     if (lastOrder) {
-      const lastSequence = parseInt(lastOrder.orderNumber.slice(-3));
+      const lastSequence = parseInt(lastOrder.orderNumber.substring(4, 7));
       sequence = (lastSequence + 1).toString().padStart(3, '0');
     }
 
-    const nextOrderNumber = `${year}${month}${day}-${sequence}`;
+    const nextOrderNumber = `${year}${month}${sequence}${day}`;
     
     res.json({
       success: true,
