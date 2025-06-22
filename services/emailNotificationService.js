@@ -3,8 +3,34 @@ const pdf = require('html-pdf');
 
 // Initialize email service
 let emailTransporter = null;
+let orderConfirmationTransporter = null;
+let deliveryConfirmationTransporter = null;
 
-// Email configuration
+// Email configuration for order confirmations
+const ORDER_CONFIRMATION_EMAIL_CONFIG = {
+  service: 'gmail',
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false,
+  auth: {
+    user: 'sbforderconfirmation@gmail.com',
+    pass: 'pbxtmsnseknrxrnx'
+  }
+};
+
+// Email configuration for delivery confirmations
+const DELIVERY_CONFIRMATION_EMAIL_CONFIG = {
+  service: 'gmail',
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false,
+  auth: {
+    user: 'sbfdeliveryconfirmation@gmail.com',
+    pass: 'ywmxpkbqitvrpdqx'
+  }
+};
+
+// Legacy email configuration (fallback)
 const EMAIL_CONFIG = {
   service: 'gmail',
   host: process.env.EMAIL_HOST || 'smtp.gmail.com',
@@ -16,20 +42,46 @@ const EMAIL_CONFIG = {
   }
 };
 
-// Initialize email service
+// Initialize order confirmation email service
+const initOrderConfirmationEmailService = () => {
+  try {
+    orderConfirmationTransporter = nodemailer.createTransporter(ORDER_CONFIRMATION_EMAIL_CONFIG);
+    console.log('✅ Order confirmation email service initialized successfully');
+    return orderConfirmationTransporter;
+  } catch (error) {
+    console.error('❌ Failed to initialize order confirmation email service:', error.message);
+    return null;
+  }
+};
+
+// Initialize delivery confirmation email service
+const initDeliveryConfirmationEmailService = () => {
+  try {
+    deliveryConfirmationTransporter = nodemailer.createTransporter(DELIVERY_CONFIRMATION_EMAIL_CONFIG);
+    console.log('✅ Delivery confirmation email service initialized successfully');
+    return deliveryConfirmationTransporter;
+  } catch (error) {
+    console.error('❌ Failed to initialize delivery confirmation email service:', error.message);
+    return null;
+  }
+};
+
+// Initialize email service (legacy fallback)
 const initEmailService = () => {
   try {
     if (!EMAIL_CONFIG.auth.user || !EMAIL_CONFIG.auth.pass) {
-      console.warn('⚠️  Email credentials not configured. Email notifications will be disabled.');
-      console.warn('Add EMAIL_USER and EMAIL_PASS to your .env file to enable email notifications.');
+      console.warn('⚠️  Legacy email credentials not configured. Using dedicated email services.');
+      // Initialize dedicated email services
+      initOrderConfirmationEmailService();
+      initDeliveryConfirmationEmailService();
       return null;
     }
     
-    emailTransporter = nodemailer.createTransport(EMAIL_CONFIG);
-    console.log('✅ Email service initialized successfully');
+    emailTransporter = nodemailer.createTransporter(EMAIL_CONFIG);
+    console.log('✅ Legacy email service initialized successfully');
     return emailTransporter;
   } catch (error) {
-    console.error('❌ Failed to initialize email service:', error.message);
+    console.error('❌ Failed to initialize legacy email service:', error.message);
     return null;
   }
 };
@@ -876,7 +928,11 @@ const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
 // Send delivery confirmation email with invoice
 const sendDeliveryConfirmationWithInvoice = async (orderData) => {
   try {
-    if (!emailTransporter) {
+    // Use delivery confirmation transporter, fallback to legacy transporter
+    const activeTransporter = deliveryConfirmationTransporter || emailTransporter;
+    const senderEmail = deliveryConfirmationTransporter ? 'sbfdeliveryconfirmation@gmail.com' : '2006sbf@gmail.com';
+    
+    if (!activeTransporter) {
       console.log('⚠️  Email service not available, skipping delivery confirmation email');
       return { success: false, error: 'Email service not configured' };
     }
@@ -900,7 +956,7 @@ const sendDeliveryConfirmationWithInvoice = async (orderData) => {
     const mailOptions = {
       from: {
         name: 'Spring Blossoms Florist',
-        address: '2006sbf@gmail.com'
+        address: senderEmail
       },
       to: customer.email,
       cc: '2006sbf@gmail.com', // Send copy to business email
@@ -940,7 +996,7 @@ Best regards,
 Spring Blossoms Florist Team`
     };
 
-    const result = await emailTransporter.sendMail(mailOptions);
+    const result = await activeTransporter.sendMail(mailOptions);
     console.log('✅ Delivery confirmation email with PDF invoice sent successfully:', result.messageId);
     
     return { success: true, messageId: result.messageId };
@@ -955,7 +1011,11 @@ const sendEmailNotification = async (orderData) => {
   const results = [];
   
   try {
-    if (!emailTransporter) {
+    // Use order confirmation transporter for customer emails, fallback to legacy transporter
+    const activeTransporter = orderConfirmationTransporter || emailTransporter;
+    const senderEmail = orderConfirmationTransporter ? 'sbforderconfirmation@gmail.com' : '2006sbf@gmail.com';
+    
+    if (!activeTransporter) {
       console.log('⚠️  Email service not available, skipping email notification');
       return { success: false, error: 'Email service not configured' };
     }
@@ -968,7 +1028,7 @@ const sendEmailNotification = async (orderData) => {
         const customerMailOptions = {
       from: {
         name: 'Spring Blossoms Florist',
-        address: '2006sbf@gmail.com'
+        address: senderEmail
       },
       to: customer.email,
               subject: `🎉 Order Confirmed #${order.orderNumber} - Spring Blossoms Florist`,
@@ -998,7 +1058,7 @@ Best regards,
 Spring Blossoms Florist Team`
     };
 
-        const customerResult = await emailTransporter.sendMail(customerMailOptions);
+        const customerResult = await activeTransporter.sendMail(customerMailOptions);
         console.log('✅ Customer email sent successfully to:', customer.email);
         console.log('📧 Customer email Message ID:', customerResult.messageId);
         
@@ -1103,21 +1163,66 @@ Spring Blossoms Florist Order Management System`
 
 // Test email service
 const testEmailService = async () => {
-  console.log('🧪 Testing email service...');
+  console.log('🧪 Testing email services...');
   
+  const testResults = {
+    legacy: { success: false },
+    orderConfirmation: { success: false },
+    deliveryConfirmation: { success: false }
+  };
+  
+  // Test legacy email service
   try {
-    if (!emailTransporter) {
-      console.log('❌ Email service not configured');
-      return { success: false, error: 'Email service not configured' };
+    if (emailTransporter) {
+      await emailTransporter.verify();
+      console.log('✅ Legacy email service is working correctly');
+      testResults.legacy = { success: true, message: 'Legacy email service is working' };
+    } else {
+      console.log('⚠️  Legacy email service not configured');
+      testResults.legacy = { success: false, error: 'Legacy email service not configured' };
     }
-
-    await emailTransporter.verify();
-    console.log('✅ Email service is working correctly');
-    return { success: true, message: 'Email service is working' };
   } catch (error) {
-    console.log('❌ Email service test failed:', error.message);
-    return { success: false, error: error.message };
+    console.log('❌ Legacy email service test failed:', error.message);
+    testResults.legacy = { success: false, error: error.message };
   }
+  
+  // Test order confirmation email service
+  try {
+    if (orderConfirmationTransporter) {
+      await orderConfirmationTransporter.verify();
+      console.log('✅ Order confirmation email service is working correctly');
+      testResults.orderConfirmation = { success: true, message: 'Order confirmation email service is working' };
+    } else {
+      console.log('❌ Order confirmation email service not configured');
+      testResults.orderConfirmation = { success: false, error: 'Order confirmation email service not configured' };
+    }
+  } catch (error) {
+    console.log('❌ Order confirmation email service test failed:', error.message);
+    testResults.orderConfirmation = { success: false, error: error.message };
+  }
+  
+  // Test delivery confirmation email service
+  try {
+    if (deliveryConfirmationTransporter) {
+      await deliveryConfirmationTransporter.verify();
+      console.log('✅ Delivery confirmation email service is working correctly');
+      testResults.deliveryConfirmation = { success: true, message: 'Delivery confirmation email service is working' };
+    } else {
+      console.log('❌ Delivery confirmation email service not configured');
+      testResults.deliveryConfirmation = { success: false, error: 'Delivery confirmation email service not configured' };
+    }
+  } catch (error) {
+    console.log('❌ Delivery confirmation email service test failed:', error.message);
+    testResults.deliveryConfirmation = { success: false, error: error.message };
+  }
+  
+  const overallSuccess = testResults.orderConfirmation.success && testResults.deliveryConfirmation.success;
+  
+  return { 
+    success: overallSuccess, 
+    details: testResults,
+    message: overallSuccess ? 'All email services are working' : 'Some email services have issues'
+  };
 };
 
 // Send test email
@@ -1179,18 +1284,36 @@ const sendTestEmail = async (testEmail = 'test@example.com') => {
 // Get email configuration status
 const getEmailConfig = () => {
   return {
-    configured: !!(EMAIL_CONFIG.auth.user && EMAIL_CONFIG.auth.pass),
-    host: EMAIL_CONFIG.host,
-    port: EMAIL_CONFIG.port,
-    user: EMAIL_CONFIG.auth.user ? 
-      EMAIL_CONFIG.auth.user.replace(/(.{3}).*@/, '$1***@') : 
-      'Not configured',
-    status: emailTransporter ? 'Ready' : 'Not configured'
+    legacy: {
+      configured: !!(EMAIL_CONFIG.auth.user && EMAIL_CONFIG.auth.pass),
+      host: EMAIL_CONFIG.host,
+      port: EMAIL_CONFIG.port,
+      user: EMAIL_CONFIG.auth.user ? 
+        EMAIL_CONFIG.auth.user.replace(/(.{3}).*@/, '$1***@') : 
+        'Not configured',
+      status: emailTransporter ? 'Ready' : 'Not configured'
+    },
+    orderConfirmation: {
+      configured: true,
+      host: ORDER_CONFIRMATION_EMAIL_CONFIG.host,
+      port: ORDER_CONFIRMATION_EMAIL_CONFIG.port,
+      user: ORDER_CONFIRMATION_EMAIL_CONFIG.auth.user.replace(/(.{3}).*@/, '$1***@'),
+      status: orderConfirmationTransporter ? 'Ready' : 'Not configured'
+    },
+    deliveryConfirmation: {
+      configured: true,
+      host: DELIVERY_CONFIRMATION_EMAIL_CONFIG.host,
+      port: DELIVERY_CONFIRMATION_EMAIL_CONFIG.port,
+      user: DELIVERY_CONFIRMATION_EMAIL_CONFIG.auth.user.replace(/(.{3}).*@/, '$1***@'),
+      status: deliveryConfirmationTransporter ? 'Ready' : 'Not configured'
+    }
   };
 };
 
-// Initialize email service on module load
+// Initialize email services on module load
 initEmailService();
+initOrderConfirmationEmailService();
+initDeliveryConfirmationEmailService();
 
 module.exports = {
   sendEmailNotification,
@@ -1198,6 +1321,8 @@ module.exports = {
   sendTestEmail,
   getEmailConfig,
   initEmailService,
+  initOrderConfirmationEmailService,
+  initDeliveryConfirmationEmailService,
   formatCurrency,
   formatDate,
   formatTime,
