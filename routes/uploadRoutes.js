@@ -1,26 +1,13 @@
 const express = require("express");
 const multer = require("multer");
 const path = require("path");
-const fs = require("fs");
 const { protect, admin } = require("../middleware/authMiddleware");
+const { uploadToCloudinary } = require("../config/cloudinary");
 
 const router = express.Router();
 
-// Ensure uploads folder exists
-const uploadsDir = path.join(__dirname, "../uploads");
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
-
-// Configure multer storage
-const storage = multer.diskStorage({
-  destination(req, file, cb) {
-    cb(null, "uploads/");
-  },
-  filename(req, file, cb) {
-    cb(null, `${file.fieldname}-${Date.now()}${path.extname(file.originalname)}`);
-  },
-});
+// Configure multer to use memory storage instead of disk storage
+const storage = multer.memoryStorage();
 
 // Validate file type
 const fileFilter = (req, file, cb) => {
@@ -29,32 +16,88 @@ const fileFilter = (req, file, cb) => {
   isValid ? cb(null, true) : cb("Images only! (jpg, jpeg, png, webp)");
 };
 
-const upload = multer({ storage, fileFilter, limits: { fileSize: 5 * 1024 * 1024 } });
+const upload = multer({ 
+  storage, 
+  fileFilter, 
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+});
 
 // @route   POST /api/uploads
-// @desc    Upload an image
+// @desc    Upload an image to Cloudinary
 // @access  Private/Admin
-router.post("/", protect, admin, upload.single("image"), (req, res) => {
-  if (!req.file) return res.status(400).json({ message: "No file uploaded" });
-  
-  // Construct the image URL properly
-  const imagePath = req.file.path.replace(/\\/g, "/");
-  const imageUrl = `/uploads/${req.file.filename}`;
-  
-  console.log('📸 File uploaded successfully:', {
-    originalName: req.file.originalname,
-    filename: req.file.filename,
-    path: req.file.path,
-    size: req.file.size,
-    imageUrl: imageUrl
-  });
-  
-  res.json({ 
-    imageUrl: imageUrl,
-    filename: req.file.filename,
-    originalName: req.file.originalname,
-    size: req.file.size
-  });
+router.post("/", protect, admin, upload.single("image"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+
+    console.log('📸 Starting Cloudinary upload:', {
+      originalName: req.file.originalname,
+      size: req.file.size,
+      mimetype: req.file.mimetype
+    });
+
+    // Generate unique filename
+    const filename = `image-${Date.now()}-${Math.round(Math.random() * 1E9)}`;
+    
+    // Upload to Cloudinary
+    const result = await uploadToCloudinary(req.file.buffer, filename);
+    
+    console.log('✅ Cloudinary upload successful:', {
+      url: result.secure_url,
+      publicId: result.public_id,
+      format: result.format,
+      width: result.width,
+      height: result.height,
+      bytes: result.bytes
+    });
+
+    res.json({ 
+      imageUrl: result.secure_url,
+      publicId: result.public_id,
+      filename: result.public_id,
+      originalName: req.file.originalname,
+      size: result.bytes,
+      format: result.format,
+      width: result.width,
+      height: result.height
+    });
+
+  } catch (error) {
+    console.error('❌ Upload error:', error);
+    res.status(500).json({ 
+      message: "Failed to upload image", 
+      error: error.message 
+    });
+  }
+});
+
+// @route   DELETE /api/uploads/:publicId
+// @desc    Delete an image from Cloudinary
+// @access  Private/Admin
+router.delete("/:publicId", protect, admin, async (req, res) => {
+  try {
+    const { publicId } = req.params;
+    
+    console.log('🗑️ Deleting image from Cloudinary:', publicId);
+    
+    const { deleteFromCloudinary } = require("../config/cloudinary");
+    const result = await deleteFromCloudinary(publicId);
+    
+    console.log('✅ Image deleted successfully:', result);
+    
+    res.json({ 
+      message: "Image deleted successfully", 
+      result 
+    });
+
+  } catch (error) {
+    console.error('❌ Delete error:', error);
+    res.status(500).json({ 
+      message: "Failed to delete image", 
+      error: error.message 
+    });
+  }
 });
 
 module.exports = router;
