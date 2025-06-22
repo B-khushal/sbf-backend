@@ -13,8 +13,8 @@ const ORDER_CONFIRMATION_EMAIL_CONFIG = {
   port: 587,
   secure: false,
   auth: {
-    user: 'sbforderconfirmation@gmail.com',
-    pass: 'pbxtmsnseknrxrnx'
+    user: process.env.ORDER_CONFIRMATION_EMAIL_USER || 'sbforderconfirmation@gmail.com',
+    pass: process.env.ORDER_CONFIRMATION_EMAIL_PASS || 'pbxtmsnseknrxrnx'
   }
 };
 
@@ -25,8 +25,8 @@ const DELIVERY_CONFIRMATION_EMAIL_CONFIG = {
   port: 587,
   secure: false,
   auth: {
-    user: 'sbfdeliveryconfirmation@gmail.com',
-    pass: 'ywmxpkbqitvrpdqx'
+    user: process.env.DELIVERY_CONFIRMATION_EMAIL_USER || 'sbfdeliveryconfirmation@gmail.com',
+    pass: process.env.DELIVERY_CONFIRMATION_EMAIL_PASS || 'ywmxpkbqitvrpdqx'
   }
 };
 
