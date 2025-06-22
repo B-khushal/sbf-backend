@@ -275,8 +275,8 @@ const sendSMSNotification = async (orderData) => {
       return { success: false, error: 'No phone number provided' };
     }
     
-    // Format phone number for international use
-    const formattedPhone = phoneNumber.startsWith('+') ? phoneNumber : `+91${phoneNumber}`;
+    // Use phone number as-is without adding +91 prefix
+    const formattedPhone = phoneNumber.startsWith('+') ? phoneNumber : phoneNumber;
     
     const message = await twilioClient.messages.create({
       body: generateOrderConfirmationSMS(orderData),
@@ -307,8 +307,8 @@ const sendWhatsAppNotification = async (orderData) => {
       return { success: false, error: 'No phone number provided' };
     }
     
-    // Format phone number for WhatsApp
-    const formattedPhone = phoneNumber.startsWith('+') ? phoneNumber : `+91${phoneNumber}`;
+    // Use phone number as-is without adding +91 prefix
+    const formattedPhone = phoneNumber.startsWith('+') ? phoneNumber : phoneNumber;
     
     const message = await twilioClient.messages.create({
       body: generateOrderConfirmationWhatsApp(orderData),
