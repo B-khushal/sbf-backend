@@ -104,6 +104,7 @@ exports.markAsRead = async (req, res) => {
     await notification.save();
     res.json(notification);
   } catch (error) {
+    console.error('Error marking notification as read:', error);
     res.status(500).json({ message: 'Error marking notification as read' });
   }
 };
@@ -130,6 +131,7 @@ exports.markAllAsRead = async (req, res) => {
     await Notification.updateMany(updateQuery, { read: true });
     res.json({ message: 'All notifications marked as read' });
   } catch (error) {
+    console.error('Error marking all notifications as read:', error);
     res.status(500).json({ message: 'Error marking all notifications as read' });
   }
 };
@@ -164,6 +166,7 @@ exports.clearReadNotifications = async (req, res) => {
     
     res.json({ message: 'Read notifications cleared (hidden until next login)' });
   } catch (error) {
+    console.error('Error clearing read notifications:', error);
     res.status(500).json({ message: 'Error clearing read notifications' });
   }
 };
@@ -198,6 +201,7 @@ exports.showNotificationsOnLogin = async (req, res) => {
     
     res.json({ message: 'Notifications visibility reset for new session' });
   } catch (error) {
+    console.error('Error resetting notification visibility:', error);
     res.status(500).json({ message: 'Error resetting notification visibility' });
   }
 };
@@ -230,6 +234,7 @@ exports.deleteNotification = async (req, res) => {
 
     res.json({ message: 'Notification deleted' });
   } catch (error) {
+    console.error('Error deleting notification:', error);
     res.status(500).json({ message: 'Error deleting notification' });
   }
 };
