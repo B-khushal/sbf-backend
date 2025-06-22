@@ -130,6 +130,7 @@ app.use('/api/settings', require('./routes/settingsRoutes'));
 app.use('/api/dashboard', require('./routes/dashboardRoutes'));
 app.use('/api/analytics', require('./routes/analyticsRoutes'));
 app.use('/api/contact', require('./routes/contactRoutes'));
+app.use('/api/promocodes', require('./routes/promoCodeRoutes'));
 
 // Root endpoint
 app.get('/', (req, res) => {

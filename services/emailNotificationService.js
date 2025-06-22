@@ -382,7 +382,7 @@ const generateOrderConfirmationEmail = (orderData) => {
               <strong>${formatDate(order.shippingDetails.deliveryDate)}</strong>
             </div>
             <div class="order-detail">
-              <span>Time Slot:</span>
+              <span>Time Slot: </span>
               <strong>${formatTime(order.shippingDetails.timeSlot)}</strong>
             </div>
             <div style="margin-top: 15px;">

@@ -16,7 +16,7 @@ const { testEmailService, sendTestEmail, getEmailConfig } = require('../services
 // All routes are protected and require authentication
 router.use(protect);
 
-// Get all notifications
+// Get all notifications for a user
 router.get('/', getNotifications);
 
 // Mark a notification as read
@@ -28,17 +28,53 @@ router.put('/read-all', markAllAsRead);
 // Clear read notifications
 router.delete('/read', clearReadNotifications);
 
-// Show notifications on login
-router.post('/show-on-login', showNotificationsOnLogin);
-
 // Get notification statistics
 router.get('/stats', getNotificationStats);
 
-// Delete a notification
+// Delete a specific notification
 router.delete('/:id', deleteNotification);
 
+// Show notifications on login (reset hidden notifications)
+router.post('/show-on-login', showNotificationsOnLogin);
+
+// Admin-only routes
+router.use(admin);
+
+// DANGER: Clear ALL notifications (admin only)
+router.delete('/admin/clear-all', async (req, res) => {
+  try {
+    const Notification = require('../models/Notification');
+    
+    // Count notifications before deletion
+    const countBefore = await Notification.countDocuments({});
+    console.log(`🗑️ Admin ${req.user.email} is clearing ${countBefore} notifications`);
+    
+    // Delete all notifications
+    const result = await Notification.deleteMany({});
+    
+    console.log(`✅ Successfully deleted ${result.deletedCount} notifications`);
+    
+    res.json({
+      message: 'All notifications cleared successfully',
+      deletedCount: result.deletedCount,
+      countBefore: countBefore
+    });
+  } catch (error) {
+    console.error('❌ Error clearing all notifications:', error);
+    res.status(500).json({ 
+      message: 'Error clearing all notifications',
+      error: error.message 
+    });
+  }
+});
+
 // Create test notification (admin only)
-router.post('/test', admin, createTestNotification);
+router.post('/test', createTestNotification);
+
+// Email service test routes (admin only)
+router.get('/test-email', testEmailService);
+router.post('/send-test-email', sendTestEmail);
+router.get('/email-config', getEmailConfig);
 
 // Debug endpoint to check user status
 router.get('/debug/user', protect, (req, res) => {
@@ -90,62 +126,6 @@ router.post('/debug/make-admin', protect, async (req, res) => {
       error: error.message
     });
   }
-});
-
-// Test email service
-router.get('/test-email', admin, async (req, res) => {
-  try {
-    const testResult = await testEmailService();
-    
-    res.json({
-      success: true,
-      message: 'Email service test completed',
-      result: testResult
-    });
-  } catch (error) {
-    console.error('Error testing email service:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error testing email service',
-      error: error.message
-    });
-  }
-});
-
-// Test sending email with sample data
-router.post('/test-send', admin, async (req, res) => {
-  try {
-    const { email } = req.body;
-    const testEmail = email || 'test@example.com';
-    
-    const result = await sendTestEmail(testEmail);
-    
-    res.json({
-      success: true,
-      message: 'Test email sent',
-      result,
-      sentTo: testEmail
-    });
-  } catch (error) {
-    console.error('Error sending test email:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error sending test email',
-      error: error.message
-    });
-  }
-});
-
-// Get email configuration status
-router.get('/config', admin, (req, res) => {
-  const config = getEmailConfig();
-
-  res.json({
-    success: true,
-    configuration: {
-      email: config
-    }
-  });
 });
 
 module.exports = router; 
