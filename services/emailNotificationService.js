@@ -671,20 +671,23 @@ const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
           margin: 25px 0;
         }
         .company-header {
+          background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+          color: white;
           text-align: center;
-          border-bottom: 2px solid #e2e8f0;
-          padding-bottom: 20px;
+          padding: 30px;
+          border-radius: 12px 12px 0 0;
           margin-bottom: 25px;
         }
         .company-header h1 {
-          color: #1e40af;
-          font-size: 28px;
-          margin-bottom: 5px;
+          color: white;
+          font-size: 32px;
+          margin-bottom: 10px;
+          font-weight: 700;
         }
         .company-details {
-          color: #64748b;
-          font-size: 14px;
-          line-height: 1.6;
+          color: #d1fae5;
+          font-size: 15px;
+          line-height: 1.8;
         }
         .invoice-header {
           display: flex;
@@ -808,8 +811,8 @@ const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
               <div class="company-details">
                 <p><strong>Door No. 12-2-786/A & B, Najam Centre, Pillar No. 32</strong></p>
                 <p>Rethi Bowli, Mehdipatnam, Hyderabad, Telangana 500028</p>
-                <p>GSTIN: 36ABCDE1234F1Z5 | Phone: 9849589710</p>
-                <p>Email: 2006sbf@gmail.com</p>
+                <p>📞 9849589710 | ✉️ 2006sbf@gmail.com</p>
+                <p>🌐 www.sbflorist.com | Premium Floral Services</p>
               </div>
             </div>
 
@@ -877,16 +880,12 @@ const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
               </div>
               ${hasShipping ? `
                 <div class="total-row">
-                  <span>Shipping Charges</span>
+                  <span>Delivery Charges</span>
                   <span>₹${shippingCharges.toFixed(2)}</span>
                 </div>
                 <div class="total-row">
-                  <span>CGST (2.5% on shipping)</span>
-                  <span>₹${(cgst).toFixed(2)}</span>
-                </div>
-                <div class="total-row">
-                  <span>SGST (2.5% on shipping)</span>
-                  <span>₹${(sgst).toFixed(2)}</span>
+                  <span>Tax (5%)</span>
+                  <span>₹${(cgst + sgst).toFixed(2)}</span>
                 </div>
               ` : ''}
               
