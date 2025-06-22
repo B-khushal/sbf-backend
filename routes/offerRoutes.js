@@ -13,7 +13,7 @@ const {
 // Public routes
 router.get('/active', getActiveOffers);
 
-// Admin routes
+// Admin routes (protected)
 router.get('/all', authMiddleware, isAdmin, getAllOffers);
 router.post('/', authMiddleware, isAdmin, createOffer);
 router.put('/:id', authMiddleware, isAdmin, updateOffer);
