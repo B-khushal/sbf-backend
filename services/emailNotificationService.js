@@ -45,7 +45,7 @@ const EMAIL_CONFIG = {
 // Initialize order confirmation email service
 const initOrderConfirmationEmailService = () => {
   try {
-    orderConfirmationTransporter = nodemailer.createTransporter(ORDER_CONFIRMATION_EMAIL_CONFIG);
+    orderConfirmationTransporter = nodemailer.createTransport(ORDER_CONFIRMATION_EMAIL_CONFIG);
     console.log('✅ Order confirmation email service initialized successfully');
     return orderConfirmationTransporter;
   } catch (error) {
@@ -57,7 +57,7 @@ const initOrderConfirmationEmailService = () => {
 // Initialize delivery confirmation email service
 const initDeliveryConfirmationEmailService = () => {
   try {
-    deliveryConfirmationTransporter = nodemailer.createTransporter(DELIVERY_CONFIRMATION_EMAIL_CONFIG);
+    deliveryConfirmationTransporter = nodemailer.createTransport(DELIVERY_CONFIRMATION_EMAIL_CONFIG);
     console.log('✅ Delivery confirmation email service initialized successfully');
     return deliveryConfirmationTransporter;
   } catch (error) {
@@ -77,7 +77,7 @@ const initEmailService = () => {
       return null;
     }
     
-    emailTransporter = nodemailer.createTransporter(EMAIL_CONFIG);
+    emailTransporter = nodemailer.createTransport(EMAIL_CONFIG);
     console.log('✅ Legacy email service initialized successfully');
     return emailTransporter;
   } catch (error) {
