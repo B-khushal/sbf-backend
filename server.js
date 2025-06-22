@@ -129,6 +129,7 @@ app.use('/api/notifications', require('./routes/notificationRoutes'));
 app.use('/api/settings', require('./routes/settingsRoutes'));
 app.use('/api/dashboard', require('./routes/dashboardRoutes'));
 app.use('/api/analytics', require('./routes/analyticsRoutes'));
+app.use('/api/contact', require('./routes/contactRoutes'));
 
 // Root endpoint
 app.get('/', (req, res) => {
