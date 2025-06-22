@@ -214,6 +214,20 @@ app.use('/uploads', (req, res, next) => {
   next();
 }, express.static(path.join(__dirname, 'uploads')));
 
+// Serve static frontend files (React build)
+app.use(express.static(path.join(__dirname, 'dist'))); // or 'build'
+
+// SPA Routing - Catch all handler: send back React's index.html file for any non-API routes
+app.get('*', (req, res) => {
+  // Don't serve index.html for API routes
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ message: 'API endpoint not found' });
+  }
+  
+  console.log(`🌐 Serving React app for route: ${req.path}`);
+  res.sendFile(path.join(__dirname, 'dist', 'index.html')); // or 'build'
+});
+
 // Error handler middleware
 app.use((err, req, res, next) => {
   console.error("🔥 ERROR:", err.stack);
