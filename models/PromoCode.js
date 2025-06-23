@@ -16,6 +16,11 @@ const promoCodeSchema = new mongoose.Schema({
     trim: true,
     maxlength: [200, 'Description cannot exceed 200 characters']
   },
+  image: {
+    type: String,
+    trim: true,
+    default: null // Optional promo code image URL
+  },
   discountType: {
     type: String,
     required: [true, 'Discount type is required'],

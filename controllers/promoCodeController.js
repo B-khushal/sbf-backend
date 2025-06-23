@@ -114,6 +114,7 @@ exports.createPromoCode = async (req, res) => {
     const {
       code,
       description,
+      image,
       discountType,
       discountValue,
       minimumOrderAmount,
@@ -180,6 +181,7 @@ exports.createPromoCode = async (req, res) => {
     const promoCode = new PromoCode({
       code: code.toUpperCase(),
       description,
+      image: image || null,
       discountType,
       discountValue,
       minimumOrderAmount: minimumOrderAmount || 0,
@@ -258,7 +260,7 @@ exports.updatePromoCode = async (req, res) => {
     
     // Update fields
     const updateFields = [
-      'code', 'description', 'discountType', 'discountValue',
+      'code', 'description', 'image', 'discountType', 'discountValue',
       'minimumOrderAmount', 'maximumDiscountAmount', 'usageLimit',
       'validFrom', 'validUntil', 'isActive', 'applicableCategories',
       'excludedCategories', 'applicableProducts', 'excludedProducts',
