@@ -10,23 +10,28 @@ if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
 const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || 'rzp_test_OH8BIkxm62f30M';
 const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || 'vf7ObUNADVIxzpMaTBNOFbsV';
 
-// Validate key format
-const isValidRazorpayKey = (key) => {
-  return key && key.startsWith('rzp_') && key.length > 10 && key !== 'YOUR_KEY_SECRET';
+// Validate key formats - separate validation for ID and Secret
+const isValidRazorpayKeyId = (keyId) => {
+  return keyId && keyId.startsWith('rzp_') && keyId.length > 10 && keyId !== 'YOUR_KEY_ID';
 };
 
-if (!isValidRazorpayKey(RAZORPAY_KEY_ID)) {
+const isValidRazorpayKeySecret = (keySecret) => {
+  // Razorpay secrets are alphanumeric strings, typically 24 characters
+  return keySecret && /^[A-Za-z0-9]{20,}$/.test(keySecret) && keySecret !== 'YOUR_KEY_SECRET';
+};
+
+if (!isValidRazorpayKeyId(RAZORPAY_KEY_ID)) {
   console.error('❌ Invalid Razorpay Key ID format:', RAZORPAY_KEY_ID);
 }
 
-if (!isValidRazorpayKey(RAZORPAY_KEY_SECRET)) {
+if (!isValidRazorpayKeySecret(RAZORPAY_KEY_SECRET)) {
   console.error('❌ Invalid Razorpay Key Secret format. Please set a valid key.');
 }
 
 console.log('🔧 Razorpay Configuration:', {
   keyId: RAZORPAY_KEY_ID,
-  keyIdValid: isValidRazorpayKey(RAZORPAY_KEY_ID),
-  keySecretValid: isValidRazorpayKey(RAZORPAY_KEY_SECRET),
+  keyIdValid: isValidRazorpayKeyId(RAZORPAY_KEY_ID),
+  keySecretValid: isValidRazorpayKeySecret(RAZORPAY_KEY_SECRET),
   environment: process.env.NODE_ENV || 'development'
 });
 
@@ -38,7 +43,7 @@ const razorpay = new Razorpay({
 const createOrder = async (amount, currency = 'INR') => {
   try {
     // Validate Razorpay instance
-    if (!isValidRazorpayKey(RAZORPAY_KEY_ID) || !isValidRazorpayKey(RAZORPAY_KEY_SECRET)) {
+    if (!isValidRazorpayKeyId(RAZORPAY_KEY_ID) || !isValidRazorpayKeySecret(RAZORPAY_KEY_SECRET)) {
       throw new Error('Invalid Razorpay credentials. Please check your API keys.');
     }
 
@@ -92,7 +97,7 @@ const verifyPayment = (razorpay_order_id, razorpay_payment_id, razorpay_signatur
       throw new Error('Missing required payment verification parameters');
     }
 
-    if (!isValidRazorpayKey(RAZORPAY_KEY_SECRET)) {
+    if (!isValidRazorpayKeySecret(RAZORPAY_KEY_SECRET)) {
       throw new Error('Invalid Razorpay Key Secret for payment verification');
     }
 
@@ -116,7 +121,8 @@ const verifyPayment = (razorpay_order_id, razorpay_payment_id, razorpay_signatur
 module.exports = {
   createOrder,
   verifyPayment,
-  isValidRazorpayKey,
+  isValidRazorpayKeyId,
+  isValidRazorpayKeySecret,
   RAZORPAY_KEY_ID,
   RAZORPAY_KEY_SECRET
 }; 
