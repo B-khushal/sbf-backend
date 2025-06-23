@@ -6,9 +6,17 @@ if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
   console.warn('⚠️ Razorpay credentials not found in environment variables. Using test credentials.');
 }
 
-// Get Razorpay credentials
+// Get Razorpay credentials with detailed logging
 const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || 'rzp_test_OH8BIkxm62f30M';
 const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || 'vf7ObUNADVIxzpMaTBNOFbsV';
+
+// Debug logging for production
+console.log('🔍 Environment Variables Check:');
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('RAZORPAY_KEY_ID from env:', process.env.RAZORPAY_KEY_ID ? 'SET' : 'NOT SET');
+console.log('RAZORPAY_KEY_SECRET from env:', process.env.RAZORPAY_KEY_SECRET ? 'SET' : 'NOT SET');
+console.log('Using Key ID:', RAZORPAY_KEY_ID);
+console.log('Using Key Secret (first 4 chars):', RAZORPAY_KEY_SECRET ? RAZORPAY_KEY_SECRET.substring(0, 4) + '***' : 'NONE');
 
 // Validate key formats - separate validation for ID and Secret
 const isValidRazorpayKeyId = (keyId) => {
@@ -34,6 +42,14 @@ console.log('🔧 Razorpay Configuration:', {
   keySecretValid: isValidRazorpayKeySecret(RAZORPAY_KEY_SECRET),
   environment: process.env.NODE_ENV || 'development'
 });
+
+// Log validation results
+if (isValidRazorpayKeyId(RAZORPAY_KEY_ID) && isValidRazorpayKeySecret(RAZORPAY_KEY_SECRET)) {
+  console.log('✅ Razorpay configuration is valid');
+  console.log('✅ Razorpay service initialized successfully');
+} else {
+  console.log('❌ Razorpay configuration has errors - payment processing may fail');
+}
 
 const razorpay = new Razorpay({
   key_id: RAZORPAY_KEY_ID,
