@@ -6,9 +6,9 @@ if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
   console.warn('⚠️ Razorpay credentials not found in environment variables. Using test credentials.');
 }
 
-// Get Razorpay credentials with detailed logging
-const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || 'rzp_test_OH8BIkxm62f30M';
-const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || 'vf7ObUNADVIxzpMaTBNOFbsV';
+// Get Razorpay credentials with detailed logging - Updated with newest credentials
+const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || 'rzp_test_eGFXvmTuCZJo3Z';
+const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || 'NUAqe6xx4c5aHQNYDb6YdaDF';
 
 // Debug logging for production
 console.log('🔍 Environment Variables Check:');
