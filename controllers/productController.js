@@ -193,7 +193,7 @@ const createProduct = async (req, res) => {
       images,
       isFeatured: isFeatured || false,
       isNew: isNew || false,
-      hidden: hidden || false,
+      hidden: hidden !== undefined ? hidden : true,  // 🔒 Default to hidden unless explicitly set to false
       details: processedDetails,
       careInstructions: careInstructions || [],
     });
