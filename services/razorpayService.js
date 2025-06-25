@@ -3,12 +3,12 @@ const crypto = require('crypto');
 
 // Validate environment variables
 if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
-  console.warn('⚠️ Razorpay credentials not found in environment variables. Using test credentials.');
+  console.warn('⚠️ Razorpay credentials not found in environment variables. Using fallback credentials.');
 }
 
-// Get Razorpay credentials with detailed logging - Updated with newest credentials
-const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || 'rzp_test_eGFXvmTuCZJo3Z';
-const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || 'NUAqe6xx4c5aHQNYDb6YdaDF';
+// Get Razorpay credentials with detailed logging - Updated for live credentials
+const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || 'rzp_live_D9vJLrTA4TaxBf';
+const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || 'lZEQbuduY11quBXY0JAkUHnj';
 
 // Debug logging for production
 console.log('🔍 Environment Variables Check:');
@@ -18,14 +18,19 @@ console.log('RAZORPAY_KEY_SECRET from env:', process.env.RAZORPAY_KEY_SECRET ? '
 console.log('Using Key ID:', RAZORPAY_KEY_ID);
 console.log('Using Key Secret (first 4 chars):', RAZORPAY_KEY_SECRET ? RAZORPAY_KEY_SECRET.substring(0, 4) + '***' : 'NONE');
 
+// Check if using live mode
+const isLiveMode = () => {
+  return RAZORPAY_KEY_ID.startsWith('rzp_live_');
+};
+
 // Validate key formats - separate validation for ID and Secret
 const isValidRazorpayKeyId = (keyId) => {
-  return keyId && keyId.startsWith('rzp_') && keyId.length > 10 && keyId !== 'YOUR_KEY_ID';
+  return keyId && keyId.startsWith('rzp_') && keyId.length > 10 && keyId !== 'YOUR_KEY_ID' && keyId !== 'rzp_live_YOUR_LIVE_KEY_ID';
 };
 
 const isValidRazorpayKeySecret = (keySecret) => {
   // Razorpay secrets are alphanumeric strings, typically 24 characters
-  return keySecret && /^[A-Za-z0-9]{20,}$/.test(keySecret) && keySecret !== 'YOUR_KEY_SECRET';
+  return keySecret && /^[A-Za-z0-9]{20,}$/.test(keySecret) && keySecret !== 'YOUR_KEY_SECRET' && keySecret !== 'YOUR_LIVE_KEY_SECRET';
 };
 
 if (!isValidRazorpayKeyId(RAZORPAY_KEY_ID)) {
@@ -36,12 +41,24 @@ if (!isValidRazorpayKeySecret(RAZORPAY_KEY_SECRET)) {
   console.error('❌ Invalid Razorpay Key Secret format. Please set a valid key.');
 }
 
+const isLive = isLiveMode();
+
 console.log('🔧 Razorpay Configuration:', {
   keyId: RAZORPAY_KEY_ID,
   keyIdValid: isValidRazorpayKeyId(RAZORPAY_KEY_ID),
   keySecretValid: isValidRazorpayKeySecret(RAZORPAY_KEY_SECRET),
+  isLive,
+  mode: isLive ? 'LIVE' : 'TEST',
   environment: process.env.NODE_ENV || 'development'
 });
+
+// Important live mode warning
+if (isLive) {
+  console.log('🔴 LIVE MODE ACTIVE: Real payments will be processed!');
+  console.log('🚨 Ensure you are in production environment for live transactions');
+} else {
+  console.log('🟡 TEST MODE: No real money will be charged');
+}
 
 // Log validation results
 if (isValidRazorpayKeyId(RAZORPAY_KEY_ID) && isValidRazorpayKeySecret(RAZORPAY_KEY_SECRET)) {
@@ -139,6 +156,7 @@ module.exports = {
   verifyPayment,
   isValidRazorpayKeyId,
   isValidRazorpayKeySecret,
+  isLiveMode,
   RAZORPAY_KEY_ID,
   RAZORPAY_KEY_SECRET
 }; 
