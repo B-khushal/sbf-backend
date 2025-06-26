@@ -23,97 +23,38 @@ initEmailService();
 
 const app = express();
 
-// CORS configuration - Enhanced for production
+// --- Simplified and Corrected CORS Configuration ---
+const allowedOrigins = [
+  'http://localhost:8080',
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'https://sbflorist.in',
+  'https://www.sbflorist.in', // Added this from the logs
+  'https://sbf-backend.onrender.com',
+  'https://sbf-florist.vercel.app',
+  'https://sbf-florist.netlify.app'
+];
+
 app.use(cors({
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
-    
-    const allowedOrigins = [
-      'http://localhost:8080',
-      'http://localhost:3000',
-      'http://localhost:5173',
-      'https://sbflorist.in',
-      'https://www.sbflorist.in',
-      'https://sbf-backend.onrender.com',
-      // Add additional variations for safety
-      'https://sbf-florist.vercel.app',
-      'https://sbf-florist.netlify.app'
-    ];
-    
-    console.log(`🔍 CORS Check - Origin: ${origin}, Allowed: ${allowedOrigins.includes(origin)}`);
-    
+
     if (allowedOrigins.indexOf(origin) !== -1) {
-      console.log(`✅ CORS allowed for origin: ${origin}`);
-      return callback(null, true);
+      // If the origin is in the whitelist, allow it
+      callback(null, true);
     } else {
-      console.log(`❌ CORS blocked origin: ${origin}`);
-      return callback(null, true); // Allow all origins for now to debug
+      // Otherwise, block it
+      callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: [
-    'Content-Type', 
-    'Authorization', 
-    'X-Requested-With',
-    'Accept',
-    'Origin',
-    'Access-Control-Request-Method',
-    'Access-Control-Request-Headers',
-    'Cache-Control',
-    'Pragma'
-  ],
-  exposedHeaders: ['Content-Length', 'X-Foo', 'X-Bar'],
-  maxAge: 86400, // 24 hours
-  preflightContinue: false,
-  optionsSuccessStatus: 200
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  optionsSuccessStatus: 200 // For legacy browser support
 }));
 
-// Handle preflight requests explicitly
-app.options('*', cors());
-
-// Additional CORS headers for problematic requests - Enhanced
-app.use((req, res, next) => {
-  const origin = req.get('Origin');
-  const allowedOrigins = [
-    'http://localhost:8080',
-    'http://localhost:3000',
-    'http://localhost:5173',
-    'https://sbflorist.in',
-    'https://www.sbflorist.in',
-    'https://sbf-backend.onrender.com',
-    'https://sbf-florist.vercel.app',
-    'https://sbf-florist.netlify.app'
-  ];
-
-  // Always set CORS headers for debugging
-  if (origin) {
-    res.header('Access-Control-Allow-Origin', origin);
-    console.log(`🌐 Setting CORS headers for origin: ${origin}`);
-  } else {
-    res.header('Access-Control-Allow-Origin', '*');
-    console.log(`🌐 Setting CORS headers for no-origin request`);
-  }
-  
-  res.header('Access-Control-Allow-Credentials', 'true');
-  res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS,PATCH');
-  res.header('Access-Control-Allow-Headers', 'Origin,X-Requested-With,Content-Type,Accept,Authorization,Cache-Control,Pragma');
-  res.header('Access-Control-Max-Age', '86400');
-  
-  if (req.method === 'OPTIONS') {
-    console.log(`✅ Handling OPTIONS request from ${origin || 'no-origin'}`);
-    res.sendStatus(200);
-  } else {
-    next();
-  }
-});
-
-// Debug middleware for CORS
-app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.path} - Origin: ${req.get('Origin') || 'No Origin'}`);
-  next();
-});
+// --- End of CORS Configuration ---
 
 // Middleware
 app.use(express.json());
