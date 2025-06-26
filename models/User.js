@@ -79,5 +79,11 @@ userSchema.methods.matchPassword = async function (enteredPassword) {
     return await bcrypt.compare(enteredPassword, this.password);
 };
 
+// Method to update last active timestamp
+userSchema.methods.updateLastActive = async function () {
+    this.lastActive = new Date();
+    await this.save();
+};
+
 const User = mongoose.model('User', userSchema);
 module.exports = User;

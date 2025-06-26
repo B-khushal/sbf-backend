@@ -149,6 +149,7 @@ const getUserProfile = async (req, res) => {
         email: user.email,
         role: user.role,
         status: user.status,
+        vendorStatus: user.vendorStatus,
         phone: user.phone,
         address: user.address,
         lastActive: user.lastActive,
