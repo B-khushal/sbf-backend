@@ -32,6 +32,10 @@ const productSchema = mongoose.Schema(
       required: true,
       ref: "User",
     },
+    vendor: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Vendor",
+    },
     title: {
       type: String,
       required: true,
