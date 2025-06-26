@@ -147,19 +147,10 @@ const getVendorDashboard = async (req, res) => {
                 'orderItems.product': { $in: await Product.find({ vendor: vendor._id }).distinct('_id') },
                 createdAt: { $gte: startOfMonth, $lte: endOfMonth }
             }),
-            // Calculate total revenue for vendor products
             Order.aggregate([
                 {
-                    $lookup: {
-                        from: 'products',
-                        localField: 'orderItems.product',
-                        foreignField: '_id',
-                        as: 'productDetails'
-                    }
-                },
-                {
                     $match: {
-                        'productDetails.vendor': vendor._id,
+                        'orderItems.vendor': vendor._id,
                         status: { $in: ['delivered', 'completed'] }
                     }
                 },
@@ -170,19 +161,10 @@ const getVendorDashboard = async (req, res) => {
                     }
                 }
             ]).then(result => result[0]?.total || 0),
-            // Calculate monthly revenue
             Order.aggregate([
                 {
-                    $lookup: {
-                        from: 'products',
-                        localField: 'orderItems.product',
-                        foreignField: '_id',
-                        as: 'productDetails'
-                    }
-                },
-                {
                     $match: {
-                        'productDetails.vendor': vendor._id,
+                        'orderItems.vendor': vendor._id,
                         status: { $in: ['delivered', 'completed'] },
                         createdAt: { $gte: startOfMonth, $lte: endOfMonth }
                     }
@@ -198,36 +180,34 @@ const getVendorDashboard = async (req, res) => {
                 'orderItems.product': { $in: await Product.find({ vendor: vendor._id }).distinct('_id') },
                 status: 'pending'
             }),
-            Product.find({
-                vendor: vendor._id,
-                countInStock: { $lte: vendor.salesSettings.lowStockThreshold }
-            }).select('title countInStock'),
+            Product.find({ vendor: vendor._id, quantity: { $lte: 10 } }).limit(5),
             Order.find({
                 'orderItems.product': { $in: await Product.find({ vendor: vendor._id }).distinct('_id') }
             })
-            .populate('user', 'name email')
-            .populate('orderItems.product', 'title images')
             .sort({ createdAt: -1 })
-            .limit(10)
+            .limit(5)
+            .populate('user', 'name email')
+            .populate('orderItems.product', 'name price')
         ]);
 
-        // Calculate vendor earnings
-        const earnings = vendor.calculateEarnings(totalRevenue);
-        const monthlyEarnings = vendor.calculateEarnings(monthlyRevenue);
+        // Calculate vendor earnings (assuming 10% commission)
+        const commissionRate = vendor.commission?.rate || 0.1;
+        const vendorEarnings = totalRevenue * (1 - commissionRate);
+        const monthlyEarnings = monthlyRevenue * (1 - commissionRate);
 
-        // Update vendor analytics
-        await vendor.updateAnalytics({
-            totalProducts,
-            totalOrders,
-            totalRevenue
-        });
+        // Get sales trend data
+        const salesTrend = await getSalesTrend(vendor._id);
+        const topProducts = await getTopProducts(vendor._id);
 
-        const dashboardData = {
+        res.json({
             vendor: {
                 storeName: vendor.storeName,
                 status: vendor.status,
                 isVerified: vendor.verification.isVerified,
-                subscription: vendor.subscription
+                subscription: {
+                    plan: vendor.subscription.plan,
+                    isActive: vendor.subscription.isActive
+                }
             },
             stats: {
                 totalProducts,
@@ -236,20 +216,18 @@ const getVendorDashboard = async (req, res) => {
                 monthlyOrders,
                 totalRevenue,
                 monthlyRevenue,
-                vendorEarnings: earnings.vendorEarnings,
-                monthlyEarnings: monthlyEarnings.vendorEarnings,
+                vendorEarnings,
+                monthlyEarnings,
                 pendingOrders,
                 lowStockCount: lowStockProducts.length
             },
             recentOrders,
             lowStockProducts,
             charts: {
-                salesTrend: await getSalesTrend(vendor._id),
-                topProducts: await getTopProducts(vendor._id)
+                salesTrend,
+                topProducts
             }
-        };
-
-        res.json(dashboardData);
+        });
     } catch (error) {
         console.error('Error fetching vendor dashboard:', error);
         res.status(500).json({ message: 'Server error', error: error.message });
