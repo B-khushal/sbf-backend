@@ -199,10 +199,14 @@ app.get('/cors-test', (req, res) => {
 app.get('/wake-up', (req, res) => {
   const origin = req.get('Origin');
   console.log(`⏰ Wake-up ping from origin: ${origin || 'no-origin'}`);
-  res.status(200).json({ 
+  
+  res.status(200).json({
+    success: true,
     message: 'Server is awake and ready',
+    origin: origin || 'No Origin',
+    timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    timestamp: new Date().toISOString() 
+    memory: process.memoryUsage()
   });
 });
 
@@ -227,36 +231,6 @@ app.get('*', (req, res) => {
   console.log(`🌐 Serving React app for route: ${req.path}`);
   res.sendFile(path.join(__dirname, 'dist', 'index.html')); // or 'build'
 });
-
-// Serve frontend in production
-if (process.env.NODE_ENV === 'production') {
-  // Set static folder for frontend build
-  const frontendBuildPath = path.resolve(__dirname, '../sbf-main/dist');
-  app.use(express.static(frontendBuildPath));
-  console.log(`🌐 Serving static files from: ${frontendBuildPath}`);
-
-  // Set static folder for uploads
-  const uploadsPath = path.resolve(__dirname, 'uploads');
-  app.use('/uploads', express.static(uploadsPath));
-  console.log(`🖼️ Serving uploads from: ${uploadsPath}`);
-
-  // Catch-all to serve React's index.html
-  app.get('*', (req, res) => {
-    console.log(`🌐 Serving React app for route: ${req.path}`);
-    const indexPath = path.resolve(__dirname, '../sbf-main/dist/index.html');
-    res.sendFile(indexPath, (err) => {
-      if (err) {
-        console.error('🔥 ERROR:', err);
-        res.status(500).send(err);
-      }
-    });
-  });
-} else {
-  // Development environment message
-  app.get('/', (req, res) => {
-    res.send('API is running in development mode');
-  });
-}
 
 // Error handler middleware
 app.use((err, req, res, next) => {
