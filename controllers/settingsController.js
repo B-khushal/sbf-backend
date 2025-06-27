@@ -139,14 +139,44 @@ exports.updateAllSettings = async (req, res) => {
       settings = new Settings();
     }
 
-    if (heroSlides) settings.heroSlides = heroSlides;
+    // Validate hero slides before updating
+    if (heroSlides) {
+      const validSlides = heroSlides.every(slide => 
+        slide.id && 
+        slide.title && 
+        slide.subtitle && 
+        slide.image && 
+        slide.ctaText && 
+        slide.ctaLink && 
+        typeof slide.enabled === 'boolean' && 
+        typeof slide.order === 'number'
+      );
+      
+      if (!validSlides) {
+        return res.status(400).json({ 
+          message: 'Invalid hero slides data. All required fields must be provided.',
+          requiredFields: ['id', 'title', 'subtitle', 'image', 'ctaText', 'ctaLink', 'enabled', 'order']
+        });
+      }
+      settings.heroSlides = heroSlides;
+    }
+
     if (homeSections) settings.homeSections = homeSections;
     if (categories) settings.categories = categories;
     if (headerSettings) settings.headerSettings = headerSettings;
     if (footerSettings) settings.footerSettings = footerSettings;
 
     settings.updatedAt = Date.now();
-    await settings.save();
+    
+    try {
+      await settings.save();
+    } catch (saveError) {
+      console.error('Mongoose validation error:', saveError);
+      return res.status(400).json({ 
+        message: 'Failed to save settings due to validation errors',
+        errors: saveError.errors
+      });
+    }
 
     res.json({
       heroSlides: settings.heroSlides,
@@ -157,7 +187,10 @@ exports.updateAllSettings = async (req, res) => {
     });
   } catch (error) {
     console.error('Error updating all settings:', error);
-    res.status(500).json({ message: 'Error updating all settings' });
+    res.status(500).json({ 
+      message: 'Error updating all settings',
+      error: error.message 
+    });
   }
 };
 
