@@ -21,6 +21,10 @@ const promoCodeSchema = new mongoose.Schema({
     trim: true,
     default: null // Optional promo code image URL
   },
+  background: {
+    type: String,
+    default: '#ffffff'
+  },
   discountType: {
     type: String,
     required: [true, 'Discount type is required'],

@@ -14,7 +14,7 @@ const offerSchema = new mongoose.Schema({
     type: String,
     required: false
   },
-  backgroundColor: {
+  background: {
     type: String,
     default: '#ffffff'
   },
