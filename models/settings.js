@@ -1,5 +1,40 @@
 const mongoose = require('mongoose');
 
+const heroSlideSchema = new mongoose.Schema({
+  id: {
+    type: Number,
+    required: true
+  },
+  title: {
+    type: String,
+    required: true
+  },
+  subtitle: {
+    type: String,
+    required: true
+  },
+  image: {
+    type: String,
+    required: true
+  },
+  ctaText: {
+    type: String,
+    required: true
+  },
+  ctaLink: {
+    type: String,
+    required: true
+  },
+  enabled: {
+    type: Boolean,
+    default: true
+  },
+  order: {
+    type: Number,
+    required: true
+  }
+});
+
 const homeSectionSchema = new mongoose.Schema({
   id: {
     type: String,
@@ -9,7 +44,7 @@ const homeSectionSchema = new mongoose.Schema({
   type: {
     type: String,
     required: true,
-    enum: ['hero', 'categories', 'featured', 'new', 'philosophy', 'custom']
+    enum: ['hero', 'categories', 'featured', 'new', 'philosophy', 'offers', 'custom']
   },
   enabled: {
     type: Boolean,
@@ -20,7 +55,11 @@ const homeSectionSchema = new mongoose.Schema({
     required: true
   },
   title: String,
-  subtitle: String
+  subtitle: String,
+  content: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {}
+  }
 });
 
 const categorySchema = new mongoose.Schema({
@@ -116,6 +155,7 @@ const footerSettingsSchema = new mongoose.Schema({
 });
 
 const settingsSchema = new mongoose.Schema({
+  heroSlides: [heroSlideSchema],
   homeSections: [homeSectionSchema],
   categories: [categorySchema],
   headerSettings: headerSettingsSchema,
@@ -130,12 +170,46 @@ const settingsSchema = new mongoose.Schema({
 settingsSchema.statics.initializeDefaultSettings = async function() {
   const settings = await this.findOne();
   if (!settings) {
+    const defaultHeroSlides = [
+      {
+        id: 1,
+        title: "Spring Collection",
+        subtitle: "Freshly picked arrangements to brighten your day",
+        image: "/images/1.jpg",
+        ctaText: "Shop Now",
+        ctaLink: "/shop",
+        enabled: true,
+        order: 0
+      },
+      {
+        id: 2,
+        title: "Signature Bouquets",
+        subtitle: "Handcrafted with love and attention to detail",
+        image: "/images/2.jpg",
+        ctaText: "Shop Now",
+        ctaLink: "/shop",
+        enabled: true,
+        order: 1
+      },
+      {
+        id: 3,
+        title: "Seasonal Specials",
+        subtitle: "Limited edition arrangements for every occasion",
+        image: "/images/3.jpg",
+        ctaText: "Shop Now",
+        ctaLink: "/shop",
+        enabled: true,
+        order: 2
+      }
+    ];
+
     const defaultSections = [
       { id: 'hero', type: 'hero', enabled: true, order: 0, title: 'Hero Section', subtitle: 'Main banner area' },
       { id: 'categories', type: 'categories', enabled: true, order: 1, title: 'Categories', subtitle: 'Product categories showcase' },
-      { id: 'featured', type: 'featured', enabled: true, order: 2, title: 'Featured Collection', subtitle: 'Explore our most popular floral arrangements' },
-      { id: 'new', type: 'new', enabled: true, order: 3, title: 'New Arrivals', subtitle: 'Discover our latest seasonal additions' },
-      { id: 'philosophy', type: 'philosophy', enabled: true, order: 4, title: 'Artfully Crafted Botanical Experiences', subtitle: 'Every arrangement we create is a unique work of art, designed to bring beauty and tranquility into your everyday spaces.' }
+      { id: 'featured', type: 'featured', enabled: true, order: 2, title: '✨ Featured Collection', subtitle: 'Explore our most popular floral arrangements' },
+      { id: 'offers', type: 'offers', enabled: true, order: 3, title: 'Special Offers', subtitle: 'Don\'t miss our amazing deals' },
+      { id: 'new', type: 'new', enabled: true, order: 4, title: '🌸 New Arrivals', subtitle: 'Discover our latest seasonal additions' },
+      { id: 'philosophy', type: 'philosophy', enabled: true, order: 5, title: 'Artfully Crafted Botanical Experiences', subtitle: 'Every arrangement we create is a unique work of art, designed to bring beauty and tranquility into your everyday spaces.', content: { image: '/images/d3.jpg' } }
     ];
 
     const defaultCategories = [
@@ -197,6 +271,7 @@ settingsSchema.statics.initializeDefaultSettings = async function() {
     };
 
     await this.create({ 
+      heroSlides: defaultHeroSlides,
       homeSections: defaultSections,
       categories: defaultCategories,
       headerSettings: defaultHeaderSettings,

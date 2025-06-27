@@ -1,5 +1,43 @@
 const Settings = require('../models/settings');
 
+// Get all hero slides
+exports.getHeroSlides = async (req, res) => {
+  try {
+    let settings = await Settings.findOne();
+    
+    // Initialize default settings if none exist
+    if (!settings) {
+      await Settings.initializeDefaultSettings();
+      settings = await Settings.findOne();
+    }
+
+    res.json(settings.heroSlides || []);
+  } catch (error) {
+    console.error('Error fetching hero slides:', error);
+    res.status(500).json({ message: 'Error fetching hero slides' });
+  }
+};
+
+// Update hero slides
+exports.updateHeroSlides = async (req, res) => {
+  try {
+    const { slides } = req.body;
+
+    let settings = await Settings.findOne();
+    if (!settings) {
+      settings = new Settings();
+    }
+
+    settings.heroSlides = slides;
+    await settings.save();
+
+    res.json(settings.heroSlides);
+  } catch (error) {
+    console.error('Error updating hero slides:', error);
+    res.status(500).json({ message: 'Error updating hero slides' });
+  }
+};
+
 // Get all home sections
 exports.getHomeSections = async (req, res) => {
   try {
@@ -68,58 +106,58 @@ exports.updateHomeSections = async (req, res) => {
   }
 };
 
-// Reorder sections
-exports.reorderHomeSections = async (req, res) => {
+// Get all settings at once
+exports.getAllSettings = async (req, res) => {
   try {
-    const { sections } = req.body;
+    let settings = await Settings.findOne();
     
-    const settings = await Settings.findOne();
     if (!settings) {
-      return res.status(404).json({ message: 'Settings not found' });
+      await Settings.initializeDefaultSettings();
+      settings = await Settings.findOne();
     }
 
-    // Update sections with new order
-    settings.homeSections = sections.map((section, index) => ({
-      ...section,
-      order: index
-    }));
-
-    await settings.save();
-    res.json(settings.homeSections);
+    res.json({
+      heroSlides: settings.heroSlides || [],
+      homeSections: settings.homeSections || [],
+      categories: settings.categories || [],
+      headerSettings: settings.headerSettings || {},
+      footerSettings: settings.footerSettings || {}
+    });
   } catch (error) {
-    console.error('Error reordering home sections:', error);
-    res.status(500).json({ message: 'Error reordering home sections' });
+    console.error('Error fetching all settings:', error);
+    res.status(500).json({ message: 'Error fetching all settings' });
   }
 };
 
-// Update section content
-exports.updateSectionContent = async (req, res) => {
+// Update all settings at once
+exports.updateAllSettings = async (req, res) => {
   try {
-    const { sectionId } = req.params;
-    const { title, subtitle } = req.body;
+    const { heroSlides, homeSections, categories, headerSettings, footerSettings } = req.body;
 
-    const settings = await Settings.findOne();
+    let settings = await Settings.findOne();
     if (!settings) {
-      return res.status(404).json({ message: 'Settings not found' });
+      settings = new Settings();
     }
 
-    const sectionIndex = settings.homeSections.findIndex(s => s.id === sectionId);
-    if (sectionIndex === -1) {
-      return res.status(404).json({ message: 'Section not found' });
-    }
+    if (heroSlides) settings.heroSlides = heroSlides;
+    if (homeSections) settings.homeSections = homeSections;
+    if (categories) settings.categories = categories;
+    if (headerSettings) settings.headerSettings = headerSettings;
+    if (footerSettings) settings.footerSettings = footerSettings;
 
-    // Update section content
-    settings.homeSections[sectionIndex] = {
-      ...settings.homeSections[sectionIndex],
-      title,
-      subtitle
-    };
-
+    settings.updatedAt = Date.now();
     await settings.save();
-    res.json(settings.homeSections[sectionIndex]);
+
+    res.json({
+      heroSlides: settings.heroSlides,
+      homeSections: settings.homeSections,
+      categories: settings.categories,
+      headerSettings: settings.headerSettings,
+      footerSettings: settings.footerSettings
+    });
   } catch (error) {
-    console.error('Error updating section content:', error);
-    res.status(500).json({ message: 'Error updating section content' });
+    console.error('Error updating all settings:', error);
+    res.status(500).json({ message: 'Error updating all settings' });
   }
 };
 
@@ -331,5 +369,60 @@ exports.updateFooterSettings = async (req, res) => {
   } catch (error) {
     console.error('Error updating footer settings:', error);
     res.status(500).json({ message: 'Error updating footer settings' });
+  }
+};
+
+// Reorder sections
+exports.reorderHomeSections = async (req, res) => {
+  try {
+    const { sections } = req.body;
+    
+    const settings = await Settings.findOne();
+    if (!settings) {
+      return res.status(404).json({ message: 'Settings not found' });
+    }
+
+    // Update sections with new order
+    settings.homeSections = sections.map((section, index) => ({
+      ...section,
+      order: index
+    }));
+
+    await settings.save();
+    res.json(settings.homeSections);
+  } catch (error) {
+    console.error('Error reordering home sections:', error);
+    res.status(500).json({ message: 'Error reordering home sections' });
+  }
+};
+
+// Update section content
+exports.updateSectionContent = async (req, res) => {
+  try {
+    const { sectionId } = req.params;
+    const { title, subtitle } = req.body;
+
+    const settings = await Settings.findOne();
+    if (!settings) {
+      return res.status(404).json({ message: 'Settings not found' });
+    }
+
+    const sectionIndex = settings.homeSections.findIndex(s => s.id === sectionId);
+    if (sectionIndex === -1) {
+      return res.status(404).json({ message: 'Section not found' });
+    }
+
+    // Update section content
+    settings.homeSections[sectionIndex] = {
+      ...settings.homeSections[sectionIndex],
+      title,
+      subtitle
+    };
+
+    await settings.save();
+    res.json(settings.homeSections[sectionIndex]);
+  } catch (error) {
+    console.error('Error updating section content:', error);
+    res.status(500).json({ message: 'Error updating section content' });
   }
 }; 
