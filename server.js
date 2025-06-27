@@ -74,6 +74,7 @@ app.use('/api/contact', require('./routes/contactRoutes'));
 app.use('/api/promocodes', require('./routes/promoCodeRoutes'));
 app.use('/api/offers', require('./routes/offerRoutes'));
 app.use('/api/vendors', require('./routes/vendorRoutes'));
+app.use('/wake-up', require('./routes/wakeUpRoutes'));
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -133,21 +134,6 @@ app.get('/cors-test', (req, res) => {
       'Access-Control-Allow-Credentials': res.get('Access-Control-Allow-Credentials'),
       'Access-Control-Allow-Methods': res.get('Access-Control-Allow-Methods')
     }
-  });
-});
-
-// Wake-up endpoint to prevent server sleep
-app.get('/wake-up', (req, res) => {
-  const origin = req.get('Origin');
-  console.log(`⏰ Wake-up ping from origin: ${origin || 'no-origin'}`);
-  
-  res.status(200).json({
-    success: true,
-    message: 'Server is awake and ready',
-    origin: origin || 'No Origin',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    memory: process.memoryUsage()
   });
 });
 
