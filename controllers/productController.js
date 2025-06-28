@@ -1,5 +1,6 @@
 const Product = require("../models/Product");
 const User = require('../models/User');
+const Order = require('../models/Order');
 
 // Helper function to clean product data before saving
 const cleanProductData = (product) => {
@@ -325,14 +326,13 @@ const updateProduct = async (req, res) => {
 const deleteProduct = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
-
     if (!product) return res.status(404).json({ message: "Product not found" });
 
-    await product.deleteOne();
-    return res.json({ message: "Product removed" });
+    await Product.deleteOne({ _id: req.params.id });
+
+    res.json({ message: "Product removed" });
   } catch (error) {
-    console.error("❌ Error deleting product:", error);
-    return res.status(500).json({ message: "Error deleting product" });
+    res.status(504).json({ message: "Product not found" });
   }
 };
 
@@ -344,10 +344,31 @@ const createProductReview = async (req, res) => {
     const { rating, comment } = req.body;
     const product = await Product.findById(req.params.id);
 
-    if (!product) return res.status(404).json({ message: "Product not found" });
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
+    }
 
-    const alreadyReviewed = product.reviews.find((r) => r.user.toString() === req.user._id.toString());
-    if (alreadyReviewed) return res.status(400).json({ message: "Product already reviewed" });
+    const alreadyReviewed = product.reviews.find(
+      (r) => r.user.toString() === req.user._id.toString()
+    );
+
+    if (alreadyReviewed) {
+      return res.status(400).json({ message: "Product already reviewed" });
+    }
+
+    // Check if user has purchased the product
+    const orders = await Order.find({
+      user: req.user._id,
+      "items.product": product._id,
+      status: "delivered", // Check for delivered orders
+    });
+
+    if (orders.length === 0) {
+      return res.status(401).json({
+        message:
+          "You can only review products you have purchased and that have been delivered.",
+      });
+    }
 
     const review = {
       name: req.user.name,
@@ -357,14 +378,18 @@ const createProductReview = async (req, res) => {
     };
 
     product.reviews.push(review);
+
     product.numReviews = product.reviews.length;
-    product.rating = product.reviews.reduce((acc, item) => item.rating + acc, 0) / product.reviews.length;
+
+    product.rating =
+      product.reviews.reduce((acc, item) => item.rating + acc, 0) /
+      product.reviews.length;
 
     await product.save();
-    return res.status(201).json({ message: "Review added" });
+    res.status(201).json({ message: "Review added" });
   } catch (error) {
-    console.error("❌ Error adding review:", error);
-    return res.status(400).json({ message: "Error adding review" });
+    console.error("Error adding review:", error);
+    res.status(400).json({ message: "Error adding review" });
   }
 };
 
