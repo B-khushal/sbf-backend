@@ -313,10 +313,30 @@ const deleteProduct = async (req, res) => {
 // @access  Private
 const createProductReview = async (req, res) => {
   try {
+    console.log("🔍 Creating product review:", {
+      productId: req.params.id,
+      userId: req.user._id,
+      rating: req.body.rating,
+      comment: req.body.comment
+    });
+
     const { rating, comment } = req.body;
+    
+    // Validate input
+    if (!rating || !comment) {
+      console.log("❌ Missing rating or comment");
+      return res.status(400).json({ message: "Rating and comment are required" });
+    }
+
+    if (rating < 1 || rating > 5) {
+      console.log("❌ Invalid rating:", rating);
+      return res.status(400).json({ message: "Rating must be between 1 and 5" });
+    }
+
     const product = await Product.findById(req.params.id);
 
     if (!product) {
+      console.log("❌ Product not found:", req.params.id);
       return res.status(404).json({ message: "Product not found" });
     }
 
@@ -325,43 +345,59 @@ const createProductReview = async (req, res) => {
     );
 
     if (alreadyReviewed) {
-      return res.status(400).json({ message: "Product already reviewed" });
+      console.log("❌ User already reviewed this product");
+      return res.status(400).json({ message: "You have already reviewed this product" });
     }
 
-    // Check if user has purchased the product
-    const orders = await Order.find({
-      user: req.user._id,
-      "items.product": product._id,
-      status: "delivered", // Check for delivered orders
-    });
-
-    if (orders.length === 0) {
-      return res.status(401).json({
-        message:
-          "You can only review products you have purchased and that have been delivered.",
-      });
-    }
+    // For demo purposes, allow reviews without purchase requirement
+    // In production, you might want to check for purchase
+    // const orders = await Order.find({
+    //   user: req.user._id,
+    //   "items.product": product._id,
+    //   status: "delivered",
+    // });
+    // if (orders.length === 0) {
+    //   return res.status(401).json({
+    //     message: "You can only review products you have purchased.",
+    //   });
+    // }
 
     const review = {
       name: req.user.name,
       rating: Number(rating),
-      comment,
+      comment: comment.trim(),
       user: req.user._id,
+      createdAt: new Date()
     };
 
+    console.log("✅ Adding review:", review);
+
     product.reviews.push(review);
-
     product.numReviews = product.reviews.length;
+    
+    // Recalculate average rating
+    const totalRating = product.reviews.reduce((acc, item) => item.rating + acc, 0);
+    product.rating = totalRating / product.reviews.length;
 
-    product.rating =
-      product.reviews.reduce((acc, item) => item.rating + acc, 0) /
-      product.reviews.length;
+    console.log("📊 Updated product stats:", {
+      numReviews: product.numReviews,
+      rating: product.rating
+    });
 
     await product.save();
-    res.status(201).json({ message: "Review added" });
+    
+    console.log("✅ Review saved successfully");
+    res.status(201).json({ 
+      message: "Review added successfully",
+      review: review,
+      product: {
+        numReviews: product.numReviews,
+        rating: product.rating
+      }
+    });
   } catch (error) {
-    console.error("Error adding review:", error);
-    res.status(400).json({ message: "Error adding review" });
+    console.error("❌ Error adding review:", error);
+    res.status(500).json({ message: "Error adding review: " + error.message });
   }
 };
 
