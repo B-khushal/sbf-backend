@@ -4,8 +4,12 @@
   "description": "Backend for MERN e-commerce application",
   "main": "server.js",
   "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js",
-    "dev": "nodemon server.js"
+    "server": "nodemon server.js",
+    "client": "npm start --prefix ../sbf-main",
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "sync-reviews": "node scripts/syncReviews.js"
   },
   "dependencies": {
     "@react-oauth/google": "^0.12.1",
