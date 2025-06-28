@@ -1,4 +1,9 @@
-require('dotenv').config({ path: '../.env' });
+const dotenv = require('dotenv');
+const path = require('path');
+
+// Load environment variables from the `server` directory
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+
 const mongoose = require('mongoose');
 const Product = require('../models/Product');
 const connectDB = require('../config/db');
