@@ -23,9 +23,12 @@ const createProductReview = async (req, res) => {
     console.log("🔍 Creating enhanced product review:", {
       productId: req.params.id,
       userId: req.user._id,
+      userName: req.user.name,
+      userEmail: req.user.email,
       rating,
       title: title?.substring(0, 20),
-      hasAdditionalRatings: !!(qualityRating || valueRating || deliveryRating)
+      hasAdditionalRatings: !!(qualityRating || valueRating || deliveryRating),
+      requestBody: req.body
     });
 
     // Enhanced validation
@@ -137,10 +140,16 @@ const createProductReview = async (req, res) => {
     const review = new Review(reviewData);
     await review.save();
 
-    // Update product rating and review count
-    await updateProductReviewStats(req.params.id);
-
     console.log("✅ Enhanced review created successfully");
+    console.log("📋 Review saved with ID:", review._id);
+    console.log("📊 Review data summary:", {
+      id: review._id,
+      product: review.product,
+      user: review.user,
+      rating: review.rating,
+      title: review.title,
+      status: review.status
+    });
 
     // Populate user data for response
     await review.populate('user', 'name');
@@ -221,6 +230,9 @@ const getProductReviews = async (req, res) => {
 
     const skip = (Number(page) - 1) * Number(limit);
 
+    console.log("🔍 Review filter:", filter);
+    console.log("🔍 Review sort:", sortObj);
+
     // Get reviews with pagination
     const reviews = await Review.find(filter)
       .populate('user', 'name')
@@ -230,11 +242,18 @@ const getProductReviews = async (req, res) => {
       .limit(Number(limit))
       .lean();
 
+    console.log("📋 Found reviews:", reviews.length);
+    console.log("📊 Review sample:", reviews.slice(0, 2));
+
     // Get total count for pagination
     const totalReviews = await Review.countDocuments(filter);
 
+    console.log("📊 Total reviews count:", totalReviews);
+
     // Get review statistics
     const stats = await Review.getProductReviewStats(productId);
+
+    console.log("📊 Review stats:", stats);
 
     // Get helpful reviews (separate from paginated results)
     const helpfulReviews = await Review.getHelpfulReviews(productId, 3);

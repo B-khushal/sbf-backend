@@ -1,6 +1,7 @@
 const Product = require("../models/Product");
 const User = require('../models/User');
 const Order = require('../models/Order');
+const Review = require('../models/Review');
 
 // Helper function to clean product data before saving
 const cleanProductData = (product) => {
@@ -71,6 +72,31 @@ const cleanProductData = (product) => {
   return product;
 };
 
+// Helper function to add real review statistics to products
+const addReviewStats = async (products) => {
+  const productArray = Array.isArray(products) ? products : [products];
+  
+  for (let product of productArray) {
+    // Get reviews for this product
+    const reviews = await Review.find({ 
+      product: product._id, 
+      status: 'approved' 
+    }).select('rating');
+    
+    // Calculate real statistics
+    if (reviews.length > 0) {
+      const totalRating = reviews.reduce((sum, review) => sum + review.rating, 0);
+      product.rating = totalRating / reviews.length;
+      product.numReviews = reviews.length;
+    } else {
+      product.rating = 0;
+      product.numReviews = 0;
+    }
+  }
+  
+  return Array.isArray(products) ? productArray : productArray[0];
+};
+
 // @desc Fetch all products (with pagination and filtering)
 // @route GET /api/products
 // @access Public
@@ -103,7 +129,10 @@ const getProducts = async (req, res) => {
       .skip(pageSize * (page - 1))
       .sort({ createdAt: -1 });
 
-    return res.json({ products, page, pages: Math.ceil(count / pageSize), total: count });
+    // Add real review statistics
+    const productsWithReviews = await addReviewStats(products);
+
+    return res.json({ products: productsWithReviews, page, pages: Math.ceil(count / pageSize), total: count });
   } catch (error) {
     console.error("❌ Error fetching products:", error);
     return res.status(500).json({ message: "Server Error: Failed to fetch products" });
@@ -118,7 +147,10 @@ const getProductById = async (req, res) => {
     const product = await Product.findById(req.params.id);
     if (!product) return res.status(404).json({ message: "Product not found" });
 
-    return res.json(product);
+    // Add real review statistics
+    const productWithReviews = await addReviewStats(product);
+
+    return res.json(productWithReviews);
   } catch (error) {
     console.error("❌ Invalid product ID:", error);
     return res.status(500).json({ message: "Invalid product ID" });
@@ -407,7 +439,11 @@ const createProductReview = async (req, res) => {
 const getTopProducts = async (req, res) => {
   try {
     const products = await Product.find({ hidden: { $ne: true } }).sort({ rating: -1 }).limit(4);
-    res.json(products);
+    
+    // Add real review statistics
+    const productsWithReviews = await addReviewStats(products);
+    
+    res.json(productsWithReviews);
   } catch (error) {
     res.status(500).json({ message: 'Error fetching top products' });
   }
@@ -421,7 +457,11 @@ const getFeaturedProducts = async (req, res) => {
     const products = await Product.find({ isFeatured: true, hidden: { $ne: true } }).limit(8);
     console.log("Featured Products Query:", { isFeatured: true, hidden: { $ne: true } });
     console.log("Fetched Featured Products:", products.map(p => ({ title: p.title, isFeatured: p.isFeatured })));
-    res.json(products);
+    
+    // Add real review statistics
+    const productsWithReviews = await addReviewStats(products);
+    
+    res.json(productsWithReviews);
   } catch (error) {
     console.error("Error fetching featured products:", error);
     res.status(500).json({ message: "Error fetching featured products" });
@@ -435,7 +475,11 @@ const getNewProducts = async (req, res) => {
   try {
     const products = await Product.find({ isNew: true, hidden: { $ne: true } }).limit(8);
     console.log("Fetched New Products:", products.map(p => ({ title: p.title, isNew: p.isNew })));
-    res.json(products);
+    
+    // Add real review statistics
+    const productsWithReviews = await addReviewStats(products);
+    
+    res.json(productsWithReviews);
   } catch (error) {
     console.error("Error fetching new products:", error);
     res.status(500).json({ message: 'Error fetching new products' });
@@ -466,7 +510,10 @@ const getAdminProducts = async (req, res) => {
       .skip(pageSize * (page - 1))
       .sort({ createdAt: -1 });
 
-    res.json({ products, page, pages: Math.ceil(count / pageSize), total: count });
+    // Add real review statistics
+    const productsWithReviews = await addReviewStats(products);
+
+    res.json({ products: productsWithReviews, page, pages: Math.ceil(count / pageSize), total: count });
   } catch (error) {
     console.error("Error fetching admin products:", error);
     res.status(500).json({ message: "Server Error: Failed to fetch admin products" });
@@ -556,7 +603,10 @@ const getProductsByCategory = async (req, res) => {
       .skip(pageSize * (page - 1))
       .sort({ createdAt: -1 });
 
-    res.json({ products, page, pages: Math.ceil(count / pageSize), total: count });
+    // Add real review statistics
+    const productsWithReviews = await addReviewStats(products);
+
+    res.json({ products: productsWithReviews, page, pages: Math.ceil(count / pageSize), total: count });
   } catch (error) {
     console.error(`Error fetching products for category ${req.params.category}:`, error);
     res.status(500).json({ message: 'Server Error' });

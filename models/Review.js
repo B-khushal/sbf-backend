@@ -183,7 +183,7 @@ reviewSchema.pre('save', async function(next) {
 // Static method to get review statistics for a product
 reviewSchema.statics.getProductReviewStats = async function(productId) {
   const stats = await this.aggregate([
-    { $match: { product: mongoose.Types.ObjectId(productId), status: 'approved' } },
+    { $match: { product: new mongoose.Types.ObjectId(productId), status: 'approved' } },
     {
       $group: {
         _id: null,
