@@ -6,7 +6,6 @@ const {
   createProduct,
   updateProduct,
   deleteProduct,
-  createProductReview,
   getTopProducts,
   getFeaturedProducts,
   getNewProducts,
@@ -18,6 +17,11 @@ const {
   addToWishlist,
   removeFromWishlist,
 } = require('../controllers/productController');
+
+const {
+  createProductReview,
+  getProductReviews,
+} = require('../controllers/reviewController');
 const { protect, admin } = require('../middleware/authMiddleware');
 const Product = require('../models/Product');
 const mongoose = require('mongoose');
@@ -85,7 +89,9 @@ router.route('/:id')
   .put(protect, admin, updateProduct)
   .delete(protect, admin, deleteProduct);
 
-router.route('/:id/reviews').post(protect, createProductReview);
+router.route('/:id/reviews')
+  .get(getProductReviews)
+  .post(protect, createProductReview);
 
 // Admin routes for product management
 router.get('/admin/list', protect, admin, getAdminProducts);

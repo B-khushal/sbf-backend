@@ -1,30 +1,5 @@
 ﻿const mongoose = require("mongoose");
 
-const reviewSchema = mongoose.Schema(
-  {
-    user: {
-      type: mongoose.Schema.Types.ObjectId,
-      required: true,
-      ref: "User",
-    },
-    name: {
-      type: String,
-      required: true,
-    },
-    rating: {
-      type: Number,
-      required: true,
-    },
-    comment: {
-      type: String,
-      required: true,
-    },
-  },
-  {
-    timestamps: true,
-  }
-);
-
 const productSchema = mongoose.Schema(
   {
     user: { 
@@ -62,7 +37,6 @@ const productSchema = mongoose.Schema(
       type: String,
       required: true,
     },
-    reviews: [reviewSchema],
     rating: {
       type: Number,
       required: true,
@@ -109,6 +83,18 @@ const productSchema = mongoose.Schema(
     suppressReservedKeysWarning: true,
   }
 );
+
+// Virtual for getting reviews from Review model
+productSchema.virtual('reviews', {
+  ref: 'Review',
+  localField: '_id',
+  foreignField: 'product',
+  options: { sort: { createdAt: -1 } }
+});
+
+// Ensure virtual fields are serialized
+productSchema.set('toJSON', { virtuals: true });
+productSchema.set('toObject', { virtuals: true });
 
 const Product = mongoose.model("Product", productSchema);
 
