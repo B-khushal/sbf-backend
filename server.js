@@ -29,32 +29,36 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:5173',
   'https://sbflorist.in',
-  'https://www.sbflorist.in', // Added this from the logs
+  'https://www.sbflorist.in',
   'https://sbf-backend.onrender.com',
   'https://sbf-florist.vercel.app',
   'https://sbf-florist.netlify.app'
 ];
 
-app.use(cors({
-  origin: function (origin, callback) {
+const corsOptions = {
+  origin: (origin, callback) => {
     // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      // If the origin is in the whitelist, allow it
+    // or if the origin is in our whitelist
+    if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      // Otherwise, block it
-      callback(new Error('Not allowed by CORS'));
+      callback(new Error(`Origin '${origin}' not allowed by CORS`));
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
-  optionsSuccessStatus: 200 // For legacy browser support
-}));
+  optionsSuccessStatus: 200, // For legacy browser support
+  preflightContinue: true // Pass preflight requests to route handlers
+};
 
-// --- End of CORS Configuration ---
+// Use CORS with options
+app.use(cors(corsOptions));
+
+// Explicitly handle preflight requests
+app.options('*', cors(corsOptions), (req, res) => {
+  res.sendStatus(204);
+});
 
 // Middleware
 app.use(express.json());
