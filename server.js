@@ -24,41 +24,14 @@ initEmailService();
 const app = express();
 
 // --- Simplified and Corrected CORS Configuration ---
-const allowedOrigins = [
-  'http://localhost:8080',
-  'http://localhost:3000',
-  'http://localhost:5173',
-  'https://sbflorist.in',
-  'https://www.sbflorist.in',
-  'https://sbf-backend.onrender.com',
-  'https://sbf-florist.vercel.app',
-  'https://sbf-florist.netlify.app'
-];
-
 const corsOptions = {
-  origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    // or if the origin is in our whitelist
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error(`Origin '${origin}' not allowed by CORS`));
-    }
-  },
+  origin: 'https://www.sbflorist.in',
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
-  optionsSuccessStatus: 200, // For legacy browser support
-  preflightContinue: true // Pass preflight requests to route handlers
 };
 
-// Use CORS with options
 app.use(cors(corsOptions));
-
-// Explicitly handle preflight requests
-app.options('*', cors(corsOptions), (req, res) => {
-  res.sendStatus(204);
-});
 
 // Middleware
 app.use(express.json());
