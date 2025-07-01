@@ -5,6 +5,7 @@ const productSchema = mongoose.Schema(
     title: {
       type: String,
       required: true,
+      trim: true,
     },
     description: {
       type: String,
@@ -28,14 +29,15 @@ const productSchema = mongoose.Schema(
     price: {
       type: Number,
       required: true,
-      default: 0,
+      min: 0,
     },
     countInStock: {
       type: Number,
       required: true,
+      min: 0,
       default: 0,
     },
-    isFeatured: {
+    featured: {
       type: Boolean,
       default: false,
     },
@@ -43,12 +45,14 @@ const productSchema = mongoose.Schema(
       type: Boolean,
       default: false,
     },
-    hidden: {
+    isHidden: {
       type: Boolean,
       default: false,
     },
     discount: {
       type: Number,
+      min: 0,
+      max: 100,
       default: 0,
     },
     details: {
@@ -58,7 +62,7 @@ const productSchema = mongoose.Schema(
     },
     vendor: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Vendor",
+      ref: "User",
     },
     tags: [
       {
@@ -75,7 +79,7 @@ const productSchema = mongoose.Schema(
 );
 
 // ⚡ PERFORMANCE: Database indexes for fast queries
-productSchema.index({ hidden: 1, isFeatured: 1, createdAt: -1 }); // Featured products
+productSchema.index({ hidden: 1, featured: 1, createdAt: -1 }); // Featured products
 productSchema.index({ hidden: 1, isNew: 1, createdAt: -1 }); // New products
 productSchema.index({ hidden: 1, category: 1, createdAt: -1 }); // Category filtering
 productSchema.index({ hidden: 1, categories: 1, createdAt: -1 }); // Multi-category search

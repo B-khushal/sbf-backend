@@ -1,8 +1,7 @@
 const Product = require("../models/Product");
 const User = require('../models/User');
 const Order = require('../models/Order');
-const Review = require('../models/Review');
-const mongoose = require('mongoose');
+const cloudinary = require('../config/cloudinary');
 
 // Helper function to clean product data before saving
 const cleanProductData = (product) => {
@@ -84,71 +83,99 @@ const addReviewStats = async (products) => {
 // @access  Public
 const getProducts = async (req, res) => {
   try {
-    const pageSize = 12;
-    const page = Number(req.query.page) || 1;
-    const category = req.query.category;
-    const search = req.query.search;
-    const sort = req.query.sort || '-createdAt';
-    const minPrice = Number(req.query.minPrice);
-    const maxPrice = Number(req.query.maxPrice);
+    const { 
+      category,
+      search,
+      minPrice,
+      maxPrice,
+      sortBy,
+      page = 1,
+      limit = 10,
+      featured,
+      new: isNew,
+      vendor
+    } = req.query;
 
-    // Build query
-    const query = { hidden: { $ne: true } };
+    const query = {};
 
-    // Add category filter if provided
-    if (category) {
-      query.category = category;
-    }
-
-    // Add search filter if provided
-    if (search) {
-      query.$text = { $search: search };
-    }
-
-    // Add price range filter if provided
-    if (!isNaN(minPrice) || !isNaN(maxPrice)) {
+    // Apply filters
+    if (category) query.category = category;
+    if (minPrice || maxPrice) {
       query.price = {};
-      if (!isNaN(minPrice)) query.price.$gte = minPrice;
-      if (!isNaN(maxPrice)) query.price.$lte = maxPrice;
+      if (minPrice) query.price.$gte = Number(minPrice);
+      if (maxPrice) query.price.$lte = Number(maxPrice);
+    }
+    if (search) {
+      query.$or = [
+        { title: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } }
+      ];
+    }
+    if (featured) query.featured = featured === 'true';
+    if (isNew) query.isNew = isNew === 'true';
+    if (vendor) query.vendor = vendor;
+
+    // Count total documents for pagination
+    const total = await Product.countDocuments(query);
+
+    // Apply sorting
+    let sortOptions = {};
+    if (sortBy) {
+      switch (sortBy) {
+        case 'price_asc':
+          sortOptions.price = 1;
+          break;
+        case 'price_desc':
+          sortOptions.price = -1;
+          break;
+        case 'newest':
+          sortOptions.createdAt = -1;
+          break;
+        case 'oldest':
+          sortOptions.createdAt = 1;
+          break;
+        default:
+          sortOptions.createdAt = -1;
+      }
+    } else {
+      sortOptions.createdAt = -1; // Default sort by newest
     }
 
-    const count = await Product.countDocuments(query);
+    // Get paginated products
     const products = await Product.find(query)
-      .sort(sort)
-      .select('title images price category discount isFeatured isNew')
-      .skip(pageSize * (page - 1))
-      .limit(pageSize)
-      .lean();
+      .sort(sortOptions)
+      .skip((page - 1) * limit)
+      .limit(Number(limit))
+      .populate('vendor', 'name email');
 
     res.json({
       products,
-      page,
-      pages: Math.ceil(count / pageSize),
-      total: count
+      page: Number(page),
+      totalPages: Math.ceil(total / limit),
+      total
     });
   } catch (error) {
     console.error('Error in getProducts:', error);
-    res.status(500).json({ message: 'Server Error' });
+    res.status(500).json({ message: 'Error fetching products' });
   }
 };
 
 // @desc    Get single product
 // @route   GET /api/products/:id
 // @access  Public
-const getProductById = async (req, res) => {
+const getProduct = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id)
-      .populate('vendor', 'name email')
-      .lean();
-
-    if (product) {
-      res.json(product);
-    } else {
-      res.status(404).json({ message: 'Product not found' });
+      .populate('vendor', 'name email');
+    
+    if (!product) {
+      return res.status(404).json({ message: 'Product not found' });
     }
+    
+    res.json(product);
   } catch (error) {
-    console.error('Error in getProductById:', error);
-    res.status(500).json({ message: 'Server Error' });
+    console.error('Error in getProduct:', error);
+    res.status(500).json({ message: 'Error fetching product' });
   }
 };
 
@@ -162,41 +189,31 @@ const createProduct = async (req, res) => {
       description,
       price,
       category,
-      categories,
       countInStock,
       images,
-      isFeatured,
+      featured,
       isNew,
-      discount,
       details,
-      vendor,
-      tags,
-      seoTitle,
-      seoDescription,
-      seoKeywords
+      discount
     } = req.body;
 
+    // Create product
     const product = new Product({
       title,
       description,
       price,
       category,
-      categories: categories || [],
       countInStock,
       images,
-      isFeatured: isFeatured || false,
-      isNew: isNew || false,
-      discount: discount || 0,
-      details: details || {},
-      vendor,
-      tags: tags || [],
-      seoTitle,
-      seoDescription,
-      seoKeywords: seoKeywords || []
+      featured,
+      isNew,
+      details,
+      discount,
+      vendor: req.user.isAdmin ? null : req.user._id
     });
 
-    const createdProduct = await product.save();
-    res.status(201).json(createdProduct);
+    const savedProduct = await product.save();
+    res.status(201).json(savedProduct);
   } catch (error) {
     console.error('Error in createProduct:', error);
     res.status(500).json({ message: 'Error creating product' });
@@ -208,50 +225,24 @@ const createProduct = async (req, res) => {
 // @access  Private/Admin
 const updateProduct = async (req, res) => {
   try {
-    const {
-      title,
-      description,
-      price,
-      category,
-      categories,
-      countInStock,
-      images,
-      isFeatured,
-      isNew,
-      discount,
-      details,
-      vendor,
-      tags,
-      seoTitle,
-      seoDescription,
-      seoKeywords
-    } = req.body;
-
     const product = await Product.findById(req.params.id);
-
-    if (product) {
-      product.title = title || product.title;
-      product.description = description || product.description;
-      product.price = price || product.price;
-      product.category = category || product.category;
-      product.categories = categories || product.categories;
-      product.countInStock = countInStock || product.countInStock;
-      product.images = images || product.images;
-      product.isFeatured = isFeatured !== undefined ? isFeatured : product.isFeatured;
-      product.isNew = isNew !== undefined ? isNew : product.isNew;
-      product.discount = discount !== undefined ? discount : product.discount;
-      product.details = details || product.details;
-      product.vendor = vendor || product.vendor;
-      product.tags = tags || product.tags;
-      product.seoTitle = seoTitle || product.seoTitle;
-      product.seoDescription = seoDescription || product.seoDescription;
-      product.seoKeywords = seoKeywords || product.seoKeywords;
-
-      const updatedProduct = await product.save();
-      res.json(updatedProduct);
-    } else {
-      res.status(404).json({ message: 'Product not found' });
+    
+    if (!product) {
+      return res.status(404).json({ message: 'Product not found' });
     }
+
+    // Check if user has permission to update
+    if (!req.user.isAdmin && (!product.vendor || product.vendor.toString() !== req.user._id.toString())) {
+      return res.status(403).json({ message: 'Not authorized to update this product' });
+    }
+
+    const updatedProduct = await Product.findByIdAndUpdate(
+      req.params.id,
+      { $set: req.body },
+      { new: true }
+    );
+
+    res.json(updatedProduct);
   } catch (error) {
     console.error('Error in updateProduct:', error);
     res.status(500).json({ message: 'Error updating product' });
@@ -264,13 +255,26 @@ const updateProduct = async (req, res) => {
 const deleteProduct = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
-
-    if (product) {
-      await product.deleteOne();
-      res.json({ message: 'Product removed' });
-    } else {
-      res.status(404).json({ message: 'Product not found' });
+    
+    if (!product) {
+      return res.status(404).json({ message: 'Product not found' });
     }
+
+    // Check if user has permission to delete
+    if (!req.user.isAdmin && (!product.vendor || product.vendor.toString() !== req.user._id.toString())) {
+      return res.status(403).json({ message: 'Not authorized to delete this product' });
+    }
+
+    // Delete product images from cloudinary
+    if (product.images && product.images.length > 0) {
+      for (const imageUrl of product.images) {
+        const publicId = imageUrl.split('/').pop().split('.')[0];
+        await cloudinary.uploader.destroy(publicId);
+      }
+    }
+
+    await product.deleteOne();
+    res.json({ message: 'Product deleted' });
   } catch (error) {
     console.error('Error in deleteProduct:', error);
     res.status(500).json({ message: 'Error deleting product' });
@@ -298,15 +302,13 @@ const getTopProducts = async (req, res) => {
 // @access  Public
 const getFeaturedProducts = async (req, res) => {
   try {
-    const products = await Product.find({ isFeatured: true, hidden: { $ne: true } })
-      .select('title images price category discount')
-      .sort({ createdAt: -1 })
-      .limit(8)
-      .lean();
+    const products = await Product.find({ featured: true })
+      .limit(6)
+      .populate('vendor', 'name email');
     res.json(products);
   } catch (error) {
     console.error('Error in getFeaturedProducts:', error);
-    res.status(500).json({ message: 'Server Error' });
+    res.status(500).json({ message: 'Error fetching featured products' });
   }
 };
 
@@ -315,15 +317,13 @@ const getFeaturedProducts = async (req, res) => {
 // @access  Public
 const getNewProducts = async (req, res) => {
   try {
-    const products = await Product.find({ isNew: true, hidden: { $ne: true } })
-      .select('title images price category discount')
-      .sort({ createdAt: -1 })
-      .limit(8)
-      .lean();
+    const products = await Product.find({ isNew: true })
+      .limit(6)
+      .populate('vendor', 'name email');
     res.json(products);
   } catch (error) {
     console.error('Error in getNewProducts:', error);
-    res.status(500).json({ message: 'Server Error' });
+    res.status(500).json({ message: 'Error fetching new products' });
   }
 };
 
@@ -332,24 +332,26 @@ const getNewProducts = async (req, res) => {
 // @access  Private/Admin
 const getAdminProducts = async (req, res) => {
   try {
-    const pageSize = 10;
-    const page = Number(req.query.page) || 1;
+    const { page = 1, limit = 10 } = req.query;
+    
+    const query = req.user.isAdmin ? {} : { vendor: req.user._id };
+    const total = await Product.countDocuments(query);
 
-    const count = await Product.countDocuments({});
-    const products = await Product.find({})
+    const products = await Product.find(query)
       .sort({ createdAt: -1 })
-      .skip(pageSize * (page - 1))
-      .limit(pageSize)
-      .lean();
+      .skip((page - 1) * limit)
+      .limit(Number(limit))
+      .populate('vendor', 'name email');
 
     res.json({
       products,
-      page,
-      pages: Math.ceil(count / pageSize),
+      page: Number(page),
+      totalPages: Math.ceil(total / limit),
+      total
     });
   } catch (error) {
     console.error('Error in getAdminProducts:', error);
-    res.status(500).json({ message: 'Server Error' });
+    res.status(500).json({ message: 'Error fetching admin products' });
   }
 };
 
@@ -359,16 +361,23 @@ const getAdminProducts = async (req, res) => {
 const toggleProductVisibility = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
-    if (product) {
-      product.hidden = !product.hidden;
-      const updatedProduct = await product.save();
-      res.json(updatedProduct);
-    } else {
-      res.status(404).json({ message: 'Product not found' });
+    
+    if (!product) {
+      return res.status(404).json({ message: 'Product not found' });
     }
+
+    // Check if user has permission to update
+    if (!req.user.isAdmin && (!product.vendor || product.vendor.toString() !== req.user._id.toString())) {
+      return res.status(403).json({ message: 'Not authorized to update this product' });
+    }
+
+    product.isHidden = !product.isHidden;
+    await product.save();
+
+    res.json(product);
   } catch (error) {
     console.error('Error in toggleProductVisibility:', error);
-    res.status(500).json({ message: 'Server Error' });
+    res.status(500).json({ message: 'Error toggling product visibility' });
   }
 };
 
@@ -377,27 +386,30 @@ const toggleProductVisibility = async (req, res) => {
 // @access  Private/Admin
 const getLowStockProducts = async (req, res) => {
   try {
-    const threshold = 5; // Define low stock threshold
-    const products = await Product.find({ countInStock: { $lte: threshold } })
+    const query = req.user.isAdmin ? {} : { vendor: req.user._id };
+    query.countInStock = { $lte: 10 };
+
+    const products = await Product.find(query)
       .sort({ countInStock: 1 })
-      .lean();
+      .populate('vendor', 'name email');
+
     res.json(products);
   } catch (error) {
     console.error('Error in getLowStockProducts:', error);
-    res.status(500).json({ message: 'Server Error' });
+    res.status(500).json({ message: 'Error fetching low stock products' });
   }
 };
 
 // @desc    Get product categories
 // @route   GET /api/products/categories
 // @access  Public
-const getProductCategories = async (req, res) => {
+const getCategories = async (req, res) => {
   try {
-    const categories = await Product.distinct('category', { hidden: { $ne: true } });
+    const categories = await Product.distinct('category');
     res.json(categories);
   } catch (error) {
-    console.error('Error in getProductCategories:', error);
-    res.status(500).json({ message: 'Server Error' });
+    console.error('Error in getCategories:', error);
+    res.status(500).json({ message: 'Error fetching categories' });
   }
 };
 
@@ -406,34 +418,26 @@ const getProductCategories = async (req, res) => {
 // @access  Public
 const getProductsByCategory = async (req, res) => {
   try {
-    const pageSize = 12;
-    const page = Number(req.query.page) || 1;
-    const category = req.params.category;
+    const { category } = req.params;
+    const { page = 1, limit = 10 } = req.query;
 
-    const count = await Product.countDocuments({
-      category,
-      hidden: { $ne: true }
-    });
+    const query = { category };
+    const total = await Product.countDocuments(query);
 
-    const products = await Product.find({
-      category,
-      hidden: { $ne: true }
-    })
-      .select('title images price category discount')
-      .sort({ createdAt: -1 })
-      .skip(pageSize * (page - 1))
-      .limit(pageSize)
-      .lean();
+    const products = await Product.find(query)
+      .skip((page - 1) * limit)
+      .limit(Number(limit))
+      .populate('vendor', 'name email');
 
     res.json({
       products,
-      page,
-      pages: Math.ceil(count / pageSize),
-      total: count
+      page: Number(page),
+      totalPages: Math.ceil(total / limit),
+      total
     });
   } catch (error) {
     console.error('Error in getProductsByCategory:', error);
-    res.status(500).json({ message: 'Server Error' });
+    res.status(500).json({ message: 'Error fetching products by category' });
   }
 };
 
@@ -442,22 +446,18 @@ const getProductsByCategory = async (req, res) => {
 // @access  Private
 const addToWishlist = async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id);
-    if (!product) {
-      return res.status(404).json({ message: 'Product not found' });
-    }
-
     const user = await User.findById(req.user._id);
-    
-    if (!user.wishlist.includes(product._id)) {
-      user.wishlist.push(product._id);
+    const productId = req.params.id;
+
+    if (!user.wishlist.includes(productId)) {
+      user.wishlist.push(productId);
       await user.save();
     }
 
     res.json({ message: 'Product added to wishlist' });
   } catch (error) {
     console.error('Error in addToWishlist:', error);
-    res.status(500).json({ message: 'Server Error' });
+    res.status(500).json({ message: 'Error adding product to wishlist' });
   }
 };
 
@@ -467,22 +467,21 @@ const addToWishlist = async (req, res) => {
 const removeFromWishlist = async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
-    
-    user.wishlist = user.wishlist.filter(
-      (id) => id.toString() !== req.params.id
-    );
+    const productId = req.params.id;
+
+    user.wishlist = user.wishlist.filter(id => id.toString() !== productId);
     await user.save();
 
     res.json({ message: 'Product removed from wishlist' });
   } catch (error) {
     console.error('Error in removeFromWishlist:', error);
-    res.status(500).json({ message: 'Server Error' });
+    res.status(500).json({ message: 'Error removing product from wishlist' });
   }
 };
 
 module.exports = {
   getProducts,
-  getProductById,
+  getProduct,
   createProduct,
   updateProduct,
   deleteProduct,
@@ -492,7 +491,7 @@ module.exports = {
   getAdminProducts,
   toggleProductVisibility,
   getLowStockProducts,
-  getProductCategories,
+  getCategories,
   getProductsByCategory,
   addToWishlist,
   removeFromWishlist,

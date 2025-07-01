@@ -4,6 +4,21 @@ const cors = require('cors');
 const morgan = require('morgan');
 const connectDB = require('./config/db');
 const path = require('path');
+const { notFound, errorHandler } = require('./middleware/errorMiddleware');
+const authRoutes = require('./routes/authRoutes');
+const userRoutes = require('./routes/userRoutes');
+const productRoutes = require('./routes/productRoutes');
+const orderRoutes = require('./routes/orderRoutes');
+const uploadRoutes = require('./routes/uploadRoutes');
+const contactRoutes = require('./routes/contactRoutes');
+const vendorRoutes = require('./routes/vendorRoutes');
+const promoCodeRoutes = require('./routes/promoCodeRoutes');
+const offerRoutes = require('./routes/offerRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
+const settingsRoutes = require('./routes/settingsRoutes');
+const analyticsRoutes = require('./routes/analyticsRoutes');
+const dashboardRoutes = require('./routes/dashboardRoutes');
+const wakeUpRoutes = require('./routes/wakeUpRoutes');
 
 // Load environment variables
 dotenv.config();
@@ -124,21 +139,20 @@ app.use((req, res, next) => {
 app.use(morgan('dev'));
 
 // Routes
-app.use('/api/products', require('./routes/productRoutes'));
-app.use('/api/users', require('./routes/userRoutes'));
-app.use('/api/orders', require('./routes/orderRoutes'));
-app.use('/api/auth', require('./routes/authRoutes'));
-app.use('/api/uploads', require('./routes/uploadRoutes'));
-app.use('/api/notifications', require('./routes/notificationRoutes'));
-app.use('/api/settings', require('./routes/settingsRoutes'));
-app.use('/api/dashboard', require('./routes/dashboardRoutes'));
-app.use('/api/analytics', require('./routes/analyticsRoutes'));
-app.use('/api/contact', require('./routes/contactRoutes'));
-app.use('/api/promocodes', require('./routes/promoCodeRoutes'));
-app.use('/api/offers', require('./routes/offerRoutes'));
-app.use('/api/vendors', require('./routes/vendorRoutes'));
-app.use('/api/reviews', require('./routes/reviewRoutes'));
-app.use('/wake-up', require('./routes/wakeUpRoutes'));
+app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/products', productRoutes);
+app.use('/api/orders', orderRoutes);
+app.use('/api/upload', uploadRoutes);
+app.use('/api/contact', contactRoutes);
+app.use('/api/vendors', vendorRoutes);
+app.use('/api/promo-codes', promoCodeRoutes);
+app.use('/api/offers', offerRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/settings', settingsRoutes);
+app.use('/api/analytics', analyticsRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/wake-up', wakeUpRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -267,6 +281,10 @@ app.use((req, res) => {
     method: req.method
   });
 });
+
+// Error handling
+app.use(notFound);
+app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 
