@@ -15,6 +15,10 @@ const {
   getUpcomingDeliveries,
   getDeliveryCalendar,
   testDeliveryEmail,
+  addOrderItems,
+  getMyOrders,
+  cancelOrder,
+  getOrderStats,
 } = require('../controllers/orderController');
 
 router.post('/', protect, createOrder);
@@ -45,5 +49,15 @@ router.post('/next-number', getNextOrderNumber);
 // Razorpay specific routes
 router.post('/create-razorpay-order', protect, createRazorpayOrder);
 router.post('/verify-payment', protect, verifyRazorpayPayment);
+
+// @route   GET /api/orders/stats
+// @desc    Get order statistics
+// @access  Private/Admin
+router.route('/stats').get(protect, admin, getOrderStats);
+
+// @route   PUT /api/orders/:id/cancel
+// @desc    Cancel order
+// @access  Private
+router.route('/:id/cancel').put(protect, cancelOrder);
 
 module.exports = router;

@@ -6,7 +6,8 @@ const { createOrder: createRazorpayOrder, verifyPayment } = require('../services
 const Notification = require('../models/Notification');
 const { admin } = require('../middleware/authMiddleware');
 const { createOrderNotification } = require('./notificationController');
-const { sendEmailNotification, sendDeliveryConfirmationWithInvoice } = require('../services/emailNotificationService');
+const { sendEmailNotification, sendDeliveryConfirmationWithInvoice, sendOrderConfirmationEmail } = require('../services/emailNotificationService');
+const { sendNotification } = require('../services/notificationService');
 
 // Helper function to recursively flatten arrays and extract strings
 const flattenToStrings = (value) => {
@@ -115,212 +116,54 @@ const cleanProductData = (product) => {
 // @desc    Create new order
 // @route   POST /api/orders
 // @access  Private
-const createOrder = async (req, res) => {
+const addOrderItems = async (req, res) => {
   try {
-    // Debug logs
-    console.log('User from request:', req.user);
-    console.log('Received order data:', JSON.stringify(req.body, null, 2));
+    const {
+      items,
+      shippingAddress,
+      paymentMethod,
+      itemsPrice,
+      taxPrice,
+      shippingPrice,
+      totalPrice,
+      promoCode,
+      discountAmount,
+    } = req.body;
 
-    const { shippingDetails, items, paymentDetails, totalAmount, giftDetails, currency, currencyRate, originalCurrency } = req.body;
-
-    // Validate required data
     if (!items || items.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Order must contain items'
-      });
+      return res.status(400).json({ message: 'No order items' });
     }
 
-    if (!req.user || !req.user._id) {
-      return res.status(401).json({
-        success: false,
-        message: 'User not authenticated'
-      });
-    }
-
-    // Generate order number in YYMM-XXX-DD format
-    const date = new Date();
-    const year = date.getFullYear().toString().slice(-2);
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const day = date.getDate().toString().padStart(2, '0');
-    
-    // Find the last order for the current year and month
-    const lastOrder = await Order.findOne({
-      orderNumber: new RegExp(`^${year}${month}`)
-    }, {}, { sort: { 'orderNumber': -1 } });
-
-    let sequence = '001';
-    if (lastOrder) {
-      // Extract the sequence number from the last order (positions 4-6 in YYMMDDDDD format)
-      const lastSequence = parseInt(lastOrder.orderNumber.substring(4, 7));
-      sequence = (lastSequence + 1).toString().padStart(3, '0');
-    }
-
-    const orderNumber = `${year}${month}${sequence}${day}`;
-
-    // Create the order object with all required fields
-    const orderData = {
-      orderNumber,
+    const order = new Order({
       user: req.user._id,
-      shippingDetails: {
-        fullName: shippingDetails.fullName,
-        email: shippingDetails.email,
-        phone: shippingDetails.phone,
-        address: shippingDetails.address,
-        apartment: shippingDetails.apartment || '',
-        city: shippingDetails.city,
-        state: shippingDetails.state,
-        zipCode: shippingDetails.zipCode,
-        notes: shippingDetails.notes || '',
-        deliveryDate: shippingDetails.deliveryDate,
-        timeSlot: shippingDetails.timeSlot
-      },
-      items: items.map(item => ({
-        product: item.product,
-        quantity: item.quantity,
-        price: item.price,
-        finalPrice: item.finalPrice
-      })),
-      paymentDetails: {
-        method: paymentDetails.method,
-        razorpayOrderId: paymentDetails.razorpayOrderId,
-        razorpayPaymentId: paymentDetails.razorpayPaymentId,
-        razorpaySignature: paymentDetails.razorpaySignature
-      },
-      totalAmount,
-      currency: currency || 'INR',
-      currencyRate: currencyRate || 1,
-      originalCurrency: originalCurrency || currency || 'INR',
-      status: 'order_placed'
-    };
-
-    // Add gift details if present
-    if (giftDetails) {
-      orderData.giftDetails = giftDetails;
-    }
-
-    console.log('Creating order with data:', JSON.stringify(orderData, null, 2));
-
-    const order = new Order(orderData);
-    const savedOrder = await order.save();
-
-    console.log('Order saved successfully:', JSON.stringify(savedOrder, null, 2));
-
-    // Send notifications after order is successfully created
-    try {
-      // Get customer details
-      const customer = await User.findById(req.user._id);
-      
-      // Populate product details for notifications
-      const populatedOrder = await Order.findById(savedOrder._id)
-        .populate({
-          path: 'items.product',
-          select: 'name title price images'
-        });
-
-      // Prepare notification data
-      const notificationData = {
-        order: populatedOrder,
-        customer: {
-          name: customer.name,
-          email: customer.email,
-          phone: customer.phone || populatedOrder.shippingDetails.phone
-        },
-        items: populatedOrder.items
-      };
-
-      // Send email notification (includes both customer and admin emails)
-      const emailResult = await sendEmailNotification(notificationData);
-      console.log('Email notification result:', emailResult);
-      
-      // Create admin notification for real-time updates
-      try {
-        const adminNotification = await createOrderNotification({
-          orderId: savedOrder._id,
-          orderNumber: savedOrder.orderNumber,
-          customerName: customer.name,
-          amount: savedOrder.totalAmount,
-          currency: savedOrder.currency || 'INR'
-        });
-        console.log('✅ Admin notification created successfully for order:', savedOrder.orderNumber);
-        
-        // Store in a global variable for real-time polling (optional backup)
-        global.latestNotifications = global.latestNotifications || [];
-        global.latestNotifications.unshift({
-          id: adminNotification.id || `order-${Date.now()}`,
-          type: 'order',
-          title: '🎉 New Order Received!',
-          message: `Order ${savedOrder.orderNumber} placed by ${customer.name}. Amount: ${savedOrder.currency === 'INR' ? '₹' : '$'}${savedOrder.totalAmount}`,
-          createdAt: new Date().toISOString(),
-          isRead: false,
-          orderId: savedOrder._id,
-          orderNumber: savedOrder.orderNumber
-        });
-        
-        // Keep only last 50 notifications in memory
-        if (global.latestNotifications.length > 50) {
-          global.latestNotifications = global.latestNotifications.slice(0, 50);
-        }
-        
-        console.log('📨 Notification added to global notifications for real-time polling');
-        
-      } catch (adminNotificationError) {
-        console.error('❌ Error creating admin notification:', adminNotificationError);
-      }
-      
-      // Add notification status to response
-      savedOrder.emailNotificationStatus = emailResult;
-      
-    } catch (notificationError) {
-      console.error('❌ Error sending order notifications:', notificationError);
-      // Don't fail the order creation if notifications fail
-    }
-
-    res.status(201).json({
-      success: true,
-      order: savedOrder
+      items,
+      shippingAddress,
+      paymentMethod,
+      itemsPrice,
+      taxPrice,
+      shippingPrice,
+      totalPrice,
+      promoCode,
+      discountAmount,
     });
+
+    const createdOrder = await order.save();
+
+    // Send order confirmation email
+    await sendOrderConfirmationEmail(req.user.email, createdOrder);
+
+    // Send notification
+    await sendNotification(req.user._id, {
+      title: 'Order Placed',
+      message: `Your order #${createdOrder._id} has been placed successfully`,
+      type: 'order',
+      orderId: createdOrder._id,
+    });
+
+    res.status(201).json(createdOrder);
   } catch (error) {
-    console.error('Detailed error creating order:', error);
-    console.error('Error stack:', error.stack);
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Error creating order',
-      error: error.stack // Remove this in production
-    });
-  }
-};
-
-// Function to get the next order number (useful for previews)
-const getNextOrderNumber = async (req, res) => {
-  try {
-    const date = new Date();
-    const year = date.getFullYear().toString().slice(-2);
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const day = date.getDate().toString().padStart(2, '0');
-    
-    const lastOrder = await Order.findOne({
-      orderNumber: new RegExp(`^${year}${month}`)
-    }, {}, { sort: { 'orderNumber': -1 } });
-
-    let sequence = '001';
-    if (lastOrder) {
-      const lastSequence = parseInt(lastOrder.orderNumber.substring(4, 7));
-      sequence = (lastSequence + 1).toString().padStart(3, '0');
-    }
-
-    const nextOrderNumber = `${year}${month}${sequence}${day}`;
-    
-    res.json({
-      success: true,
-      nextOrderNumber
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error generating next order number',
-      error: error.message
-    });
+    console.error('Error in addOrderItems:', error);
+    res.status(500).json({ message: 'Server Error' });
   }
 };
 
@@ -330,20 +173,22 @@ const getNextOrderNumber = async (req, res) => {
 const getOrderById = async (req, res) => {
   try {
     const order = await Order.findById(req.params.id)
-      .populate({
-        path: 'items.product',
-        select: 'title price images sku discount' // Include all needed fields
-      })
-      .populate('user', 'name email');
+      .populate('user', 'name email')
+      .populate('items.product', 'title images price countInStock');
 
-    if (order) {
-      res.json(order);
-    } else {
-      res.status(404).json({ message: 'Order not found' });
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
     }
+
+    // Check if the user is authorized to view this order
+    if (!req.user.isAdmin && order.user._id.toString() !== req.user._id.toString()) {
+      return res.status(401).json({ message: 'Not authorized' });
+    }
+
+    res.json(order);
   } catch (error) {
-    console.error('Error fetching order:', error);
-    res.status(500).json({ message: error.message });
+    console.error('Error in getOrderById:', error);
+    res.status(500).json({ message: 'Server Error' });
   }
 };
 
@@ -354,23 +199,33 @@ const updateOrderToPaid = async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);
 
-    if (order) {
-      order.isPaid = true;
-      order.paidAt = Date.now();
-      order.paymentResult = {
-        id: req.body.id,
-        status: req.body.status,
-        update_time: req.body.update_time,
-        email_address: req.body.payer.email_address,
-      };
-
-      const updatedOrder = await order.save();
-      res.json(updatedOrder);
-    } else {
-      res.status(404).json({ message: 'Order not found' });
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
     }
+
+    order.isPaid = true;
+    order.paidAt = Date.now();
+    order.paymentResult = {
+      id: req.body.id,
+      status: req.body.status,
+      update_time: req.body.update_time,
+      email_address: req.body.payer.email_address,
+    };
+
+    const updatedOrder = await order.save();
+
+    // Send payment confirmation notification
+    await sendNotification(order.user, {
+      title: 'Payment Received',
+      message: `Payment for order #${order._id} has been received`,
+      type: 'payment',
+      orderId: order._id,
+    });
+
+    res.json(updatedOrder);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Error in updateOrderToPaid:', error);
+    res.status(500).json({ message: 'Server Error' });
   }
 };
 
@@ -381,205 +236,73 @@ const updateOrderToDelivered = async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);
 
-    if (order) {
-      order.isDelivered = true;
-      order.deliveredAt = Date.now();
-      order.status = 'delivered';
-
-      const updatedOrder = await order.save();
-      res.json(updatedOrder);
-    } else {
-      res.status(404).json({ message: 'Order not found' });
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
     }
+
+    order.isDelivered = true;
+    order.deliveredAt = Date.now();
+    order.status = 'delivered';
+
+    const updatedOrder = await order.save();
+
+    // Send delivery notification
+    await sendNotification(order.user, {
+      title: 'Order Delivered',
+      message: `Your order #${order._id} has been delivered`,
+      type: 'delivery',
+      orderId: order._id,
+    });
+
+    res.json(updatedOrder);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Error in updateOrderToDelivered:', error);
+    res.status(500).json({ message: 'Server Error' });
   }
 };
 
 // @desc    Get logged in user orders
 // @route   GET /api/orders/myorders
 // @access  Private
-const getUserOrders = async (req, res) => {
+const getMyOrders = async (req, res) => {
   try {
     const orders = await Order.find({ user: req.user._id })
-      .populate('items.product', 'title images price discount')
-      .sort({ createdAt: -1 });
-
+      .sort({ createdAt: -1 })
+      .populate('items.product', 'title images');
     res.json(orders);
   } catch (error) {
-    res.status(500).json({
-      message: error.message,
-    });
+    console.error('Error in getMyOrders:', error);
+    res.status(500).json({ message: 'Server Error' });
   }
 };
 
-// @desc    Get all orders with filtering options
+// @desc    Get all orders
 // @route   GET /api/orders
 // @access  Private/Admin
 const getOrders = async (req, res) => {
   try {
-    const { 
-      page = 1, 
-      limit = 20, // Increased default from 10 to 20
-      status, 
-      dateFrom, 
-      dateTo, 
-      search,
-      deliveryDateFrom,
-      deliveryDateTo,
-      highlight3Days
-    } = req.query;
+    const pageSize = 20;
+    const page = Number(req.query.page) || 1;
+    const status = req.query.status;
 
-    // Validate and set limits
-    const pageNumber = Math.max(1, parseInt(page));
-    const pageSize = Math.min(100, Math.max(5, parseInt(limit))); // Allow 5-100 orders per page
+    const query = status ? { status } : {};
 
-    // Build query object
-    let query = {};
-
-    // Filter by status
-    if (status && status !== 'all') {
-      query.status = status;
-    }
-
-    // Filter by order creation date range
-    if (dateFrom || dateTo) {
-      query.createdAt = {};
-      if (dateFrom) {
-        query.createdAt.$gte = new Date(dateFrom);
-      }
-      if (dateTo) {
-        // Add 1 day to include the end date
-        const endDate = new Date(dateTo);
-        endDate.setDate(endDate.getDate() + 1);
-        query.createdAt.$lt = endDate;
-      }
-    }
-
-    // Filter by delivery date range
-    if (deliveryDateFrom || deliveryDateTo) {
-      query['shippingDetails.deliveryDate'] = {};
-      if (deliveryDateFrom) {
-        query['shippingDetails.deliveryDate'].$gte = new Date(deliveryDateFrom);
-      }
-      if (deliveryDateTo) {
-        const endDate = new Date(deliveryDateTo);
-        endDate.setDate(endDate.getDate() + 1);
-        query['shippingDetails.deliveryDate'].$lt = endDate;
-      }
-    }
-
-    // Search functionality
-    if (search) {
-      const searchRegex = new RegExp(search, 'i');
-      query.$or = [
-        { orderNumber: searchRegex },
-        { 'shippingDetails.fullName': searchRegex },
-        { 'shippingDetails.email': searchRegex },
-        { 'shippingDetails.phone': searchRegex },
-        { 'shippingDetails.city': searchRegex }
-      ];
-    }
-
-    console.log('Orders query:', JSON.stringify(query, null, 2));
-    console.log(`Pagination: Page ${pageNumber}, Size ${pageSize}`);
-
-    // Get total count for pagination
-    const total = await Order.countDocuments(query);
-    const totalPages = Math.ceil(total / pageSize);
-    const skip = (pageNumber - 1) * pageSize;
-
-    // Fetch orders with pagination
+    const count = await Order.countDocuments(query);
     const orders = await Order.find(query)
-      .populate([
-        {
-          path: 'user',
-          select: 'name email'
-        },
-        {
-          path: 'items.product',
-          select: 'title images price discount'
-        }
-      ])
+      .populate('user', 'id name')
       .sort({ createdAt: -1 })
-      .skip(skip)
+      .skip(pageSize * (page - 1))
       .limit(pageSize);
 
-    // Add 3-day highlighting information if requested
-    let processedOrders = orders;
-    if (highlight3Days === 'true') {
-      const threeDaysFromNow = new Date();
-      threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
-      threeDaysFromNow.setHours(23, 59, 59, 999);
-
-      processedOrders = orders.map(order => {
-        const deliveryDate = order.shippingDetails?.deliveryDate;
-        let highlight = null;
-        
-        if (deliveryDate) {
-          const deliveryDateTime = new Date(deliveryDate);
-          const now = new Date();
-          const diffInDays = Math.ceil((deliveryDateTime - now) / (1000 * 60 * 60 * 24));
-          
-          if (diffInDays <= 3 && diffInDays >= 0) {
-            if (diffInDays === 0) {
-              highlight = { type: 'today', urgency: 'critical', message: 'Delivery today!' };
-            } else if (diffInDays === 1) {
-              highlight = { type: 'tomorrow', urgency: 'high', message: 'Delivery tomorrow' };
-            } else if (diffInDays <= 3) {
-              highlight = { type: 'soon', urgency: 'medium', message: `Delivery in ${diffInDays} days` };
-            }
-          } else if (diffInDays < 0) {
-            highlight = { type: 'overdue', urgency: 'critical', message: 'Delivery overdue!' };
-          }
-        }
-
-        return {
-          ...order.toObject(),
-          deliveryHighlight: highlight
-        };
-      });
-    }
-
-    // Calculate pagination info
-    const paginationInfo = {
-      currentPage: pageNumber,
-      pageSize: pageSize,
-      totalItems: total,
-      totalPages: totalPages,
-      hasNextPage: pageNumber < totalPages,
-      hasPrevPage: pageNumber > 1,
-      nextPage: pageNumber < totalPages ? pageNumber + 1 : null,
-      prevPage: pageNumber > 1 ? pageNumber - 1 : null,
-      startIndex: skip + 1,
-      endIndex: Math.min(skip + pageSize, total),
-      remainingItems: Math.max(0, total - (skip + pageSize))
-    };
-
-    console.log('Pagination info:', paginationInfo);
-
     res.json({
-      success: true,
-      orders: processedOrders,
-      pagination: paginationInfo,
-      meta: {
-        query: {
-          status: status || 'all',
-          search: search || '',
-          dateRange: { from: dateFrom, to: dateTo },
-          deliveryDateRange: { from: deliveryDateFrom, to: deliveryDateTo },
-          highlight3Days: highlight3Days === 'true'
-        },
-        timestamp: new Date().toISOString()
-      }
+      orders,
+      page,
+      pages: Math.ceil(count / pageSize),
+      total: count,
     });
   } catch (error) {
-    console.error('Error fetching orders:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server Error: Failed to fetch orders',
-      error: error.message
-    });
+    console.error('Error in getOrders:', error);
+    res.status(500).json({ message: 'Server Error' });
   }
 };
 
@@ -588,230 +311,117 @@ const getOrders = async (req, res) => {
 // @access  Private/Admin
 const updateOrderStatus = async (req, res) => {
   try {
-    const { status } = req.body;
-    const order = await Order.findById(req.params.id).populate('items.product');
+    const { status, trackingNumber } = req.body;
+    const order = await Order.findById(req.params.id);
 
     if (!order) {
       return res.status(404).json({ message: 'Order not found' });
     }
 
-    const previousStatus = order.status;
     order.status = status;
-    
-    if (status === 'delivered') {
-      order.isDelivered = true;
-      order.deliveredAt = Date.now();
-    }
-
-    // Update stock when order is confirmed (being_made or delivered)
-    if ((status === 'being_made' || status === 'delivered') && !['being_made', 'delivered'].includes(previousStatus) && !order.stockUpdated) {
-      console.log('Order confirmed, updating stock for items:', order.items);
-      
-      for (const item of order.items) {
-        const product = await Product.findById(item.product._id);
-        if (product) {
-          // Check if we have enough stock
-          if (product.countInStock >= item.quantity) {
-            product.countInStock -= item.quantity;
-            
-            try {
-              // Clean product data before saving to prevent casting errors
-              cleanProductData(product);
-              await product.save();
-              console.log(`✅ Updated stock for product ${product.title}: ${product.countInStock + item.quantity} -> ${product.countInStock}`);
-            } catch (productSaveError) {
-              console.error(`❌ Error saving product ${product.title}:`, productSaveError);
-              
-              // Try to save without cleaning if the cleaning failed
-              try {
-                // Reset any changes and just update the stock
-                const freshProduct = await Product.findById(item.product._id);
-                if (freshProduct && freshProduct.countInStock >= item.quantity) {
-                  freshProduct.countInStock -= item.quantity;
-                  // Force save without validation for malformed data
-                  await freshProduct.save({ validateBeforeSave: false });
-                  console.log(`⚠️  Force-updated stock for product ${freshProduct.title} (bypassed validation)`);
-                } else {
-                  console.error(`❌ Could not force-update stock for product ${product.title}`);
-                  // Log error but don't fail the order status update
-                }
-              } catch (forceSaveError) {
-                console.error(`❌ Force save also failed for product ${product.title}:`, forceSaveError);
-                // Log error but continue with order status update
-              }
-            }
-          } else {
-            console.log(`Warning: Insufficient stock for product ${product.title}. Available: ${product.countInStock}, Required: ${item.quantity}`);
-            return res.status(400).json({ 
-              message: `Insufficient stock for product ${product.title}. Available: ${product.countInStock}, Required: ${item.quantity}` 
-            });
-          }
-        }
-      }
-
-      // Mark stock as updated
-      order.stockUpdated = true;
-
-      // Create status change notification for admin based on new status
-      try {
-        const { createAdminNotification } = require('./notificationController');
-        let statusTitle, statusMessage;
-        
-        if (status === 'being_made') {
-          statusTitle = '👨‍🍳 Order In Production!';
-          statusMessage = `Order ${order.orderNumber} is now being prepared for ${order.shippingDetails?.fullName || 'customer'}.`;
-        } else if (status === 'delivered') {
-          statusTitle = '✅ Order Ready for Delivery!';
-          statusMessage = `Order ${order.orderNumber} is ready for delivery to ${order.shippingDetails?.fullName || 'customer'}.`;
-        }
-        
-        if (statusTitle && statusMessage) {
-          await createAdminNotification({
-            type: 'info',
-            title: statusTitle,
-            message: statusMessage,
-            metadata: {
-              orderId: order._id,
-              orderNumber: order.orderNumber,
-              customerName: order.shippingDetails?.fullName,
-              newStatus: status,
-              previousStatus: previousStatus
-            }
-          });
-          console.log(`✅ Status change notification created: ${order.orderNumber} -> ${status}`);
-        }
-      } catch (notificationError) {
-        console.error('Error creating status change notification:', notificationError);
-      }
-
-      // Create notification for stock update
-      try {
-        const notification = new Notification({
-          title: 'Stock Updated',
-          message: `Stock updated for order ${order.orderNumber}. ${order.items.length} products' stock reduced.`,
-          type: 'info',
-          read: false
-        });
-        await notification.save();
-      } catch (notificationError) {
-        console.error('Error creating stock update notification:', notificationError);
-      }
-    }
-
-    // Send delivery confirmation email with invoice when order is delivered
-    if (status === 'delivered' && previousStatus !== 'delivered') {
-      console.log('🚚 Order delivered, sending delivery confirmation email with invoice...');
-      
-      // Create delivery notification for admin
-      try {
-        const { createAdminNotification } = require('./notificationController');
-        await createAdminNotification({
-          type: 'info',
-          title: '🚚 Order Delivered!',
-          message: `Order ${order.orderNumber} has been successfully delivered to ${order.shippingDetails?.fullName || 'customer'}.`,
-          metadata: {
-            orderId: order._id,
-            orderNumber: order.orderNumber,
-            customerName: order.shippingDetails?.fullName,
-            deliveredAt: new Date().toISOString()
-          }
-        });
-        console.log('✅ Delivery notification created for admin:', order.orderNumber);
-      } catch (notificationError) {
-        console.error('Error creating delivery notification:', notificationError);
-      }
-      
-      try {
-        // Get customer details
-        const User = require('../models/User');
-        const customer = await User.findById(order.user);
-        
-        if (customer && customer.email) {
-          // Prepare delivery notification data
-          const deliveryNotificationData = {
-            order: order,
-            customer: {
-              name: customer.name,
-              email: customer.email,
-              phone: customer.phone || order.shippingDetails.phone
-            },
-            items: order.items
-          };
-
-          // Send delivery confirmation email with invoice
-          const { sendDeliveryConfirmationWithInvoice } = require('../services/emailNotificationService');
-          const emailResult = await sendDeliveryConfirmationWithInvoice(deliveryNotificationData);
-          
-          if (emailResult.success) {
-            console.log('✅ Delivery confirmation email with invoice sent successfully to:', customer.email);
-          } else {
-            console.error('❌ Failed to send delivery confirmation email:', emailResult.error);
-          }
-        } else {
-          console.warn('⚠️  No customer email found for delivery confirmation');
-        }
-      } catch (deliveryEmailError) {
-        console.error('❌ Error sending delivery confirmation email:', deliveryEmailError);
-        // Don't fail the order status update if email fails
-      }
-    }
-
-    // Restore stock if order is cancelled from being_made or delivered status
-    if (status === 'cancelled' && ['being_made', 'delivered'].includes(previousStatus) && order.stockUpdated) {
-      console.log('Order cancelled from completed status, restoring stock for items:', order.items);
-      
-      for (const item of order.items) {
-        const product = await Product.findById(item.product._id);
-        if (product) {
-          product.countInStock += item.quantity;
-          
-          try {
-            // Clean product data before saving to prevent casting errors
-            cleanProductData(product);
-            await product.save();
-            console.log(`✅ Restored stock for product ${product.title}: ${product.countInStock - item.quantity} -> ${product.countInStock}`);
-          } catch (productSaveError) {
-            console.error(`❌ Error saving product during stock restoration ${product.title}:`, productSaveError);
-            
-            // Try to save without cleaning if the cleaning failed
-            try {
-              // Reset and try force save
-              const freshProduct = await Product.findById(item.product._id);
-              if (freshProduct) {
-                freshProduct.countInStock += item.quantity;
-                await freshProduct.save({ validateBeforeSave: false });
-                console.log(`⚠️  Force-restored stock for product ${freshProduct.title} (bypassed validation)`);
-              }
-            } catch (forceSaveError) {
-              console.error(`❌ Force save also failed during restoration for product ${product.title}:`, forceSaveError);
-            }
-            // Continue with other products, don't fail the entire operation
-          }
-        }
-      }
-
-      // Mark stock as not updated since we restored it
-      order.stockUpdated = false;
-
-      // Create notification for stock restoration
-      try {
-        const notification = new Notification({
-          title: 'Stock Restored',
-          message: `Stock restored for cancelled order ${order.orderNumber}. ${order.items.length} products' stock restored.`,
-          type: 'info',
-          read: false
-        });
-        await notification.save();
-      } catch (notificationError) {
-        console.error('Error creating stock restoration notification:', notificationError);
-      }
+    if (trackingNumber) {
+      order.trackingNumber = trackingNumber;
     }
 
     const updatedOrder = await order.save();
+
+    // Send status update notification
+    await sendNotification(order.user, {
+      title: 'Order Status Updated',
+      message: `Your order #${order._id} status has been updated to ${status}`,
+      type: 'status',
+      orderId: order._id,
+    });
+
     res.json(updatedOrder);
   } catch (error) {
-    console.error('Error updating order status:', error);
-    res.status(500).json({ message: error.message });
+    console.error('Error in updateOrderStatus:', error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+};
+
+// @desc    Cancel order
+// @route   PUT /api/orders/:id/cancel
+// @access  Private
+const cancelOrder = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    // Only allow cancellation if order is pending or processing
+    if (!['pending', 'processing'].includes(order.status)) {
+      return res.status(400).json({ message: 'Order cannot be cancelled' });
+    }
+
+    // Check if user is authorized
+    if (!req.user.isAdmin && order.user.toString() !== req.user._id.toString()) {
+      return res.status(401).json({ message: 'Not authorized' });
+    }
+
+    order.status = 'cancelled';
+    const updatedOrder = await order.save();
+
+    // Send cancellation notification
+    await sendNotification(order.user, {
+      title: 'Order Cancelled',
+      message: `Your order #${order._id} has been cancelled`,
+      type: 'cancellation',
+      orderId: order._id,
+    });
+
+    res.json(updatedOrder);
+  } catch (error) {
+    console.error('Error in cancelOrder:', error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+};
+
+// @desc    Get order statistics
+// @route   GET /api/orders/stats
+// @access  Private/Admin
+const getOrderStats = async (req, res) => {
+  try {
+    const totalOrders = await Order.countDocuments();
+    const pendingOrders = await Order.countDocuments({ status: 'pending' });
+    const processingOrders = await Order.countDocuments({ status: 'processing' });
+    const deliveredOrders = await Order.countDocuments({ status: 'delivered' });
+    const cancelledOrders = await Order.countDocuments({ status: 'cancelled' });
+
+    const totalRevenue = await Order.aggregate([
+      { $match: { isPaid: true } },
+      { $group: { _id: null, total: { $sum: '$totalPrice' } } },
+    ]);
+
+    const monthlyRevenue = await Order.aggregate([
+      { $match: { isPaid: true } },
+      {
+        $group: {
+          _id: {
+            year: { $year: '$createdAt' },
+            month: { $month: '$createdAt' },
+          },
+          total: { $sum: '$totalPrice' },
+        },
+      },
+      { $sort: { '_id.year': -1, '_id.month': -1 } },
+      { $limit: 12 },
+    ]);
+
+    res.json({
+      totalOrders,
+      pendingOrders,
+      processingOrders,
+      deliveredOrders,
+      cancelledOrders,
+      totalRevenue: totalRevenue[0]?.total || 0,
+      monthlyRevenue,
+    });
+  } catch (error) {
+    console.error('Error in getOrderStats:', error);
+    res.status(500).json({ message: 'Server Error' });
   }
 };
 
@@ -1151,14 +761,15 @@ const testDeliveryEmail = async (req, res) => {
 };
 
 module.exports = {
-  createOrder,
-  getNextOrderNumber,
+  addOrderItems,
   getOrderById,
   updateOrderToPaid,
   updateOrderToDelivered,
-  getUserOrders,
+  getMyOrders,
   getOrders,
   updateOrderStatus,
+  cancelOrder,
+  getOrderStats,
   createRazorpayOrder: createRazorpayOrderHandler,
   verifyRazorpayPayment: verifyRazorpayPaymentHandler,
   getUpcomingDeliveries,

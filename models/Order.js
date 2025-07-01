@@ -1,150 +1,110 @@
 const mongoose = require('mongoose');
 
-const orderSchema = new mongoose.Schema({
-  orderNumber: {
-    type: String,
-    unique: true,
-    required: true
-  },
-  user: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
-  shippingDetails: {
-    fullName: String,
-    email: String,
-    phone: String,
-    address: String,
-    apartment: String,
-    city: String,
-    state: String,
-    zipCode: String,
-    notes: String,
-    deliveryDate: Date,
-    timeSlot: String
-  },
-  items: [{
-    product: {
+const orderSchema = mongoose.Schema(
+  {
+    user: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Product',
-      required: true
+      required: true,
+      ref: 'User',
     },
-    quantity: {
+    items: [
+      {
+        title: { type: String, required: true },
+        quantity: { type: Number, required: true },
+        image: { type: String, required: true },
+        price: { type: Number, required: true },
+        discount: { type: Number, default: 0 },
+        product: {
+          type: mongoose.Schema.Types.ObjectId,
+          required: true,
+          ref: 'Product',
+        },
+      },
+    ],
+    shippingAddress: {
+      street: { type: String, required: true },
+      city: { type: String, required: true },
+      state: { type: String, required: true },
+      pincode: { type: String, required: true },
+    },
+    paymentMethod: {
+      type: String,
+      required: true,
+    },
+    paymentResult: {
+      id: { type: String },
+      status: { type: String },
+      update_time: { type: String },
+      email_address: { type: String },
+    },
+    itemsPrice: {
       type: Number,
       required: true,
-      min: 1
+      default: 0.0,
     },
-    price: {
+    taxPrice: {
       type: Number,
-      required: true
+      required: true,
+      default: 0.0,
     },
-    finalPrice: {
+    shippingPrice: {
       type: Number,
-      required: true
-    }
-  }],
-  paymentDetails: {
-    method: {
-      type: String,
-      enum: ['credit-card', 'paypal', 'cash', 'razorpay'],
-      required: true
+      required: true,
+      default: 0.0,
     },
-    last4: String,
-    // Razorpay specific fields
-    razorpayOrderId: String,
-    razorpayPaymentId: String,
-    razorpaySignature: String
-  },
-  giftDetails: {
-    message: String,
-    recipientName: String,
-    recipientEmail: String,
-    recipientPhone: String,
-    recipientAddress: String,
-    recipientApartment: String,
-    recipientCity: String,
-    recipientState: String,
-    recipientZipCode: String
-  },
-  totalAmount: {
-    type: Number,
-    required: true
-  },
-  currency: {
-    type: String,
-    enum: ['INR', 'USD', 'EUR', 'GBP'],
-    default: 'INR'
-  },
-  currencyRate: {
-    type: Number,
-    default: 1
-  },
-  originalCurrency: {
-    type: String,
-    enum: ['INR', 'USD', 'EUR', 'GBP'],
-    default: 'INR'
-  },
-  status: {
-    type: String,
-    enum: ['order_placed', 'received', 'being_made', 'out_for_delivery', 'delivered', 'cancelled'],
-    default: 'order_placed'
-  },
-  trackingHistory: [{
+    totalPrice: {
+      type: Number,
+      required: true,
+      default: 0.0,
+    },
+    isPaid: {
+      type: Boolean,
+      required: true,
+      default: false,
+    },
+    paidAt: {
+      type: Date,
+    },
+    isDelivered: {
+      type: Boolean,
+      required: true,
+      default: false,
+    },
+    deliveredAt: {
+      type: Date,
+    },
     status: {
       type: String,
-      enum: ['order_placed', 'received', 'being_made', 'out_for_delivery', 'delivered', 'cancelled'],
-      required: true
+      required: true,
+      default: 'pending',
+      enum: ['pending', 'processing', 'shipped', 'delivered', 'cancelled'],
     },
-    timestamp: {
+    trackingNumber: {
+      type: String,
+    },
+    estimatedDeliveryDate: {
       type: Date,
-      default: Date.now
     },
-    message: String,
-    updatedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
-    }
-  }],
-  stockUpdated: {
-    type: Boolean,
-    default: false
+    notes: {
+      type: String,
+    },
+    promoCode: {
+      type: String,
+    },
+    discountAmount: {
+      type: Number,
+      default: 0,
+    },
+  },
+  {
+    timestamps: true,
   }
-}, {
-  timestamps: true
-});
+);
 
-// Add pre-save hook for order number generation
-orderSchema.pre('save', async function(next) {
-  if (!this.orderNumber) {
-    const count = await this.constructor.countDocuments();
-    const date = new Date();
-    const year = date.getFullYear().toString().slice(-2);
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const day = date.getDate().toString().padStart(2, '0');
-    this.orderNumber = `${year}${month}${(count + 1).toString().padStart(3, '0')}${day}`;
-  }
-  
-  // Track status changes
-  if (this.isModified('status') || this.isNew) {
-    const statusMessages = {
-      'order_placed': 'Order has been placed successfully',
-      'received': 'Order has been received and is being reviewed',
-      'being_made': 'Your beautiful arrangement is being prepared',
-      'out_for_delivery': 'Order is out for delivery',
-      'delivered': 'Order has been delivered successfully',
-      'cancelled': 'Order has been cancelled'
-    };
-    
-    this.trackingHistory.push({
-      status: this.status,
-      message: statusMessages[this.status] || `Status updated to ${this.status}`,
-      timestamp: new Date()
-    });
-  }
-  
-  next();
-});
+// Add indexes for better query performance
+orderSchema.index({ user: 1, createdAt: -1 });
+orderSchema.index({ status: 1 });
+orderSchema.index({ isPaid: 1 });
+orderSchema.index({ isDelivered: 1 });
 
-const Order = mongoose.model('Order', orderSchema);
-module.exports = Order;
+module.exports = mongoose.model('Order', orderSchema);
