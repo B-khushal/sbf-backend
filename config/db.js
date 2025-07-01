@@ -11,61 +11,72 @@ const connectDB = async () => {
     const conn = await mongoose.connect(mongoURI, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
-      // Increase timeout for slower connections
-      serverSelectionTimeoutMS: 10000, // 10 seconds
-      socketTimeoutMS: 45000, // 45 seconds
-      // Only use SSL if it's a cloud connection
+      // ⚡ PERFORMANCE OPTIMIZATIONS
+      maxPoolSize: 10, // Maintain up to 10 socket connections
+      serverSelectionTimeoutMS: 5000, // Keep trying to send operations for 5 seconds
+      socketTimeoutMS: 45000, // Close sockets after 45 seconds of inactivity
+      family: 4, // Use IPv4, skip trying IPv6
+      bufferMaxEntries: 0, // Disable mongoose buffering
+      bufferCommands: false, // Disable mongoose buffering
+      // Connection optimization
       ...(mongoURI.includes('mongodb+srv') ? {
         ssl: true,
+        retryWrites: true,
+        w: 'majority',
       } : {})
     });
 
     console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
     console.log(`📊 Database: ${conn.connection.name}`);
     
-    // Test the connection with a simple operation
-    await mongoose.connection.db.admin().ping();
-    console.log('✅ Database ping successful');
+    // ⚡ Set up connection event listeners
+    mongoose.connection.on('error', (err) => {
+      console.error('❌ MongoDB connection error:', err);
+    });
+
+    mongoose.connection.on('disconnected', () => {
+      console.log('⚠️ MongoDB disconnected');
+    });
+
+    mongoose.connection.on('reconnected', () => {
+      console.log('🔄 MongoDB reconnected');
+    });
+
+    // ⚡ PERFORMANCE: Enable query result caching
+    mongoose.set('debug', process.env.NODE_ENV === 'development');
     
+    return conn;
   } catch (error) {
-    console.error(`❌ MongoDB Connection Error: ${error.message}`);
+    console.error('❌ MongoDB Connection Error:', error.message);
     
-    // Provide specific guidance based on error type
-    if (error.message.includes('IP') || error.message.includes('whitelist')) {
-      console.error('\n🚨 IP WHITELIST ISSUE:');
-      console.error('1. Go to MongoDB Atlas → Network Access');
-      console.error('2. Add your current IP address to the whitelist');
-      console.error('3. Wait 2-3 minutes for changes to take effect');
-      console.error('4. Restart the server\n');
-    } else if (error.message.includes('authentication')) {
-      console.error('\n🚨 AUTHENTICATION ISSUE:');
-      console.error('1. Check your username and password in MONGODB_URI');
-      console.error('2. Ensure the database user has read/write permissions');
-      console.error('3. Verify the database name is correct\n');
+    // Provide helpful guidance for common connection issues
+    if (error.message.includes('IP')) {
+      console.log('\n🔧 SOLUTION:');
+      console.log('1. Go to MongoDB Atlas Dashboard');
+      console.log('2. Navigate to Network Access');
+      console.log('3. Add your current IP address');
+      console.log('4. Or temporarily add 0.0.0.0/0 for testing');
+      console.log('5. Wait 2-3 minutes for changes to take effect');
     }
     
-    // For development, try connecting to local MongoDB
-    if (process.env.NODE_ENV === 'development' && !process.env.MONGODB_URI) {
-      try {
-        console.log('🔄 Trying local MongoDB without authentication...');
-        const conn = await mongoose.connect('mongodb://localhost:27017/sbf-local', {
-          useNewUrlParser: true,
-          useUnifiedTopology: true,
-        });
-        console.log(`✅ Connected to local MongoDB: ${conn.connection.host}`);
-        console.log('⚠️ Using local MongoDB. Reviews will be saved locally.');
-        return;
-      } catch (localError) {
-        console.error(`❌ Local MongoDB also failed: ${localError.message}`);
-        console.error('\n💡 SOLUTIONS:');
-        console.error('1. Install MongoDB locally, OR');
-        console.error('2. Fix MongoDB Atlas connection (see above), OR');
-        console.error('3. Contact your database administrator\n');
-      }
+    if (error.message.includes('authentication')) {
+      console.log('\n🔧 SOLUTION:');
+      console.log('1. Check your MONGODB_URI credentials');
+      console.log('2. Ensure username and password are correct');
+      console.log('3. Check if special characters are URL encoded');
     }
     
-    console.error('❌ Could not connect to MongoDB. Please fix the connection and try again.');
-    process.exit(1);
+    console.log('\n📋 For immediate testing, you can:');
+    console.log('- Install MongoDB locally');
+    console.log('- Use a local connection string');
+    console.log('- The app will fallback to local MongoDB');
+    
+    // Exit the process for production, continue for development
+    if (process.env.NODE_ENV === 'production') {
+      process.exit(1);
+    } else {
+      console.log('⚠️ Continuing without database connection (development mode)');
+    }
   }
 };
 

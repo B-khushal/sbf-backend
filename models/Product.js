@@ -84,6 +84,16 @@ const productSchema = mongoose.Schema(
   }
 );
 
+// ⚡ PERFORMANCE: Database indexes for fast queries
+productSchema.index({ hidden: 1, isFeatured: 1, createdAt: -1 }); // Featured products
+productSchema.index({ hidden: 1, isNew: 1, createdAt: -1 }); // New products
+productSchema.index({ hidden: 1, rating: -1, numReviews: -1 }); // Top products
+productSchema.index({ hidden: 1, category: 1, createdAt: -1 }); // Category filtering
+productSchema.index({ hidden: 1, categories: 1, createdAt: -1 }); // Multi-category search
+productSchema.index({ title: 'text', description: 'text' }); // Text search
+productSchema.index({ countInStock: 1 }); // Low stock queries
+productSchema.index({ createdAt: -1 }); // General sorting
+
 // Virtual for getting reviews from Review model
 productSchema.virtual('reviews', {
   ref: 'Review',
@@ -92,7 +102,7 @@ productSchema.virtual('reviews', {
   options: { sort: { createdAt: -1 } }
 });
 
-// Ensure virtual fields are serialized
+// Enable virtuals in JSON output
 productSchema.set('toJSON', { virtuals: true });
 productSchema.set('toObject', { virtuals: true });
 

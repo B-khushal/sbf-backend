@@ -5,96 +5,77 @@ const Review = require('../models/Review');
 
 // Helper function to clean product data before saving
 const cleanProductData = (product) => {
-  // Fix details field if it's malformed
-  if (product.details && Array.isArray(product.details)) {
-    const cleanedDetails = [];
-    for (let detail of product.details) {
-      if (typeof detail === 'string') {
-        // Check if it's a malformed nested array string
-        if (detail.startsWith('[') && detail.endsWith(']')) {
-          try {
-            const parsed = JSON.parse(detail);
-            if (Array.isArray(parsed)) {
-              // Flatten the nested array
-              for (let item of parsed) {
-                if (Array.isArray(item)) {
-                  cleanedDetails.push(...item.filter(i => typeof i === 'string'));
-                } else if (typeof item === 'string') {
-                  cleanedDetails.push(item);
-                }
-              }
-            } else {
-              cleanedDetails.push(detail);
-            }
-          } catch (parseError) {
-            cleanedDetails.push(detail);
-          }
-        } else {
-          cleanedDetails.push(detail);
-        }
-      }
-    }
-    product.details = cleanedDetails;
+  const cleaned = product.toObject ? product.toObject() : product;
+  
+  // Remove any nested user objects from reviews
+  if (cleaned.reviews && Array.isArray(cleaned.reviews)) {
+    cleaned.reviews = cleaned.reviews.map(review => ({
+      name: review.name,
+      rating: review.rating,
+      comment: review.comment,
+      createdAt: review.createdAt
+    }));
   }
-
-  // Fix careInstructions field if it's malformed
-  if (product.careInstructions && Array.isArray(product.careInstructions)) {
-    const cleanedCareInstructions = [];
-    for (let instruction of product.careInstructions) {
-      if (typeof instruction === 'string') {
-        // Check if it's a malformed nested array string
-        if (instruction.startsWith('[') && instruction.endsWith(']')) {
-          try {
-            const parsed = JSON.parse(instruction);
-            if (Array.isArray(parsed)) {
-              // Flatten the nested array
-              for (let item of parsed) {
-                if (Array.isArray(item)) {
-                  cleanedCareInstructions.push(...item.filter(i => typeof i === 'string'));
-                } else if (typeof item === 'string') {
-                  cleanedCareInstructions.push(item);
-                }
-              }
-            } else {
-              cleanedCareInstructions.push(instruction);
-            }
-          } catch (parseError) {
-            cleanedCareInstructions.push(instruction);
-          }
-        } else {
-          cleanedCareInstructions.push(instruction);
-        }
-      }
-    }
-    product.careInstructions = cleanedCareInstructions;
-  }
-
-  return product;
+  
+  return cleaned;
 };
 
 // Helper function to add real review statistics to products
 const addReviewStats = async (products) => {
+  if (!products || products.length === 0) return products;
+  
   const productArray = Array.isArray(products) ? products : [products];
+  const productIds = productArray.map(p => p._id);
   
-  for (let product of productArray) {
-    // Get reviews for this product
-    const reviews = await Review.find({ 
-      product: product._id, 
-      status: 'approved' 
-    }).select('rating');
-    
-    // Calculate real statistics
-    if (reviews.length > 0) {
-      const totalRating = reviews.reduce((sum, review) => sum + review.rating, 0);
-      product.rating = totalRating / reviews.length;
-      product.numReviews = reviews.length;
-    } else {
-      product.rating = 0;
-      product.numReviews = 0;
-    }
+  try {
+    // 🚀 Single aggregation query for ALL products at once
+    const reviewStats = await Review.aggregate([
+      {
+        $match: { 
+          product: { $in: productIds }, 
+          status: 'approved' 
+        }
+      },
+      {
+        $group: {
+          _id: '$product',
+          totalReviews: { $sum: 1 },
+          averageRating: { $avg: '$rating' }
+        }
+      }
+    ]);
+
+    // Create a lookup map for O(1) access
+    const statsMap = new Map();
+    reviewStats.forEach(stat => {
+      statsMap.set(stat._id.toString(), {
+        numReviews: stat.totalReviews,
+        rating: Math.round(stat.averageRating * 10) / 10
+      });
+    });
+
+    // Apply stats to products
+    productArray.forEach(product => {
+      const stats = statsMap.get(product._id.toString());
+      if (stats) {
+        product.rating = stats.rating;
+        product.numReviews = stats.numReviews;
+      } else {
+        product.rating = 0;
+        product.numReviews = 0;
+      }
+    });
+
+    return Array.isArray(products) ? productArray : productArray[0];
+  } catch (error) {
+    console.error('❌ Error calculating review stats:', error);
+    // Fallback: return products with default stats
+    productArray.forEach(product => {
+      product.rating = product.rating || 0;
+      product.numReviews = product.numReviews || 0;
+    });
+    return Array.isArray(products) ? productArray : productArray[0];
   }
-  
-  return Array.isArray(products) ? productArray : productArray[0];
 };
 
 // @desc Fetch all products (with pagination and filtering)
@@ -123,16 +104,25 @@ const getProducts = async (req, res) => {
     // Filter out hidden products for public API
     const query = { ...category, ...keyword, hidden: { $ne: true } };
     
-    const count = await Product.countDocuments(query);
-    const products = await Product.find(query)
-      .limit(pageSize)
-      .skip(pageSize * (page - 1))
-      .sort({ createdAt: -1 });
+    // ⚡ Use Promise.all for parallel execution
+    const [count, products] = await Promise.all([
+      Product.countDocuments(query),
+      getProductsOptimized(query, {
+        limit: pageSize,
+        page: page,
+        sort: { createdAt: -1 }
+      })
+    ]);
 
-    // Add real review statistics
+    // ⚡ Add review statistics efficiently
     const productsWithReviews = await addReviewStats(products);
 
-    return res.json({ products: productsWithReviews, page, pages: Math.ceil(count / pageSize), total: count });
+    return res.json({ 
+      products: productsWithReviews, 
+      page, 
+      pages: Math.ceil(count / pageSize), 
+      total: count 
+    });
   } catch (error) {
     console.error("❌ Error fetching products:", error);
     return res.status(500).json({ message: "Server Error: Failed to fetch products" });
@@ -150,7 +140,7 @@ const getProductById = async (req, res) => {
     // Add real review statistics
     const productWithReviews = await addReviewStats(product);
 
-    return res.json(productWithReviews);
+    return res.json(cleanProductData(productWithReviews));
   } catch (error) {
     console.error("❌ Invalid product ID:", error);
     return res.status(500).json({ message: "Invalid product ID" });
@@ -438,13 +428,19 @@ const createProductReview = async (req, res) => {
 // @access  Public
 const getTopProducts = async (req, res) => {
   try {
-    const products = await Product.find({ hidden: { $ne: true } }).sort({ rating: -1 }).limit(4);
+    const products = await getProductsOptimized(
+      { hidden: { $ne: true } },
+      {
+        limit: 4,
+        sort: { rating: -1, numReviews: -1 },
+        select: 'title images price category rating numReviews discount isFeatured isNew'
+      }
+    );
     
-    // Add real review statistics
-    const productsWithReviews = await addReviewStats(products);
-    
-    res.json(productsWithReviews);
+    // Reviews stats already included in the optimized query
+    res.json(products);
   } catch (error) {
+    console.error('Error fetching top products:', error);
     res.status(500).json({ message: 'Error fetching top products' });
   }
 };
@@ -454,11 +450,18 @@ const getTopProducts = async (req, res) => {
 // @access  Public
 const getFeaturedProducts = async (req, res) => {
   try {
-    const products = await Product.find({ isFeatured: true, hidden: { $ne: true } }).limit(8);
-    console.log("Featured Products Query:", { isFeatured: true, hidden: { $ne: true } });
-    console.log("Fetched Featured Products:", products.map(p => ({ title: p.title, isFeatured: p.isFeatured })));
+    const products = await getProductsOptimized(
+      { isFeatured: true, hidden: { $ne: true } },
+      {
+        limit: 8,
+        sort: { createdAt: -1 },
+        select: 'title images price category rating numReviews discount isFeatured isNew'
+      }
+    );
     
-    // Add real review statistics
+    console.log(`✅ Fetched ${products.length} featured products efficiently`);
+    
+    // Add review statistics efficiently in batch
     const productsWithReviews = await addReviewStats(products);
     
     res.json(productsWithReviews);
@@ -473,10 +476,18 @@ const getFeaturedProducts = async (req, res) => {
 // @access  Public
 const getNewProducts = async (req, res) => {
   try {
-    const products = await Product.find({ isNew: true, hidden: { $ne: true } }).limit(8);
-    console.log("Fetched New Products:", products.map(p => ({ title: p.title, isNew: p.isNew })));
+    const products = await getProductsOptimized(
+      { isNew: true, hidden: { $ne: true } },
+      {
+        limit: 8,
+        sort: { createdAt: -1 },
+        select: 'title images price category rating numReviews discount isFeatured isNew'
+      }
+    );
     
-    // Add real review statistics
+    console.log(`✅ Fetched ${products.length} new products efficiently`);
+    
+    // Add review statistics efficiently in batch
     const productsWithReviews = await addReviewStats(products);
     
     res.json(productsWithReviews);
@@ -504,13 +515,17 @@ const getAdminProducts = async (req, res) => {
       : {};
 
     // No hidden filter for admin
-    const count = await Product.countDocuments(keyword);
-    const products = await Product.find(keyword)
-      .limit(pageSize)
-      .skip(pageSize * (page - 1))
-      .sort({ createdAt: -1 });
+    const [count, products] = await Promise.all([
+      Product.countDocuments(keyword),
+      getProductsOptimized(keyword, {
+        limit: pageSize,
+        page: page,
+        sort: { createdAt: -1 },
+        select: 'title images price category countInStock rating numReviews hidden isFeatured isNew discount'
+      })
+    ]);
 
-    // Add real review statistics
+    // Add review statistics efficiently
     const productsWithReviews = await addReviewStats(products);
 
     res.json({ products: productsWithReviews, page, pages: Math.ceil(count / pageSize), total: count });
@@ -545,11 +560,15 @@ const toggleProductVisibility = async (req, res) => {
 // @access Private/Admin
 const getLowStockProducts = async (req, res) => {
   try {
-    const lowStockThreshold = 10;
+    const threshold = Number(req.query.threshold) || 10;
     const products = await Product.find({
-      countInStock: { $lte: lowStockThreshold },
-    }).sort({ countInStock: 1 }); // Sort by lowest stock first
-    res.json(products);
+      countInStock: { $lte: threshold },
+    })
+    .select('title images price countInStock category')
+    .sort({ countInStock: 1 }) // Sort by lowest stock first
+    .limit(50); // Limit results for performance
+    
+    res.json({ products, count: products.length });
   } catch (error) {
     console.error('Error fetching low stock products:', error);
     res.status(500).json({ message: 'Error fetching low stock products' });
@@ -561,22 +580,21 @@ const getLowStockProducts = async (req, res) => {
 // @access  Public
 const getProductCategories = async (req, res) => {
   try {
-    // Use aggregation to get a clean list of unique, non-empty categories
+    // Use aggregation for better performance
     const categories = await Product.aggregate([
-      // Unwind the categories array to de-normalize it
+      { $match: { hidden: { $ne: true } } }, // Only visible products
       { $unwind: "$categories" },
-      // Group by the category name to get unique values
       { $group: { _id: "$categories" } },
-      // Project to rename _id to name
       { $project: { name: "$_id", _id: 0 } },
-      // Sort by name alphabetically
       { $sort: { name: 1 } }
     ]);
     
-    // Extract just the name from the result objects
-    const categoryNames = categories.map(cat => cat.name).filter(Boolean); // Filter out null/empty names
+    // Extract just the names and filter out empty ones
+    const categoryNames = categories
+      .map(cat => cat.name)
+      .filter(name => name && name.trim().length > 0);
     
-    res.json(categoryNames);
+    res.json({ categories: categoryNames });
   } catch (error) {
     console.error("Error fetching categories:", error);
     res.status(500).json({ message: "Server Error" });
@@ -597,13 +615,16 @@ const getProductsByCategory = async (req, res) => {
       hidden: { $ne: true }
     };
     
-    const count = await Product.countDocuments(query);
-    const products = await Product.find(query)
-      .limit(pageSize)
-      .skip(pageSize * (page - 1))
-      .sort({ createdAt: -1 });
+    const [count, products] = await Promise.all([
+      Product.countDocuments(query),
+      getProductsOptimized(query, {
+        limit: pageSize,
+        page: page,
+        sort: { createdAt: -1 }
+      })
+    ]);
 
-    // Add real review statistics
+    // Add review statistics efficiently
     const productsWithReviews = await addReviewStats(products);
 
     res.json({ products: productsWithReviews, page, pages: Math.ceil(count / pageSize), total: count });
@@ -652,6 +673,26 @@ const removeFromWishlist = async (req, res) => {
   }
 };
 
+// ⚡ OPTIMIZED: Fast products query with minimal fields for listings
+const getProductsOptimized = async (query, options = {}) => {
+  const {
+    limit = 12,
+    page = 1,
+    sort = { createdAt: -1 },
+    select = 'title images price category isFeatured isNew countInStock rating numReviews discount'
+  } = options;
+
+  const skip = (page - 1) * limit;
+  
+  const products = await Product.find(query)
+    .select(select)
+    .sort(sort)
+    .limit(limit)
+    .skip(skip)
+    .lean(); // Use lean() for faster queries
+
+  return products;
+};
 
 module.exports = {
   getProducts,
