@@ -4,6 +4,7 @@ const cors = require('cors');
 const morgan = require('morgan');
 const connectDB = require('./config/db');
 const path = require('path');
+const mongoose = require('mongoose');
 
 // Load environment variables
 dotenv.config();
@@ -11,15 +12,73 @@ dotenv.config();
 // Initialize email service
 const { initEmailService, testEmailService } = require('./services/emailNotificationService');
 
-// Connect to database
-connectDB().then(() => {
-  console.log('Database connected successfully');
-}).catch((error) => {
-  console.error('Database connection error:', error);
-});
+// Connect to database with retry mechanism
+const initializeDatabase = async () => {
+  let retries = 5;
+  while (retries > 0) {
+    try {
+      await connectDB();
+      console.log('✅ Database connection successful');
+      return true;
+    } catch (error) {
+      console.error(`❌ Database connection attempt failed. ${retries - 1} retries left`);
+      retries--;
+      if (retries === 0) {
+        console.error('❌ All database connection attempts failed');
+        return false;
+      }
+      // Wait for 5 seconds before retrying
+      await new Promise(resolve => setTimeout(resolve, 5000));
+    }
+  }
+  return false;
+};
 
-// Initialize email service
-initEmailService();
+// Initialize server with database connection check
+const initializeServer = async () => {
+  try {
+    // First try to connect to database
+    const dbConnected = await initializeDatabase();
+    if (!dbConnected && process.env.NODE_ENV === 'production') {
+      console.error('❌ Could not connect to database in production. Exiting...');
+      process.exit(1);
+    }
+
+    const PORT = process.env.PORT || 5000;
+    const server = app.listen(PORT, '0.0.0.0', () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`📊 Memory usage: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`);
+      console.log(`🔗 Health check: http://localhost:${PORT}/health`);
+      console.log(`✅ CORS enabled for: sbflorist.in, www.sbflorist.in`);
+    });
+
+    // Handle unhandled promise rejections
+    process.on('unhandledRejection', (err, promise) => {
+      console.error('🔥 Unhandled Promise Rejection:', err.message);
+      // Close server & exit process
+      server.close(() => {
+        process.exit(1);
+      });
+    });
+
+    // ⚡ PERFORMANCE: Graceful shutdown
+    process.on('SIGTERM', () => {
+      console.log('🛑 SIGTERM received. Shutting down gracefully...');
+      server.close(() => {
+        console.log('✅ Server closed');
+        mongoose.connection.close(false, () => {
+          console.log('✅ Database connection closed');
+          process.exit(0);
+        });
+      });
+    });
+
+  } catch (error) {
+    console.error('❌ Failed to initialize server:', error);
+    process.exit(1);
+  }
+};
 
 const app = express();
 
@@ -268,31 +327,10 @@ app.use((req, res) => {
   });
 });
 
-const PORT = process.env.PORT || 5000;
-
-const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`📊 Memory usage: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`);
-  console.log(`🔗 Health check: http://localhost:${PORT}/health`);
-  console.log(`📡 CORS enabled for production domains`);
-  console.log(`🗄️ Database: ${process.env.MONGO_URI ? 'Connected' : 'Using default connection'}`);
-  console.log(`Access the server from other devices using: http://YOUR_IP:${PORT}`);
-}).on('error', (err) => {
-  console.error('❌ Server failed to start:', err);
+// Start the server
+initializeServer().catch(error => {
+  console.error('❌ Fatal error during server initialization:', error);
   process.exit(1);
-});
-
-// ⚡ PERFORMANCE: Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('🛑 SIGTERM received. Shutting down gracefully...');
-  server.close(() => {
-    console.log('✅ Server closed');
-    require('mongoose').connection.close(false, () => {
-      console.log('✅ Database connection closed');
-      process.exit(0);
-    });
-  });
 });
 
 module.exports = app;

@@ -1,82 +1,112 @@
 const mongoose = require('mongoose');
+const dotenv = require('dotenv');
+
+dotenv.config();
 
 const connectDB = async () => {
   try {
-    // Use local MongoDB for testing if MONGODB_URI is not set
-    const mongoURI = process.env.MONGODB_URI || 'mongodb://localhost:27017/sbf-local';
-    
     console.log('🔍 Attempting to connect to MongoDB...');
-    console.log('🔗 MongoDB URI:', mongoURI.replace(/\/\/.*@/, '//***:***@')); // Hide credentials
     
-    const conn = await mongoose.connect(mongoURI, {
+    // Get MongoDB URI from environment variables
+    const mongoURI = process.env.MONGODB_URI;
+    
+    if (!mongoURI) {
+      throw new Error('MongoDB URI not found in environment variables');
+    }
+
+    console.log(`🔗 MongoDB URI: ${mongoURI.replace(/\/\/.*@/, '//**:**@')}`);
+
+    // ⚡ PRODUCTION OPTIMIZED: MongoDB connection options
+    const options = {
       useNewUrlParser: true,
       useUnifiedTopology: true,
-      // ⚡ PERFORMANCE OPTIMIZATIONS
-      maxPoolSize: 10, // Maintain up to 10 socket connections
-      serverSelectionTimeoutMS: 5000, // Keep trying to send operations for 5 seconds
-      socketTimeoutMS: 45000, // Close sockets after 45 seconds of inactivity
-      family: 4, // Use IPv4, skip trying IPv6
-      bufferMaxEntries: 0, // Disable mongoose buffering
-      bufferCommands: false, // Disable mongoose buffering
-      // Connection optimization
-      ...(mongoURI.includes('mongodb+srv') ? {
-        ssl: true,
-        retryWrites: true,
-        w: 'majority',
-      } : {})
-    });
+      maxPoolSize: 10,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+      family: 4,
+      keepAlive: true,
+      keepAliveInitialDelay: 300000,
+      retryWrites: true,
+      w: 'majority',
+      wtimeout: 2500,
+      autoIndex: process.env.NODE_ENV !== 'production' // Disable auto-indexing in production
+    };
 
-    console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
-    console.log(`📊 Database: ${conn.connection.name}`);
+    // Connect with optimized options
+    const conn = await mongoose.connect(mongoURI, options);
+
+    // Log successful connection
+    console.log('✅ MongoDB Connected Successfully!');
+    console.log(`🏢 Database: ${conn.connection.name}`);
+    console.log(`🌐 Host: ${conn.connection.host}`);
+    console.log(`📊 Port: ${conn.connection.port}`);
     
-    // ⚡ Set up connection event listeners
-    mongoose.connection.on('error', (err) => {
+    // Log connection state
+    const state = mongoose.connection.readyState;
+    const states = {
+      0: 'disconnected',
+      1: 'connected',
+      2: 'connecting',
+      3: 'disconnecting',
+      4: 'uninitialized'
+    };
+    console.log(`🔌 Connection State: ${states[state]}`);
+
+    // Set up connection error handler
+    mongoose.connection.on('error', err => {
       console.error('❌ MongoDB connection error:', err);
+      logConnectionError(err);
     });
 
+    // Set up disconnection handler
     mongoose.connection.on('disconnected', () => {
-      console.log('⚠️ MongoDB disconnected');
+      console.log('❌ MongoDB disconnected');
+      // Attempt to reconnect
+      setTimeout(connectDB, 5000);
     });
 
-    mongoose.connection.on('reconnected', () => {
-      console.log('🔄 MongoDB reconnected');
-    });
+    // Handle process termination
+    process.on('SIGINT', cleanup);
+    process.on('SIGTERM', cleanup);
 
-    // ⚡ PERFORMANCE: Enable query result caching
-    mongoose.set('debug', process.env.NODE_ENV === 'development');
-    
     return conn;
+
   } catch (error) {
     console.error('❌ MongoDB Connection Error:', error.message);
+    logConnectionError(error);
     
-    // Provide helpful guidance for common connection issues
-    if (error.message.includes('IP')) {
-      console.log('\n🔧 SOLUTION:');
-      console.log('1. Go to MongoDB Atlas Dashboard');
-      console.log('2. Navigate to Network Access');
-      console.log('3. Add your current IP address');
-      console.log('4. Or temporarily add 0.0.0.0/0 for testing');
-      console.log('5. Wait 2-3 minutes for changes to take effect');
-    }
-    
-    if (error.message.includes('authentication')) {
-      console.log('\n🔧 SOLUTION:');
-      console.log('1. Check your MONGODB_URI credentials');
-      console.log('2. Ensure username and password are correct');
-      console.log('3. Check if special characters are URL encoded');
-    }
-    
-    console.log('\n📋 For immediate testing, you can:');
-    console.log('- Install MongoDB locally');
-    console.log('- Use a local connection string');
-    console.log('- The app will fallback to local MongoDB');
-    
-    // Exit the process for production, continue for development
+    // In production, we want to retry connection
     if (process.env.NODE_ENV === 'production') {
-      process.exit(1);
-    } else {
-      console.log('⚠️ Continuing without database connection (development mode)');
+      console.log('🔄 Retrying connection in 5 seconds...');
+      setTimeout(connectDB, 5000);
     }
+    
+    process.exit(1);
+  }
+};
+
+// Helper function to log detailed connection errors
+const logConnectionError = (error) => {
+  console.error('📋 Connection Error Details:', {
+    message: error.message,
+    code: error.code,
+    name: error.name,
+    stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV,
+    mongoVersion: mongoose.version
+  });
+};
+
+// Cleanup function for graceful shutdown
+const cleanup = async () => {
+  try {
+    await mongoose.connection.close();
+    console.log('✅ MongoDB connection closed through app termination');
+    process.exit(0);
+  } catch (err) {
+    console.error('❌ Error during MongoDB cleanup:', err);
+    process.exit(1);
   }
 };
 
