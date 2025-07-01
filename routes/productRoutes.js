@@ -55,66 +55,103 @@ router.use((req, res, next) => {
 router.get('/homepage-data', async (req, res) => {
   try {
     console.time('homepage-data');
+    console.log('🔍 Homepage data request started');
     
-    // Parallel queries for both featured and new products
-    const [featuredProducts, newProducts] = await Promise.all([
-      Product.find({ isFeatured: true, hidden: { $ne: true } })
-        .select('title images price category rating numReviews discount isFeatured isNew')
-        .sort({ createdAt: -1 })
-        .limit(8)
-        .lean(),
-      Product.find({ isNew: true, hidden: { $ne: true } })
-        .select('title images price category rating numReviews discount isFeatured isNew')
-        .sort({ createdAt: -1 })
-        .limit(8)
-        .lean()
+    // Check database connection first
+    if (mongoose.connection.readyState !== 1) {
+      console.log('❌ Database not connected, state:', mongoose.connection.readyState);
+      return res.status(503).json({
+        success: false,
+        message: 'Database connection unavailable',
+        fallback: true
+      });
+    }
+
+    // Parallel queries for both featured and new products with timeout
+    const queryTimeout = 10000; // 10 seconds timeout
+    
+    const [featuredProducts, newProducts] = await Promise.race([
+      Promise.all([
+        Product.find({ isFeatured: true, hidden: { $ne: true } })
+          .select('title images price category rating numReviews discount isFeatured isNew')
+          .sort({ createdAt: -1 })
+          .limit(8)
+          .lean()
+          .maxTimeMS(queryTimeout),
+        Product.find({ isNew: true, hidden: { $ne: true } })
+          .select('title images price category rating numReviews discount isFeatured isNew')
+          .sort({ createdAt: -1 })
+          .limit(8)
+          .lean()
+          .maxTimeMS(queryTimeout)
+      ]),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Database query timeout')), queryTimeout)
+      )
     ]);
+
+    console.log(`✅ Products fetched: ${featuredProducts.length} featured, ${newProducts.length} new`);
 
     // Batch process review stats for all products at once
     const allProducts = [...featuredProducts, ...newProducts];
     
     if (allProducts.length > 0) {
-      const Review = require('../models/Review');
-      const productIds = allProducts.map(p => p._id);
-      
-      // Single aggregation query for all review stats
-      const reviewStats = await Review.aggregate([
-        {
-          $match: { 
-            product: { $in: productIds }, 
-            status: 'approved' 
+      try {
+        const Review = require('../models/Review');
+        const productIds = allProducts.map(p => p._id);
+        
+        // Single aggregation query for all review stats with timeout
+        const reviewStats = await Review.aggregate([
+          {
+            $match: { 
+              product: { $in: productIds }, 
+              status: 'approved' 
+            }
+          },
+          {
+            $group: {
+              _id: '$product',
+              totalReviews: { $sum: 1 },
+              averageRating: { $avg: '$rating' }
+            }
           }
-        },
-        {
-          $group: {
-            _id: '$product',
-            totalReviews: { $sum: 1 },
-            averageRating: { $avg: '$rating' }
-          }
-        }
-      ]);
+        ]).maxTimeMS(5000); // 5 second timeout for review stats
 
-      // Create lookup map for O(1) access
-      const statsMap = new Map();
-      reviewStats.forEach(stat => {
-        statsMap.set(stat._id.toString(), {
-          numReviews: stat.totalReviews,
-          rating: Math.round(stat.averageRating * 10) / 10
+        // Create lookup map for O(1) access
+        const statsMap = new Map();
+        reviewStats.forEach(stat => {
+          statsMap.set(stat._id.toString(), {
+            numReviews: stat.totalReviews,
+            rating: Math.round(stat.averageRating * 10) / 10
+          });
         });
-      });
 
-      // Apply stats to all products
-      allProducts.forEach(product => {
-        const stats = statsMap.get(product._id.toString());
-        if (stats) {
-          product.rating = stats.rating;
-          product.numReviews = stats.numReviews;
-        }
-      });
+        // Apply stats to all products
+        allProducts.forEach(product => {
+          const stats = statsMap.get(product._id.toString());
+          if (stats) {
+            product.rating = stats.rating;
+            product.numReviews = stats.numReviews;
+          } else {
+            // Default values if no reviews
+            product.rating = product.rating || 0;
+            product.numReviews = product.numReviews || 0;
+          }
+        });
+
+        console.log('✅ Review stats applied to products');
+      } catch (reviewError) {
+        console.log('⚠️ Review stats failed, using default values:', reviewError.message);
+        // Continue without review stats - products will have default rating/numReviews
+        allProducts.forEach(product => {
+          product.rating = product.rating || 0;
+          product.numReviews = product.numReviews || 0;
+        });
+      }
     }
 
     console.timeEnd('homepage-data');
-    console.log(`✅ Homepage data loaded: ${featuredProducts.length} featured + ${newProducts.length} new products`);
+    console.log(`✅ Homepage data loaded successfully`);
     
     res.json({
       success: true,
@@ -124,15 +161,28 @@ router.get('/homepage-data', async (req, res) => {
         featuredCount: featuredProducts.length,
         newCount: newProducts.length,
         totalProducts: allProducts.length,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        cached: false
       }
     });
   } catch (error) {
     console.error('❌ Error fetching homepage data:', error);
-    res.status(500).json({ 
+    
+    // 🔧 FALLBACK: Return empty data instead of complete failure
+    res.status(200).json({ 
       success: false,
-      message: 'Error fetching homepage data',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      featured: [],
+      new: [],
+      message: 'Homepage data temporarily unavailable',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Server temporarily unavailable',
+      fallback: true,
+      meta: {
+        featuredCount: 0,
+        newCount: 0,
+        totalProducts: 0,
+        timestamp: new Date().toISOString(),
+        cached: false
+      }
     });
   }
 });

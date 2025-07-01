@@ -21,6 +21,43 @@ connectDB().then(() => {
 // Initialize email service
 initEmailService();
 
+// Database connection monitoring and auto-reconnect
+connectDB();
+
+// Monitor database connection
+const monitorDatabase = () => {
+  const mongoose = require('mongoose');
+  
+  mongoose.connection.on('connected', () => {
+    console.log('✅ Database connected successfully');
+  });
+  
+  mongoose.connection.on('error', (err) => {
+    console.error('❌ Database connection error:', err);
+  });
+  
+  mongoose.connection.on('disconnected', () => {
+    console.log('⚠️ Database disconnected. Attempting to reconnect...');
+    setTimeout(() => {
+      connectDB().catch(console.error);
+    }, 5000); // Retry after 5 seconds
+  });
+  
+  // Graceful shutdown
+  process.on('SIGINT', async () => {
+    try {
+      await mongoose.connection.close();
+      console.log('✅ Database connection closed through app termination');
+      process.exit(0);
+    } catch (err) {
+      console.error('❌ Error during database shutdown:', err);
+      process.exit(1);
+    }
+  });
+};
+
+monitorDatabase();
+
 const app = express();
 
 // ⚡ PERFORMANCE: Body parser middleware with size limits
@@ -231,14 +268,39 @@ if (process.env.NODE_ENV === 'development') {
   });
 }
 
-// ⚡ Error handling middleware with performance logging
+// ⚡ Database health check middleware
+app.use((req, res, next) => {
+  // Skip health checks for static files and non-API routes
+  if (req.url.startsWith('/uploads') || req.url.startsWith('/images') || !req.url.startsWith('/api')) {
+    return next();
+  }
+  
+  const mongoose = require('mongoose');
+  if (mongoose.connection.readyState !== 1) {
+    console.log(`⚠️ Database not ready for request: ${req.method} ${req.url}`);
+    
+    // For critical routes, return error
+    if (req.url.includes('/reviews') || req.url.includes('/orders')) {
+      return res.status(503).json({
+        success: false,
+        message: 'Database temporarily unavailable. Please try again in a moment.',
+        error: 'DATABASE_NOT_READY'
+      });
+    }
+  }
+  
+  next();
+});
+
+// ⚡ Enhanced error handling middleware with database context
 app.use((err, req, res, next) => {
   console.error('❌ Server error:', {
     error: err.message,
-    stack: err.stack,
+    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
     url: req.url,
     method: req.method,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    databaseState: require('mongoose').connection.readyState
   });
   
   // Ensure CORS headers are still set for error responses
@@ -246,9 +308,30 @@ app.use((err, req, res, next) => {
   res.header('Access-Control-Allow-Origin', origin || '*');
   res.header('Access-Control-Allow-Credentials', 'true');
   
-  res.status(err.status || 500).json({
-    message: err.message || 'Internal Server Error',
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+  // Database-specific error handling
+  let statusCode = err.status || 500;
+  let message = err.message || 'Internal Server Error';
+  
+  if (err.name === 'MongoTimeoutError' || err.message.includes('timeout')) {
+    statusCode = 503;
+    message = 'Database timeout. Please try again.';
+  } else if (err.name === 'MongoNetworkError') {
+    statusCode = 503;
+    message = 'Database connection issue. Please try again.';
+  } else if (err.name === 'ValidationError') {
+    statusCode = 400;
+    message = 'Invalid data provided.';
+  }
+  
+  res.status(statusCode).json({
+    success: false,
+    message,
+    error: err.name || 'UnknownError',
+    timestamp: new Date().toISOString(),
+    ...(process.env.NODE_ENV === 'development' && { 
+      stack: err.stack,
+      details: err.details 
+    })
   });
 });
 

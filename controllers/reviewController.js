@@ -2,183 +2,197 @@ const Review = require("../models/Review");
 const Product = require("../models/Product");
 const Order = require("../models/Order");
 const User = require("../models/User");
+const mongoose = require('mongoose');
 
 // @desc    Create new enhanced product review
 // @route   POST /api/products/:id/reviews
 // @access  Private
 const createProductReview = async (req, res) => {
+  const session = await mongoose.startSession();
+  
   try {
-    const { 
-      rating, 
-      title, 
-      comment, 
-      qualityRating, 
-      valueRating, 
-      deliveryRating,
-      pros = [],
-      cons = [],
-      images = []
-    } = req.body;
-
-    console.log("🔍 Creating enhanced product review:", {
+    session.startTransaction();
+    
+    console.log('🔍 Review creation started:', {
       productId: req.params.id,
-      userId: req.user._id,
-      userName: req.user.name,
-      userEmail: req.user.email,
-      rating,
-      title: title?.substring(0, 20),
-      hasAdditionalRatings: !!(qualityRating || valueRating || deliveryRating),
-      prosCount: Array.isArray(pros) ? pros.length : 0,
-      consCount: Array.isArray(cons) ? cons.length : 0,
-      imagesCount: Array.isArray(images) ? images.length : 0
+      userId: req.user?._id,
+      userEmail: req.user?.email,
+      body: req.body,
+      timestamp: new Date().toISOString()
     });
 
-    // 🔒 Enhanced validation
+    // 🔧 DATABASE CONNECTION CHECK
+    if (mongoose.connection.readyState !== 1) {
+      console.log('❌ Database not connected, state:', mongoose.connection.readyState);
+      return res.status(503).json({
+        success: false,
+        message: 'Database temporarily unavailable. Please try again in a moment.',
+        error: 'DATABASE_NOT_READY'
+      });
+    }
+
+    const { title, comment, rating, qualityRating, valueRating, deliveryRating, pros, cons } = req.body;
+    const productId = req.params.id;
+
+    // 🔧 COMPREHENSIVE INPUT VALIDATION
+    const validationErrors = [];
+    
+    if (!productId || !mongoose.Types.ObjectId.isValid(productId)) {
+      validationErrors.push('Invalid product ID');
+    }
+    
+    if (!req.user || !req.user._id) {
+      validationErrors.push('User authentication required');
+    }
+    
+    if (!title || typeof title !== 'string' || title.trim().length < 3) {
+      validationErrors.push('Review title must be at least 3 characters long');
+    }
+    
+    if (!comment || typeof comment !== 'string' || comment.trim().length < 3) {
+      validationErrors.push('Review comment must be at least 3 characters long');
+    }
+    
     if (!rating || rating < 1 || rating > 5) {
-      return res.status(400).json({ 
-        message: "Please provide a valid rating between 1 and 5" 
+      validationErrors.push('Rating must be between 1 and 5');
+    }
+    
+    if (validationErrors.length > 0) {
+      console.log('❌ Validation errors:', validationErrors);
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: validationErrors
       });
     }
 
-    if (!title || title.trim().length < 3) {
-      return res.status(400).json({ 
-        message: "Please provide a review title (minimum 3 characters)" 
-      });
-    }
+    console.log('✅ Validation passed, checking product existence...');
 
-    if (!comment || comment.trim().length < 10) {
-      return res.status(400).json({ 
-        message: "Please provide a detailed comment (minimum 10 characters)" 
-      });
-    }
-
-    // 📦 Validate product exists
-    const product = await Product.findById(req.params.id);
+    // Check if product exists with timeout
+    const product = await Product.findById(productId)
+      .maxTimeMS(5000)
+      .session(session);
+      
     if (!product) {
-      console.log("❌ Product not found:", req.params.id);
-      return res.status(404).json({ message: "Product not found" });
+      console.log('❌ Product not found:', productId);
+      await session.abortTransaction();
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found'
+      });
     }
 
-    // 🔍 Check for existing review by this user
+    console.log('✅ Product found:', product.title);
+
+    // Check if user already reviewed this product
     const existingReview = await Review.findOne({
-      user: req.user._id,
-      product: req.params.id
-    });
+      product: productId,
+      user: req.user._id
+    }).maxTimeMS(5000).session(session);
 
     if (existingReview) {
-      console.log("❌ User already reviewed this product");
-      return res.status(400).json({ 
-        message: "You have already reviewed this product. You can edit your existing review." 
+      console.log('❌ User already reviewed this product');
+      await session.abortTransaction();
+      return res.status(400).json({
+        success: false,
+        message: 'You have already reviewed this product'
       });
     }
 
-    // 🔍 Check if user has purchased this product (optional verification)
-    let isVerifiedPurchase = false;
-    let orderId = null;
-    
-    try {
-      const userOrder = await Order.findOne({
-        user: req.user._id,
-        'items.product': req.params.id,
-        status: { $in: ['delivered', 'completed'] }
-      });
-      
-      if (userOrder) {
-        isVerifiedPurchase = true;
-        orderId = userOrder._id;
-        console.log("✅ Verified purchase found for review");
-      }
-    } catch (orderCheckError) {
-      console.log("⚠️ Could not verify purchase:", orderCheckError.message);
-      // Continue without verification - allow all reviews
-    }
+    console.log('✅ No existing review found, creating new review...');
 
-    // 🔧 Clean and validate additional data
-    const cleanPros = Array.isArray(pros) 
-      ? pros.filter(pro => pro && typeof pro === 'string' && pro.trim().length > 0)
-        .map(pro => pro.trim()).slice(0, 5) // Limit to 5 pros
-      : [];
-
-    const cleanCons = Array.isArray(cons) 
-      ? cons.filter(con => con && typeof con === 'string' && con.trim().length > 0)
-        .map(con => con.trim()).slice(0, 5) // Limit to 5 cons
-      : [];
-
-    const cleanImages = Array.isArray(images) 
-      ? images.filter(img => img && typeof img === 'string' && img.trim().length > 0)
-        .slice(0, 5) // Limit to 5 images
-      : [];
-
-    // 📝 Create new review document
+    // Create the review with comprehensive data
     const reviewData = {
+      product: productId,
       user: req.user._id,
-      product: req.params.id,
       name: req.user.name,
-      email: req.user.email,
-      rating: Number(rating),
       title: title.trim(),
       comment: comment.trim(),
-      isVerifiedPurchase,
-      orderId,
-      pros: cleanPros,
-      cons: cleanCons,
-      images: cleanImages,
-      // Additional ratings (optional)
-      qualityRating: qualityRating ? Number(qualityRating) : null,
-      valueRating: valueRating ? Number(valueRating) : null,
-      deliveryRating: deliveryRating ? Number(deliveryRating) : null,
-      // Metadata
-      deviceInfo: req.get('User-Agent') || '',
-      ipAddress: req.ip || req.connection.remoteAddress || ''
+      rating: Number(rating),
+      qualityRating: qualityRating ? Number(qualityRating) : undefined,
+      valueRating: valueRating ? Number(valueRating) : undefined,
+      deliveryRating: deliveryRating ? Number(deliveryRating) : undefined,
+      pros: Array.isArray(pros) ? pros.filter(p => p && p.trim()) : [],
+      cons: Array.isArray(cons) ? cons.filter(c => c && c.trim()) : [],
+      status: 'pending', // Reviews need approval
+      isVerifiedPurchase: false, // TODO: Check if user purchased this product
+      helpfulVotes: 0,
+      totalVotes: 0,
+      createdAt: new Date(),
+      updatedAt: new Date()
     };
 
-    console.log("💾 Saving review to database...");
+    console.log('📝 Creating review with data:', reviewData);
+
     const review = new Review(reviewData);
-    const savedReview = await review.save();
-    
-    console.log("✅ Review saved successfully:", savedReview._id);
+    const savedReview = await review.save({ session });
 
-    // 📊 Update product review statistics
-    await updateProductReviewStats(req.params.id);
+    console.log('✅ Review saved to database:', savedReview._id);
 
-    // 🔄 Populate user data for response
-    const populatedReview = await Review.findById(savedReview._id)
-      .populate('user', 'name email')
-      .lean();
+    await session.commitTransaction();
+    console.log('✅ Transaction committed successfully');
 
-    console.log("🎉 Review process completed successfully");
-
-    res.status(201).json({ 
+    // Return success response
+    res.status(201).json({
       success: true,
-      message: "Review added successfully! Thank you for your feedback.",
-      review: populatedReview,
-      stats: {
-        totalReviews: (await Review.countDocuments({ product: req.params.id, status: 'approved' })),
-        isVerifiedPurchase,
-        hasAdditionalRatings: !!(qualityRating || valueRating || deliveryRating)
+      message: 'Review submitted successfully and is pending approval',
+      review: {
+        _id: savedReview._id,
+        title: savedReview.title,
+        comment: savedReview.comment,
+        rating: savedReview.rating,
+        status: savedReview.status,
+        createdAt: savedReview.createdAt
       }
     });
 
   } catch (error) {
-    console.error("❌ Error creating review:", error);
-    
-    // Enhanced error reporting
-    let errorMessage = "Error adding review. Please try again.";
-    
-    if (error.name === 'ValidationError') {
-      const validationErrors = Object.values(error.errors).map(err => err.message);
-      errorMessage = `Validation error: ${validationErrors.join(', ')}`;
-    } else if (error.code === 11000) {
-      errorMessage = "You have already reviewed this product.";
-    } else if (error.message.includes('Cast to ObjectId')) {
-      errorMessage = "Invalid product ID.";
+    console.error('❌ Review creation error:', {
+      error: error.message,
+      stack: error.stack,
+      name: error.name,
+      code: error.code,
+      productId: req.params.id,
+      userId: req.user?._id,
+      timestamp: new Date().toISOString()
+    });
+
+    // Rollback transaction
+    try {
+      await session.abortTransaction();
+    } catch (rollbackError) {
+      console.error('❌ Transaction rollback failed:', rollbackError);
     }
 
-    res.status(500).json({ 
+    // Handle specific error types
+    let statusCode = 500;
+    let message = 'Failed to create review';
+
+    if (error.name === 'ValidationError') {
+      statusCode = 400;
+      message = 'Invalid review data';
+    } else if (error.name === 'MongoTimeoutError') {
+      statusCode = 503;
+      message = 'Database timeout. Please try again.';
+    } else if (error.name === 'MongoNetworkError') {
+      statusCode = 503;
+      message = 'Database connection issue. Please try again.';
+    } else if (error.code === 11000) {
+      statusCode = 400;
+      message = 'Duplicate review detected';
+    }
+
+    res.status(statusCode).json({
       success: false,
-      message: errorMessage,
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      message,
+      error: error.name || 'UnknownError',
+      timestamp: new Date().toISOString(),
+      ...(process.env.NODE_ENV === 'development' && { 
+        details: error.message 
+      })
     });
+  } finally {
+    await session.endSession();
   }
 };
 
