@@ -2,12 +2,16 @@
 
 const productSchema = mongoose.Schema(
   {
-    title: {
-      type: String,
+    user: { 
+      type: mongoose.Schema.Types.ObjectId,
       required: true,
-      trim: true,
+      ref: "User",
     },
-    description: {
+    vendor: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Vendor",
+    },
+    title: {
       type: String,
       required: true,
     },
@@ -17,27 +21,51 @@ const productSchema = mongoose.Schema(
         required: true,
       },
     ],
+    discount: {
+      type: Number,
+      default: 0
+    },
     category: {
       type: String,
       required: true,
     },
-    categories: [
-      {
-        type: String,
-      },
-    ],
+    categories: {
+      type: [String],
+      default: []
+    },
+    description: {
+      type: String,
+      required: true,
+    },
+    rating: {
+      type: Number,
+      required: true,
+      default: 0,
+    },
+    numReviews: {
+      type: Number,
+      required: true,
+      default: 0,
+    },
     price: {
       type: Number,
       required: true,
-      min: 0,
+      default: 0,
     },
     countInStock: {
       type: Number,
       required: true,
-      min: 0,
       default: 0,
     },
-    featured: {
+    details: {
+      type: [String],
+      default: []
+    },
+    careInstructions: {
+      type: [String],
+      default: []
+    },
+    isFeatured: {
       type: Boolean,
       default: false,
     },
@@ -45,47 +73,38 @@ const productSchema = mongoose.Schema(
       type: Boolean,
       default: false,
     },
-    isHidden: {
+    hidden: {
       type: Boolean,
       default: false,
     },
-    discount: {
-      type: Number,
-      min: 0,
-      max: 100,
-      default: 0,
-    },
-    details: {
-      type: Map,
-      of: String,
-      default: new Map(),
-    },
-    vendor: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-    },
-    tags: [
-      {
-        type: String,
-      },
-    ],
-    seoTitle: String,
-    seoDescription: String,
-    seoKeywords: [String],
   },
   {
     timestamps: true,
+    suppressReservedKeysWarning: true,
   }
 );
 
 // ⚡ PERFORMANCE: Database indexes for fast queries
-productSchema.index({ hidden: 1, featured: 1, createdAt: -1 }); // Featured products
+productSchema.index({ hidden: 1, isFeatured: 1, createdAt: -1 }); // Featured products
 productSchema.index({ hidden: 1, isNew: 1, createdAt: -1 }); // New products
+productSchema.index({ hidden: 1, rating: -1, numReviews: -1 }); // Top products
 productSchema.index({ hidden: 1, category: 1, createdAt: -1 }); // Category filtering
 productSchema.index({ hidden: 1, categories: 1, createdAt: -1 }); // Multi-category search
 productSchema.index({ title: 'text', description: 'text' }); // Text search
 productSchema.index({ countInStock: 1 }); // Low stock queries
 productSchema.index({ createdAt: -1 }); // General sorting
+
+// Virtual for getting reviews from Review model
+productSchema.virtual('reviews', {
+  ref: 'Review',
+  localField: '_id',
+  foreignField: 'product',
+  options: { sort: { createdAt: -1 } }
+});
+
+// Enable virtuals in JSON output
+productSchema.set('toJSON', { virtuals: true });
+productSchema.set('toObject', { virtuals: true });
 
 const Product = mongoose.model("Product", productSchema);
 
