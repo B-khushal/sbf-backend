@@ -33,24 +33,28 @@ const createProductReview = async (req, res) => {
 
     // Enhanced validation
     if (!rating || !title || !comment) {
+      console.log("❌ Validation failed: Missing required fields");
       return res.status(400).json({ 
         message: "Rating, title, and comment are required" 
       });
     }
 
     if (rating < 1 || rating > 5) {
+      console.log("❌ Validation failed: Invalid rating");
       return res.status(400).json({ 
         message: "Rating must be between 1 and 5" 
       });
     }
 
     if (title.trim().length < 5 || title.trim().length > 100) {
+      console.log("❌ Validation failed: Invalid title length");
       return res.status(400).json({ 
         message: "Title must be between 5 and 100 characters" 
       });
     }
 
     if (comment.trim().length < 10 || comment.trim().length > 1000) {
+      console.log("❌ Validation failed: Invalid comment length");
       return res.status(400).json({ 
         message: "Comment must be between 10 and 1000 characters" 
       });
@@ -61,6 +65,7 @@ const createProductReview = async (req, res) => {
     for (const additionalRating of additionalRatings) {
       if (additionalRating !== null && additionalRating !== undefined) {
         if (additionalRating < 1 || additionalRating > 5) {
+          console.log("❌ Validation failed: Invalid additional rating");
           return res.status(400).json({ 
             message: "All ratings must be between 1 and 5" 
           });
@@ -70,41 +75,56 @@ const createProductReview = async (req, res) => {
 
     // Validate images count
     if (images.length > 5) {
+      console.log("❌ Validation failed: Too many images");
       return res.status(400).json({ 
         message: "Maximum 5 images allowed per review" 
       });
     }
 
+    console.log("✅ Validation passed, checking product existence...");
     const product = await Product.findById(req.params.id);
     if (!product) {
+      console.log("❌ Product not found:", req.params.id);
       return res.status(404).json({ message: "Product not found" });
     }
+    console.log("✅ Product found:", product.title);
 
     // Check if user already reviewed this product
+    console.log("🔍 Checking for existing review...");
     const existingReview = await Review.findOne({
       user: req.user._id,
       product: req.params.id
     });
 
     if (existingReview) {
+      console.log("❌ User already reviewed this product");
       return res.status(400).json({ 
         message: "You have already reviewed this product" 
       });
     }
+    console.log("✅ No existing review found");
 
     // Check for verified purchase
+    console.log("🔍 Checking for verified purchase...");
     let isVerifiedPurchase = false;
     let orderId = null;
 
-    const userOrders = await Order.find({
-      user: req.user._id,
-      "orderItems.product": req.params.id,
-      orderStatus: "delivered"
-    }).sort({ createdAt: -1 });
+    try {
+      const userOrders = await Order.find({
+        user: req.user._id,
+        "orderItems.product": req.params.id,
+        orderStatus: "delivered"
+      }).sort({ createdAt: -1 });
 
-    if (userOrders.length > 0) {
-      isVerifiedPurchase = true;
-      orderId = userOrders[0]._id; // Most recent order
+      if (userOrders.length > 0) {
+        isVerifiedPurchase = true;
+        orderId = userOrders[0]._id; // Most recent order
+        console.log("✅ Verified purchase found");
+      } else {
+        console.log("ℹ️ No verified purchase found, allowing review anyway");
+      }
+    } catch (orderError) {
+      console.log("⚠️ Error checking orders, proceeding without verification:", orderError.message);
     }
 
     // Get user's IP address and device info
@@ -137,6 +157,7 @@ const createProductReview = async (req, res) => {
       ipAddress: ipAddress?.substring(0, 15) + '...'
     });
 
+    console.log("💾 Attempting to save review to database...");
     const review = new Review(reviewData);
     await review.save();
 
@@ -154,6 +175,7 @@ const createProductReview = async (req, res) => {
     // Populate user data for response
     await review.populate('user', 'name');
 
+    console.log("🎉 Review submission completed successfully!");
     res.status(201).json({
       message: "Review submitted successfully!",
       review: review,
@@ -162,8 +184,22 @@ const createProductReview = async (req, res) => {
 
   } catch (error) {
     console.error("❌ Error creating review:", error);
+    
+    // Provide specific error messages based on error type
+    let errorMessage = "Error creating review: " + error.message;
+    
+    if (error.message.includes('E11000') || error.message.includes('duplicate')) {
+      errorMessage = "You have already reviewed this product";
+    } else if (error.message.includes('validation')) {
+      errorMessage = "Invalid review data provided";
+    } else if (error.message.includes('Cast to ObjectId')) {
+      errorMessage = "Invalid product or user ID";
+    } else if (error.message.includes('timeout') || error.message.includes('network')) {
+      errorMessage = "Database connection timeout. Please try again.";
+    }
+    
     res.status(500).json({ 
-      message: "Error creating review: " + error.message 
+      message: errorMessage
     });
   }
 };
@@ -613,19 +649,33 @@ const getUserReviews = async (req, res) => {
 // Helper function to update product review statistics
 const updateProductReviewStats = async (productId) => {
   try {
-    const stats = await Review.getProductReviewStats(productId);
+    console.log("📊 Updating product review stats for:", productId);
     
-    await Product.findByIdAndUpdate(productId, {
-      rating: stats.averageRating || 0,
-      numReviews: stats.totalReviews || 0
-    });
+    const stats = await Review.aggregate([
+      { $match: { product: productId, status: 'approved' } },
+      {
+        $group: {
+          _id: null,
+          totalReviews: { $sum: 1 },
+          averageRating: { $avg: '$rating' }
+        }
+      }
+    ]);
 
-    console.log("📊 Product stats updated:", {
-      productId: productId.toString().substring(0, 8),
-      rating: stats.averageRating,
-      numReviews: stats.totalReviews
-    });
-
+    if (stats.length > 0) {
+      await Product.findByIdAndUpdate(productId, {
+        numReviews: stats[0].totalReviews,
+        rating: Math.round(stats[0].averageRating * 10) / 10 // Round to 1 decimal
+      });
+      console.log("✅ Product stats updated:", stats[0]);
+    } else {
+      // No approved reviews, reset stats
+      await Product.findByIdAndUpdate(productId, {
+        numReviews: 0,
+        rating: 0
+      });
+      console.log("✅ Product stats reset (no reviews)");
+    }
   } catch (error) {
     console.error("❌ Error updating product stats:", error);
   }
