@@ -22,11 +22,16 @@ const userSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ['active', 'inactive'],
+        enum: ['active', 'inactive', 'suspended'],
         default: 'active'
     },
+    vendorStatus: {
+        type: String,
+        enum: ['pending', 'approved', 'suspended', 'rejected'],
+    },
     lastLogin: {
-        type: Date
+        type: Date,
+        default: Date.now
     },
     lastActive: {
         type: Date,
@@ -50,10 +55,15 @@ const userSchema = new mongoose.Schema({
     },
     provider: {
         type: String,
+        enum: ['local', 'google'],
         default: 'local'
     },
     photoURL: {
         type: String
+    },
+    agreedToTerms: {
+        type: Boolean,
+        default: false,
     },
 }, {
     timestamps: true

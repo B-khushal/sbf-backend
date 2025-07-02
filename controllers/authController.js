@@ -229,7 +229,7 @@ const logoutUser = async (req, res) => {
 // @access  Public
 const googleAuth = async (req, res) => {
   try {
-    const { credential } = req.body;
+    const { credential, agreedToTerms } = req.body;
     
     if (!credential) {
       return res.status(400).json({ message: "Google credential is required" });
@@ -252,6 +252,8 @@ const googleAuth = async (req, res) => {
       ]
     });
 
+    let isNewUser = false;
+
     if (user) {
       // User exists, update their info and log them in
       user.name = name;
@@ -262,6 +264,19 @@ const googleAuth = async (req, res) => {
       user.lastActive = new Date();
       await user.save();
     } else {
+      // For new users, require terms acceptance
+      if (!agreedToTerms) {
+        return res.json({ 
+          isNewUser: true,
+          tempCredentials: {
+            name,
+            email,
+            googleId,
+            photoURL: picture
+          }
+        });
+      }
+      
       // Create new user
       user = await User.create({
         name,
@@ -273,9 +288,11 @@ const googleAuth = async (req, res) => {
         status: 'active',
         lastLogin: new Date(),
         lastActive: new Date(),
+        agreedToTerms: true,
         // Set a default password (they won't use it for Google auth)
         password: Math.random().toString(36).slice(-8)
       });
+      isNewUser = true;
     }
 
     // Generate token
@@ -291,7 +308,8 @@ const googleAuth = async (req, res) => {
       photoURL: user.photoURL,
       token,
       lastActive: user.lastActive,
-      lastLogin: user.lastLogin
+      lastLogin: user.lastLogin,
+      isNewUser
     });
 
   } catch (error) {
