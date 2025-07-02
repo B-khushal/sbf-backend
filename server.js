@@ -23,15 +23,27 @@ initEmailService();
 
 const app = express();
 
-// --- Simplified and Corrected CORS Configuration ---
+// --- Comprehensive CORS Configuration ---
 const corsOptions = {
-  origin: 'https://www.sbflorist.in',
+  origin: [
+    'http://localhost:8080',
+    'http://localhost:3000', 
+    'http://localhost:5173',
+    'https://sbflorist.in',
+    'https://www.sbflorist.in',
+    'https://sbf-backend.onrender.com'
+  ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  preflightContinue: false,
+  optionsSuccessStatus: 200
 };
 
 app.use(cors(corsOptions));
+
+// Handle preflight OPTIONS requests explicitly
+app.options('*', cors(corsOptions));
 
 // Middleware
 app.use(express.json());
@@ -110,12 +122,24 @@ app.get('/cors-test', (req, res) => {
     message: 'CORS is working correctly',
     origin: origin || 'No Origin',
     timestamp: new Date().toISOString(),
+    allowedOrigins: corsOptions.origin,
     headers: {
       'Access-Control-Allow-Origin': res.get('Access-Control-Allow-Origin'),
       'Access-Control-Allow-Credentials': res.get('Access-Control-Allow-Credentials'),
-      'Access-Control-Allow-Methods': res.get('Access-Control-Allow-Methods')
-    }
+      'Access-Control-Allow-Methods': res.get('Access-Control-Allow-Methods'),
+      'Access-Control-Allow-Headers': res.get('Access-Control-Allow-Headers')
+    },
+    requestHeaders: req.headers
   });
+});
+
+// Add CORS debugging middleware
+app.use((req, res, next) => {
+  const origin = req.get('Origin');
+  if (origin) {
+    console.log(`🌐 Request from origin: ${origin} to ${req.method} ${req.path}`);
+  }
+  next();
 });
 
 // Serve uploaded files with proper CORS headers
