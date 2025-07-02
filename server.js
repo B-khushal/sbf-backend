@@ -44,7 +44,8 @@ app.use('/api/orders', require('./routes/orderRoutes'));
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/uploads', require('./routes/uploadRoutes'));
 app.use('/api/notifications', require('./routes/notificationRoutes'));
-app.use('/api/settings', require('./routes/settingsRoutes'));
+const settingsRoutes = require('./routes/settingsRoutes');
+const newsletterRoutes = require('./routes/newsletterRoutes');
 app.use('/api/dashboard', require('./routes/dashboardRoutes'));
 app.use('/api/analytics', require('./routes/analyticsRoutes'));
 app.use('/api/contact', require('./routes/contactRoutes'));
@@ -53,6 +54,8 @@ app.use('/api/offers', require('./routes/offerRoutes'));
 app.use('/api/vendors', require('./routes/vendorRoutes'));
 // app.use('/api/reviews', require('./routes/reviewRoutes')); // Disabled review system
 app.use('/wake-up', require('./routes/wakeUpRoutes'));
+app.use('/api/settings', settingsRoutes);
+app.use('/api/newsletter', newsletterRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -152,11 +155,4 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🔗 Health check: http://localhost:${PORT}/health`);
-  console.log(`📡 CORS enabled for production domains`);
-  console.log(`🗄️ Database: ${process.env.MONGO_URI ? 'Connected' : 'Using default connection'}`);
-  console.log(`Access the server from other devices using: http://YOUR_IP:${PORT}`);
-}).on('error', (err) => {
-  console.error('❌ Server failed to start:', err);
-  process.exit(1);
-});
+  console.log(`
