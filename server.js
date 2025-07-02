@@ -52,7 +52,7 @@ app.use('/api/contact', require('./routes/contactRoutes'));
 app.use('/api/promocodes', require('./routes/promoCodeRoutes'));
 app.use('/api/offers', require('./routes/offerRoutes'));
 app.use('/api/vendors', require('./routes/vendorRoutes'));
-// app.use('/api/reviews', require('./routes/reviewRoutes')); // Disabled review system
+app.use('/api/reviews', require('./routes/reviewRoutes')); // Review system enabled
 app.use('/wake-up', require('./routes/wakeUpRoutes'));
 app.use('/api/settings', settingsRoutes);
 app.use('/api/newsletter', newsletterRoutes);

@@ -9,7 +9,7 @@ const {
   respondToReview,
   getUserReviews,
 } = require("../controllers/reviewController");
-const { protect, admin } = require("../middleware/authMiddleware");
+const { protect } = require("../middleware/authMiddleware");
 
 // @route   GET /api/reviews/my-reviews
 // @desc    Get current user's reviews
