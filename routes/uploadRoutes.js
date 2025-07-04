@@ -27,7 +27,21 @@ const upload = multer({
 // @access  Private/Admin
 router.post("/", protect, admin, upload.single("image"), async (req, res) => {
   try {
+    console.log('📸 Upload request received:', {
+      method: req.method,
+      url: req.url,
+      headers: req.headers,
+      user: req.user ? { id: req.user._id, role: req.user.role } : 'No user',
+      file: req.file ? {
+        originalName: req.file.originalname,
+        size: req.file.size,
+        mimetype: req.file.mimetype,
+        fieldname: req.file.fieldname
+      } : 'No file'
+    });
+
     if (!req.file) {
+      console.log('❌ No file uploaded');
       return res.status(400).json({ message: "No file uploaded" });
     }
 
