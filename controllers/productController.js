@@ -677,8 +677,12 @@ const getProductsByCategory = async (req, res) => {
     const pageSize = 12;
     const page = Number(req.query.page) || 1;
 
+    // Check both primary category and additional categories
     const query = {
-      categories: { $regex: new RegExp(`^${category}$`, 'i') },
+      $or: [
+        { category: { $regex: new RegExp(`^${category}$`, 'i') } },
+        { categories: { $regex: new RegExp(`^${category}$`, 'i') } }
+      ],
       hidden: { $ne: true }
     };
     
