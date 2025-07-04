@@ -583,6 +583,91 @@ const getProductCategories = async (req, res) => {
   }
 };
 
+// @desc    Get categories with product counts
+// @route   GET /api/products/categories-with-counts
+// @access  Public
+const getCategoriesWithCounts = async (req, res) => {
+  try {
+    // Get categories with counts using aggregation
+    const categoriesWithCounts = await Product.aggregate([
+      // Match only non-hidden products
+      { $match: { hidden: { $ne: true } } },
+      // Unwind the categories array to de-normalize it
+      { $unwind: "$categories" },
+      // Group by category name and count products
+      { 
+        $group: { 
+          _id: "$categories", 
+          count: { $sum: 1 } 
+        } 
+      },
+      // Project to rename _id to name
+      { 
+        $project: { 
+          name: "$_id", 
+          count: 1, 
+          _id: 0 
+        } 
+      },
+      // Sort by count descending, then by name
+      { $sort: { count: -1, name: 1 } }
+    ]);
+
+    // Also get primary category counts
+    const primaryCategoryCounts = await Product.aggregate([
+      // Match only non-hidden products
+      { $match: { hidden: { $ne: true } } },
+      // Group by primary category and count products
+      { 
+        $group: { 
+          _id: "$category", 
+          count: { $sum: 1 } 
+        } 
+      },
+      // Project to rename _id to name
+      { 
+        $project: { 
+          name: "$_id", 
+          count: 1, 
+          _id: 0 
+        } 
+      },
+      // Sort by count descending, then by name
+      { $sort: { count: -1, name: 1 } }
+    ]);
+
+    // Combine both results, prioritizing additional categories
+    const combinedCounts = new Map();
+    
+    // Add primary category counts
+    primaryCategoryCounts.forEach(item => {
+      if (item.name) {
+        combinedCounts.set(item.name.toLowerCase(), item.count);
+      }
+    });
+    
+    // Add or update with additional category counts
+    categoriesWithCounts.forEach(item => {
+      if (item.name) {
+        const key = item.name.toLowerCase();
+        const existingCount = combinedCounts.get(key) || 0;
+        combinedCounts.set(key, existingCount + item.count);
+      }
+    });
+
+    // Convert to array and sort
+    const result = Array.from(combinedCounts.entries()).map(([name, count]) => ({
+      name: name,
+      count: count
+    })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+
+    res.json(result);
+  } catch (error) {
+    console.error("Error fetching categories with counts:", error);
+    res.status(500).json({ message: "Server Error" });
+  }
+};
+
 // @route   GET /api/products/category/:category
 // @desc    Get products by category
 // @access  Public
@@ -667,6 +752,7 @@ module.exports = {
   toggleProductVisibility,
   getLowStockProducts,
   getProductCategories,
+  getCategoriesWithCounts,
   getProductsByCategory,
   addToWishlist,
   removeFromWishlist,

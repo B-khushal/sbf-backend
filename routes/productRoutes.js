@@ -13,6 +13,7 @@ const {
   toggleProductVisibility,
   getLowStockProducts,
   getProductCategories,
+  getCategoriesWithCounts,
   getProductsByCategory,
   addToWishlist,
   removeFromWishlist,
@@ -83,6 +84,7 @@ router.get('/top', getTopProducts);
 router.get('/featured', getFeaturedProducts);
 router.get('/new', getNewProducts);
 router.get('/categories', getProductCategories);
+router.get('/categories-with-counts', getCategoriesWithCounts);
 
 router.route('/:id')
   .get(getProductById)

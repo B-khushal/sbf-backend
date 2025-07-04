@@ -11,9 +11,22 @@ const storage = multer.memoryStorage();
 
 // Validate file type
 const fileFilter = (req, file, cb) => {
+  console.log('🔍 File filter check:', {
+    originalname: file.originalname,
+    mimetype: file.mimetype,
+    fieldname: file.fieldname
+  });
+  
   const filetypes = /jpg|jpeg|png|webp/;
   const isValid = filetypes.test(path.extname(file.originalname).toLowerCase()) && filetypes.test(file.mimetype);
-  isValid ? cb(null, true) : cb("Images only! (jpg, jpeg, png, webp)");
+  
+  if (isValid) {
+    console.log('✅ File type is valid');
+    cb(null, true);
+  } else {
+    console.log('❌ File type is invalid');
+    cb("Images only! (jpg, jpeg, png, webp)");
+  }
 };
 
 const upload = multer({ 
@@ -22,10 +35,57 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
 });
 
+// @route   GET /api/uploads/test
+// @desc    Test upload endpoint without authentication
+// @access  Public (for debugging)
+router.get("/test", (req, res) => {
+  res.json({ 
+    message: "Upload endpoint is accessible",
+    timestamp: new Date().toISOString(),
+    cloudinary: {
+      cloud_name: process.env.CLOUDINARY_CLOUD_NAME ? 'Configured' : 'Missing',
+      api_key: process.env.CLOUDINARY_API_KEY ? 'Configured' : 'Missing',
+      api_secret: process.env.CLOUDINARY_API_SECRET ? 'Configured' : 'Missing'
+    }
+  });
+});
+
+// @route   GET /api/uploads/auth-test
+// @desc    Test authentication without file upload
+// @access  Private/Admin
+router.get("/auth-test", protect, admin, (req, res) => {
+  res.json({ 
+    message: "Authentication successful",
+    user: {
+      id: req.user._id,
+      role: req.user.role,
+      email: req.user.email
+    },
+    timestamp: new Date().toISOString()
+  });
+});
+
 // @route   POST /api/uploads
 // @desc    Upload an image to Cloudinary
 // @access  Private/Admin
-router.post("/", protect, admin, upload.single("image"), async (req, res) => {
+router.post("/", protect, admin, (req, res, next) => {
+  upload.single("image")(req, res, (err) => {
+    if (err instanceof multer.MulterError) {
+      console.error('❌ Multer error:', err);
+      return res.status(400).json({ 
+        message: "File upload error", 
+        error: err.message 
+      });
+    } else if (err) {
+      console.error('❌ File filter error:', err);
+      return res.status(400).json({ 
+        message: "File validation error", 
+        error: err 
+      });
+    }
+    next();
+  });
+}, async (req, res) => {
   try {
     console.log('📸 Upload request received:', {
       method: req.method,
