@@ -200,8 +200,91 @@ exports.getCategories = async (req, res) => {
     let settings = await Settings.findOne();
     
     if (!settings || !settings.categories) {
-      // Return empty categories array
-      return res.json([]);
+      // Return default categories
+      const defaultCategories = [
+        {
+          id: 'bouquets',
+          name: 'Bouquets',
+          description: 'Handcrafted floral arrangements',
+          image: 'https://images.unsplash.com/photo-1582794543139-8ac9cb0f7b11?ixlib=rb-4.0.3&q=85&w=800&auto=format&fit=crop',
+          link: '/shop/bouquets',
+          enabled: true,
+          order: 0,
+        },
+        {
+          id: 'chocolate',
+          name: 'Chocolate',
+          description: 'Delicious chocolate arrangements',
+          image: 'https://images.unsplash.com/photo-1481391319762-47dff72954d9?ixlib=rb-4.0.3&q=85&w=800&auto=format&fit=crop',
+          link: '/shop/chocolate',
+          enabled: true,
+          order: 1,
+        },
+        {
+          id: 'baskets',
+          name: 'Baskets',
+          description: 'Elegant gift baskets',
+          image: '/images/d3.jpg',
+          link: '/shop/baskets',
+          enabled: true,
+          order: 2,
+        },
+        {
+          id: 'gifts',
+          name: 'Gifts',
+          description: 'Thoughtful presents for any occasion',
+          image: 'https://images.unsplash.com/photo-1549465220-1a8b9238cd48?ixlib=rb-4.0.3&q=85&w=800&auto=format&fit=crop',
+          link: '/shop/gifts',
+          enabled: true,
+          order: 3,
+        },
+        {
+          id: 'plants',
+          name: 'Plants',
+          description: 'Indoor and outdoor greenery',
+          image: 'https://images.unsplash.com/photo-1533038590840-1cde6e668a91?ixlib=rb-4.0.3&q=85&w=800&auto=format&fit=crop',
+          link: '/shop/plants',
+          enabled: true,
+          order: 4,
+        },
+        {
+          id: 'birthday',
+          name: 'Birthday',
+          description: 'Perfect floral gifts',
+          image: 'https://images.unsplash.com/photo-1464349095431-e9a21285b5f3?ixlib=rb-4.0.3&q=85&w=800&auto=format&fit=crop',
+          link: '/shop/birthday',
+          enabled: true,
+          order: 5,
+        },
+        {
+          id: 'anniversary',
+          name: 'Anniversary',
+          description: 'Romantic arrangements',
+          image: 'https://images.unsplash.com/photo-1519378058457-4c29a0a2efac?ixlib=rb-4.0.3&q=85&w=800&auto=format&fit=crop',
+          link: '/shop/anniversary',
+          enabled: true,
+          order: 6,
+        },
+        {
+          id: 'sympathy',
+          name: 'Sympathy',
+          description: 'Comforting arrangements',
+          image: 'https://images.unsplash.com/photo-1518709268805-4e9042af2176?ixlib=rb-4.0.3&q=85&w=800&auto=format&fit=crop',
+          link: '/shop/sympathy',
+          enabled: true,
+          order: 7,
+        },
+        {
+          id: 'occasions',
+          name: 'Occasions',
+          description: 'Special celebrations',
+          image: 'https://images.unsplash.com/photo-1464349095431-e9a21285b5f3?ixlib=rb-4.0.3&q=85&w=800&auto=format&fit=crop',
+          link: '/shop/occasions',
+          enabled: true,
+          order: 8,
+        },
+      ];
+      return res.json(defaultCategories);
     }
 
     res.json(settings.categories);
