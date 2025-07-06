@@ -194,12 +194,100 @@ exports.updateAllSettings = async (req, res) => {
   }
 };
 
-// Get all categories
+// Get all categories with subcategories
 exports.getCategories = async (req, res) => {
   try {
     const settings = await Settings.findOne();
-    res.json(settings?.categories || []);
+    if (!settings) {
+      return res.status(404).json({ message: 'Settings not found' });
+    }
+
+    // Organize categories into hierarchy
+    const categories = settings.categories || [];
+    const mainCategories = categories.filter(cat => !cat.parentCategory);
+    const subCategories = categories.filter(cat => cat.parentCategory);
+
+    // Attach subcategories to their parent categories
+    const categoriesWithSubs = mainCategories.map(mainCat => ({
+      ...mainCat.toObject(),
+      subcategories: subCategories
+        .filter(subCat => subCat.parentCategory?.toString() === mainCat._id?.toString())
+        .sort((a, b) => a.order - b.order)
+    }));
+
+    // Sort main categories by order
+    categoriesWithSubs.sort((a, b) => a.order - b.order);
+
+    res.json(categoriesWithSubs);
   } catch (error) {
+    console.error('Error fetching categories:', error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Update categories (including subcategories)
+exports.updateCategories = async (req, res) => {
+  try {
+    const { categories } = req.body;
+    if (!Array.isArray(categories)) {
+      return res.status(400).json({ message: 'Categories must be an array' });
+    }
+
+    const settings = await Settings.findOne();
+    if (!settings) {
+      return res.status(404).json({ message: 'Settings not found' });
+    }
+
+    // Flatten categories and subcategories into a single array
+    const flattenedCategories = categories.reduce((acc, cat) => {
+      const category = { ...cat };
+      const subcategories = category.subcategories || [];
+      delete category.subcategories;
+      
+      return [...acc, category, ...subcategories];
+    }, []);
+
+    // Validate categories
+    for (const category of flattenedCategories) {
+      if (!category.name || !category.slug) {
+        return res.status(400).json({
+          message: 'All categories must have a name and slug',
+          category
+        });
+      }
+
+      // Check for duplicate slugs
+      const duplicateSlug = flattenedCategories.find(
+        c => c.slug === category.slug && c._id !== category._id
+      );
+      if (duplicateSlug) {
+        return res.status(400).json({
+          message: 'Duplicate category slug found',
+          slug: category.slug
+        });
+      }
+    }
+
+    // Update settings with flattened categories
+    settings.categories = flattenedCategories;
+    await settings.save();
+
+    // Return categories in hierarchical format
+    const mainCategories = flattenedCategories.filter(cat => !cat.parentCategory);
+    const subCategories = flattenedCategories.filter(cat => cat.parentCategory);
+
+    const categoriesWithSubs = mainCategories.map(mainCat => ({
+      ...mainCat,
+      subcategories: subCategories
+        .filter(subCat => subCat.parentCategory?.toString() === mainCat._id?.toString())
+        .sort((a, b) => a.order - b.order)
+    }));
+
+    categoriesWithSubs.sort((a, b) => a.order - b.order);
+
+    res.json(categoriesWithSubs);
+  } catch (error) {
+    console.error('Error updating categories:', error);
     res.status(500).json({ message: error.message });
   }
 };
