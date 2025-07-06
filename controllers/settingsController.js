@@ -1,85 +1,17 @@
 const Settings = require('../models/settings');
 
-// Initialize default settings
-const defaultSettings = {
-  heroSlides: [
-    {
-      id: 'default-slide-1',
-      title: 'Welcome to SB Florist',
-      subtitle: 'Fresh Flowers & Beautiful Arrangements',
-      image: '/images/default-hero.jpg',
-      ctaText: 'Shop Now',
-      ctaLink: '/shop',
-      enabled: true,
-      order: 0
-    }
-  ],
-  homeSections: [
-    {
-      id: 'featured-products',
-      title: 'Featured Products',
-      subtitle: 'Our Most Popular Arrangements',
-      type: 'products',
-      enabled: true,
-      order: 0
-    },
-    {
-      id: 'categories-section',
-      title: 'Shop by Category',
-      subtitle: 'Browse Our Collections',
-      type: 'categories',
-      enabled: true,
-      order: 1
-    }
-  ],
-  categories: [
-    {
-      name: 'Birthday',
-      slug: 'birthday',
-      description: 'Beautiful birthday flower arrangements',
-      order: 0,
-      isActive: true
-    },
-    {
-      name: 'Anniversary',
-      slug: 'anniversary',
-      description: 'Romantic anniversary flowers',
-      order: 1,
-      isActive: true
-    },
-    {
-      name: 'Wedding',
-      slug: 'wedding',
-      description: 'Elegant wedding flowers and decorations',
-      order: 2,
-      isActive: true
-    }
-  ],
-  headerSettings: {
-    logo: '/images/logo.png',
-    showSearch: true,
-    showCart: true,
-    showWishlist: true
-  },
-  footerSettings: {
-    logo: '/images/logo.png',
-    showSocials: true,
-    showNewsletter: true,
-    copyrightText: '© 2024 SB Florist. All rights reserved.'
-  }
-};
-
 // Get all hero slides
 exports.getHeroSlides = async (req, res) => {
   try {
     let settings = await Settings.findOne();
     
+    // Initialize default settings if none exist
     if (!settings) {
-      settings = new Settings(defaultSettings);
-      await settings.save();
+      await Settings.initializeDefaultSettings();
+      settings = await Settings.findOne();
     }
 
-    res.json(settings.heroSlides || defaultSettings.heroSlides);
+    res.json(settings.heroSlides || []);
   } catch (error) {
     console.error('Error fetching hero slides:', error);
     res.status(500).json({ message: 'Error fetching hero slides' });
@@ -93,7 +25,7 @@ exports.updateHeroSlides = async (req, res) => {
 
     let settings = await Settings.findOne();
     if (!settings) {
-      settings = new Settings(defaultSettings);
+      settings = new Settings();
     }
 
     settings.heroSlides = slides;
@@ -111,12 +43,13 @@ exports.getHomeSections = async (req, res) => {
   try {
     let settings = await Settings.findOne();
     
+    // Initialize default settings if none exist
     if (!settings) {
-      settings = new Settings(defaultSettings);
-      await settings.save();
+      await Settings.initializeDefaultSettings();
+      settings = await Settings.findOne();
     }
 
-    res.json(settings.homeSections || defaultSettings.homeSections);
+    res.json(settings.homeSections);
   } catch (error) {
     console.error('Error fetching home sections:', error);
     res.status(500).json({ message: 'Error fetching home sections' });
@@ -179,22 +112,20 @@ exports.getAllSettings = async (req, res) => {
     let settings = await Settings.findOne();
     
     if (!settings) {
-      // Initialize with default settings if none exist
-      settings = new Settings(defaultSettings);
-      await settings.save();
+      await Settings.initializeDefaultSettings();
+      settings = await Settings.findOne();
     }
 
-    // Return all settings
     res.json({
-      heroSlides: settings.heroSlides || defaultSettings.heroSlides,
-      homeSections: settings.homeSections || defaultSettings.homeSections,
-      categories: settings.categories || defaultSettings.categories,
-      headerSettings: settings.headerSettings || defaultSettings.headerSettings,
-      footerSettings: settings.footerSettings || defaultSettings.footerSettings
+      heroSlides: settings.heroSlides || [],
+      homeSections: settings.homeSections || [],
+      categories: settings.categories || [],
+      headerSettings: settings.headerSettings || {},
+      footerSettings: settings.footerSettings || {}
     });
   } catch (error) {
     console.error('Error fetching all settings:', error);
-    res.status(500).json({ message: 'Error fetching settings', error: error.message });
+    res.status(500).json({ message: 'Error fetching all settings' });
   }
 };
 
@@ -208,117 +139,67 @@ exports.updateAllSettings = async (req, res) => {
       settings = new Settings();
     }
 
-    // Update only provided fields
-    if (heroSlides) settings.heroSlides = heroSlides;
+    // Validate hero slides before updating
+    if (heroSlides) {
+      const validSlides = heroSlides.every(slide => 
+        slide.id && 
+        slide.title && 
+        slide.subtitle && 
+        slide.image && 
+        slide.ctaText && 
+        slide.ctaLink && 
+        typeof slide.enabled === 'boolean' && 
+        typeof slide.order === 'number'
+      );
+      
+      if (!validSlides) {
+        return res.status(400).json({ 
+          message: 'Invalid hero slides data. All required fields must be provided.',
+          requiredFields: ['id', 'title', 'subtitle', 'image', 'ctaText', 'ctaLink', 'enabled', 'order']
+        });
+      }
+      settings.heroSlides = heroSlides;
+    }
+
     if (homeSections) settings.homeSections = homeSections;
     if (categories) settings.categories = categories;
     if (headerSettings) settings.headerSettings = headerSettings;
     if (footerSettings) settings.footerSettings = footerSettings;
 
     settings.updatedAt = Date.now();
-    await settings.save();
+    
+    try {
+      await settings.save();
+    } catch (saveError) {
+      console.error('Mongoose validation error:', saveError);
+      return res.status(400).json({ 
+        message: 'Failed to save settings due to validation errors',
+        errors: saveError.errors
+      });
+    }
 
-    res.json(settings);
+    res.json({
+      heroSlides: settings.heroSlides,
+      homeSections: settings.homeSections,
+      categories: settings.categories,
+      headerSettings: settings.headerSettings,
+      footerSettings: settings.footerSettings
+    });
   } catch (error) {
-    console.error('Error updating settings:', error);
-    res.status(500).json({ message: 'Error updating settings', error: error.message });
+    console.error('Error updating all settings:', error);
+    res.status(500).json({ 
+      message: 'Error updating all settings',
+      error: error.message 
+    });
   }
 };
 
-// Get all categories with subcategories
+// Get all categories
 exports.getCategories = async (req, res) => {
   try {
     const settings = await Settings.findOne();
-    if (!settings) {
-      return res.status(404).json({ message: 'Settings not found' });
-    }
-
-    // Organize categories into hierarchy
-    const categories = settings.categories || [];
-    const mainCategories = categories.filter(cat => !cat.parentCategory);
-    const subCategories = categories.filter(cat => cat.parentCategory);
-
-    // Attach subcategories to their parent categories
-    const categoriesWithSubs = mainCategories.map(mainCat => ({
-      ...mainCat.toObject(),
-      subcategories: subCategories
-        .filter(subCat => subCat.parentCategory?.toString() === mainCat._id?.toString())
-        .sort((a, b) => a.order - b.order)
-    }));
-
-    // Sort main categories by order
-    categoriesWithSubs.sort((a, b) => a.order - b.order);
-
-    res.json(categoriesWithSubs);
+    res.json(settings?.categories || []);
   } catch (error) {
-    console.error('Error fetching categories:', error);
-    res.status(500).json({ message: error.message });
-  }
-};
-
-// Update categories (including subcategories)
-exports.updateCategories = async (req, res) => {
-  try {
-    const { categories } = req.body;
-    if (!Array.isArray(categories)) {
-      return res.status(400).json({ message: 'Categories must be an array' });
-    }
-
-    const settings = await Settings.findOne();
-    if (!settings) {
-      return res.status(404).json({ message: 'Settings not found' });
-    }
-
-    // Flatten categories and subcategories into a single array
-    const flattenedCategories = categories.reduce((acc, cat) => {
-      const category = { ...cat };
-      const subcategories = category.subcategories || [];
-      delete category.subcategories;
-      
-      return [...acc, category, ...subcategories];
-    }, []);
-
-    // Validate categories
-    for (const category of flattenedCategories) {
-      if (!category.name || !category.slug) {
-        return res.status(400).json({
-          message: 'All categories must have a name and slug',
-          category
-        });
-      }
-
-      // Check for duplicate slugs
-      const duplicateSlug = flattenedCategories.find(
-        c => c.slug === category.slug && c._id !== category._id
-      );
-      if (duplicateSlug) {
-        return res.status(400).json({
-          message: 'Duplicate category slug found',
-          slug: category.slug
-        });
-      }
-    }
-
-    // Update settings with flattened categories
-    settings.categories = flattenedCategories;
-    await settings.save();
-
-    // Return categories in hierarchical format
-    const mainCategories = flattenedCategories.filter(cat => !cat.parentCategory);
-    const subCategories = flattenedCategories.filter(cat => cat.parentCategory);
-
-    const categoriesWithSubs = mainCategories.map(mainCat => ({
-      ...mainCat,
-      subcategories: subCategories
-        .filter(subCat => subCat.parentCategory?.toString() === mainCat._id?.toString())
-        .sort((a, b) => a.order - b.order)
-    }));
-
-    categoriesWithSubs.sort((a, b) => a.order - b.order);
-
-    res.json(categoriesWithSubs);
-  } catch (error) {
-    console.error('Error updating categories:', error);
     res.status(500).json({ message: error.message });
   }
 };
