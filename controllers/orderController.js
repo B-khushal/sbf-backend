@@ -942,7 +942,7 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
       
       // Handle user authentication - use user ID from request or create guest order
       const userId = req.user?._id || null;
-      console.log('👤 User ID for order:', userId);
+      console.log('👤 User ID for order:', userId || 'Guest order');
       
       // Validate and clean order data
       if (!orderData.items || !Array.isArray(orderData.items) || orderData.items.length === 0) {
@@ -958,7 +958,7 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
       
       const order = new Order({
         orderNumber,
-        user: userId,
+        user: userId || undefined, // Use undefined instead of null for guest orders
         items: orderData.items.map(item => ({
           product: item.product,
           title: item.title,
@@ -1040,6 +1040,14 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
       const populatedOrder = await Order.findById(savedOrder._id)
         .populate('user', 'name email')
         .populate('items.product', 'title images price');
+      
+      // Handle guest orders by adding guest user info
+      if (!populatedOrder.user && orderData.shippingInfo) {
+        populatedOrder.user = {
+          name: `${orderData.shippingInfo.firstName} ${orderData.shippingInfo.lastName}`,
+          email: orderData.shippingInfo.email
+        };
+      }
 
       console.log('✅ Order populated successfully');
 

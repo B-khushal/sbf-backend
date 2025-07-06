@@ -43,7 +43,7 @@ router.route('/:id/status')
 router.post('/next-number', getNextOrderNumber);
 
 // Razorpay specific routes
-router.post('/create-razorpay-order', protect, createRazorpayOrder);
-router.post('/verify-payment', protect, verifyRazorpayPayment);
+router.post('/create-razorpay-order', createRazorpayOrder); // Remove protect middleware for guest orders
+router.post('/verify-payment', verifyRazorpayPayment); // Remove protect middleware for guest orders
 
 module.exports = router;
