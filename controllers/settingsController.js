@@ -199,7 +199,7 @@ exports.updateAllSettings = async (req, res) => {
 exports.getCategories = async (req, res) => {
   try {
     const settings = await Settings.findOne();
-    res.json(settings.categories || []);
+    res.json(settings?.categories || []);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -215,13 +215,19 @@ exports.addCategory = async (req, res) => {
 
     const { name, slug, description, order, isActive, parentCategory, image } = req.body;
 
+    // Basic validation
+    if (!name || !slug) {
+      return res.status(400).json({ message: 'Name and slug are required' });
+    }
+
     // Check if slug is unique
     const existingCategory = settings.categories.find(cat => cat.slug === slug);
     if (existingCategory) {
       return res.status(400).json({ message: 'Category with this slug already exists' });
     }
 
-    settings.categories.push({
+    // Create new category
+    const newCategory = {
       name,
       slug,
       description,
@@ -229,8 +235,9 @@ exports.addCategory = async (req, res) => {
       isActive: isActive !== undefined ? isActive : true,
       parentCategory,
       image
-    });
+    };
 
+    settings.categories.push(newCategory);
     await settings.save();
     res.status(201).json(settings.categories[settings.categories.length - 1]);
   } catch (error) {
@@ -251,6 +258,14 @@ exports.updateCategory = async (req, res) => {
 
     if (categoryIndex === -1) {
       return res.status(404).json({ message: 'Category not found' });
+    }
+
+    // Basic validation for required fields if they're being updated
+    if (req.body.name === '') {
+      return res.status(400).json({ message: 'Name cannot be empty' });
+    }
+    if (req.body.slug === '') {
+      return res.status(400).json({ message: 'Slug cannot be empty' });
     }
 
     // Check slug uniqueness if it's being updated
@@ -501,5 +516,31 @@ exports.updateSectionContent = async (req, res) => {
   } catch (error) {
     console.error('Error updating section content:', error);
     res.status(500).json({ message: 'Error updating section content' });
+  }
+};
+
+// Get all settings
+exports.getSettings = async (req, res) => {
+  try {
+    const settings = await Settings.findOne();
+    res.json(settings);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Update settings
+exports.updateSettings = async (req, res) => {
+  try {
+    const settings = await Settings.findOne();
+    if (!settings) {
+      return res.status(404).json({ message: 'Settings not found' });
+    }
+
+    Object.assign(settings, req.body);
+    await settings.save();
+    res.json(settings);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
   }
 }; 
