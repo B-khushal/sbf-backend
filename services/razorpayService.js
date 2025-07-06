@@ -94,13 +94,35 @@ const createOrder = async (amount, currency = 'INR') => {
       amount: amountInPaise,
       currency: currency,
       receipt: `order_${Date.now()}`,
+      notes: {
+        source: 'spring_blossoms_florist'
+      }
     };
 
     console.log('Razorpay options:', options);
-    const order = await razorpay.orders.create(options);
-    console.log('Razorpay order created successfully:', order);
     
-    return order;
+    // Add retry logic for network issues
+    let retries = 3;
+    let lastError;
+    
+    while (retries > 0) {
+      try {
+        const order = await razorpay.orders.create(options);
+        console.log('Razorpay order created successfully:', order);
+        return order;
+      } catch (error) {
+        lastError = error;
+        retries--;
+        
+        if (retries > 0) {
+          console.log(`Retrying Razorpay order creation... (${retries} attempts left)`);
+          await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second before retry
+        }
+      }
+    }
+    
+    // If all retries failed, throw the last error
+    throw lastError;
   } catch (error) {
     console.error('Detailed error in createOrder:', error);
     
@@ -114,10 +136,21 @@ const createOrder = async (amount, currency = 'INR') => {
           throw new Error('Invalid Razorpay Key ID. Please check your API credentials.');
         } else if (errorDescription.includes('key_secret')) {
           throw new Error('Invalid Razorpay Key Secret. Please check your API credentials.');
+        } else if (errorDescription.includes('amount')) {
+          throw new Error('Invalid amount provided for payment.');
         }
+      } else if (errorCode === 'SERVER_ERROR') {
+        throw new Error('Razorpay server is temporarily unavailable. Please try again in a few minutes.');
+      } else if (errorCode === 'GATEWAY_ERROR') {
+        throw new Error('Payment gateway error. Please try again.');
       }
       
       throw new Error(`Razorpay API Error (${errorCode}): ${errorDescription}`);
+    }
+    
+    // Handle network errors
+    if (error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT') {
+      throw new Error('Network connection error. Please check your internet connection and try again.');
     }
     
     throw error;
