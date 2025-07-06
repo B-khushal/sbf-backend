@@ -9,7 +9,7 @@ const orderSchema = new mongoose.Schema({
   user: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: false // Allow guest orders
+    required: true
   },
   shippingDetails: {
     fullName: String,
