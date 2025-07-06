@@ -63,24 +63,45 @@ const homeSectionSchema = new mongoose.Schema({
 });
 
 const categorySchema = new mongoose.Schema({
-  id: {
-    type: String,
-    required: true
-  },
   name: {
     type: String,
-    required: true
+    required: true,
+    trim: true
   },
-  description: String,
-  image: String,
-  link: String,
-  enabled: {
-    type: Boolean,
-    default: true
+  slug: {
+    type: String,
+    required: true,
+    unique: true,
+    trim: true
+  },
+  description: {
+    type: String,
+    trim: true
   },
   order: {
     type: Number,
-    required: true
+    default: 0
+  },
+  isActive: {
+    type: Boolean,
+    default: true
+  },
+  parentCategory: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Category',
+    default: null
+  },
+  image: {
+    type: String,
+    default: null
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now
   }
 });
 
@@ -155,15 +176,66 @@ const footerSettingsSchema = new mongoose.Schema({
 });
 
 const settingsSchema = new mongoose.Schema({
+  siteName: {
+    type: String,
+    required: true,
+    default: 'Spring Blossoms Florist'
+  },
+  siteDescription: {
+    type: String,
+    default: 'Your premier destination for beautiful floral arrangements'
+  },
+  contactEmail: {
+    type: String,
+    required: true
+  },
+  contactPhone: {
+    type: String,
+    required: true
+  },
+  address: {
+    type: String,
+    required: true
+  },
+  categories: [categorySchema],
+  socialLinks: {
+    facebook: String,
+    instagram: String,
+    twitter: String
+  },
+  deliverySettings: {
+    minimumOrder: {
+      type: Number,
+      default: 0
+    },
+    deliveryFee: {
+      type: Number,
+      default: 0
+    },
+    freeDeliveryThreshold: {
+      type: Number,
+      default: 0
+    }
+  },
   heroSlides: [heroSlideSchema],
   homeSections: [homeSectionSchema],
-  categories: [categorySchema],
   headerSettings: headerSettingsSchema,
   footerSettings: footerSettingsSchema,
   updatedAt: {
     type: Date,
     default: Date.now
   }
+});
+
+// Update timestamp on save
+settingsSchema.pre('save', function(next) {
+  this.updatedAt = new Date();
+  next();
+});
+
+categorySchema.pre('save', function(next) {
+  this.updatedAt = new Date();
+  next();
 });
 
 // Create default settings if they don't exist

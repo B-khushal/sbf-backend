@@ -1,4 +1,5 @@
 const Settings = require('../models/settings');
+const { validateSettings } = require('../utils/validation');
 
 // Get all hero slides
 exports.getHeroSlides = async (req, res) => {
@@ -194,122 +195,138 @@ exports.updateAllSettings = async (req, res) => {
   }
 };
 
-// Categories management
+// Get all categories
 exports.getCategories = async (req, res) => {
   try {
-    let settings = await Settings.findOne();
-    
-    if (!settings || !settings.categories) {
-      // Return default categories
-      const defaultCategories = [
-        {
-          id: 'bouquets',
-          name: 'Bouquets',
-          description: 'Handcrafted floral arrangements',
-          image: 'https://images.unsplash.com/photo-1582794543139-8ac9cb0f7b11?ixlib=rb-4.0.3&q=85&w=800&auto=format&fit=crop',
-          link: '/shop/bouquets',
-          enabled: true,
-          order: 0,
-        },
-        {
-          id: 'chocolate',
-          name: 'Chocolate',
-          description: 'Delicious chocolate arrangements',
-          image: 'https://images.unsplash.com/photo-1481391319762-47dff72954d9?ixlib=rb-4.0.3&q=85&w=800&auto=format&fit=crop',
-          link: '/shop/chocolate',
-          enabled: true,
-          order: 1,
-        },
-        {
-          id: 'baskets',
-          name: 'Baskets',
-          description: 'Elegant gift baskets',
-          image: '/images/d3.jpg',
-          link: '/shop/baskets',
-          enabled: true,
-          order: 2,
-        },
-        {
-          id: 'gifts',
-          name: 'Gifts',
-          description: 'Thoughtful presents for any occasion',
-          image: 'https://images.unsplash.com/photo-1549465220-1a8b9238cd48?ixlib=rb-4.0.3&q=85&w=800&auto=format&fit=crop',
-          link: '/shop/gifts',
-          enabled: true,
-          order: 3,
-        },
-        {
-          id: 'plants',
-          name: 'Plants',
-          description: 'Indoor and outdoor greenery',
-          image: 'https://images.unsplash.com/photo-1533038590840-1cde6e668a91?ixlib=rb-4.0.3&q=85&w=800&auto=format&fit=crop',
-          link: '/shop/plants',
-          enabled: true,
-          order: 4,
-        },
-        {
-          id: 'birthday',
-          name: 'Birthday',
-          description: 'Perfect floral gifts',
-          image: 'https://images.unsplash.com/photo-1464349095431-e9a21285b5f3?ixlib=rb-4.0.3&q=85&w=800&auto=format&fit=crop',
-          link: '/shop/birthday',
-          enabled: true,
-          order: 5,
-        },
-        {
-          id: 'anniversary',
-          name: 'Anniversary',
-          description: 'Romantic arrangements',
-          image: 'https://images.unsplash.com/photo-1519378058457-4c29a0a2efac?ixlib=rb-4.0.3&q=85&w=800&auto=format&fit=crop',
-          link: '/shop/anniversary',
-          enabled: true,
-          order: 6,
-        },
-        {
-          id: 'sympathy',
-          name: 'Sympathy',
-          description: 'Comforting arrangements',
-          image: 'https://images.unsplash.com/photo-1518709268805-4e9042af2176?ixlib=rb-4.0.3&q=85&w=800&auto=format&fit=crop',
-          link: '/shop/sympathy',
-          enabled: true,
-          order: 7,
-        },
-        {
-          id: 'occasions',
-          name: 'Occasions',
-          description: 'Special celebrations',
-          image: 'https://images.unsplash.com/photo-1464349095431-e9a21285b5f3?ixlib=rb-4.0.3&q=85&w=800&auto=format&fit=crop',
-          link: '/shop/occasions',
-          enabled: true,
-          order: 8,
-        },
-      ];
-      return res.json(defaultCategories);
-    }
-
-    res.json(settings.categories);
+    const settings = await Settings.findOne();
+    res.json(settings.categories || []);
   } catch (error) {
-    console.error('Error fetching categories:', error);
-    res.status(500).json({ message: 'Error fetching categories' });
+    res.status(500).json({ message: error.message });
   }
 };
 
-exports.updateCategories = async (req, res) => {
+// Add new category
+exports.addCategory = async (req, res) => {
   try {
-    const { categories } = req.body;
-
-    let settings = await Settings.findOne();
+    const settings = await Settings.findOne();
     if (!settings) {
-      settings = new Settings();
+      return res.status(404).json({ message: 'Settings not found' });
     }
 
-    settings.categories = categories;
-    await settings.save();
+    const { name, slug, description, order, isActive, parentCategory, image } = req.body;
 
+    // Check if slug is unique
+    const existingCategory = settings.categories.find(cat => cat.slug === slug);
+    if (existingCategory) {
+      return res.status(400).json({ message: 'Category with this slug already exists' });
+    }
+
+    settings.categories.push({
+      name,
+      slug,
+      description,
+      order: order || settings.categories.length,
+      isActive: isActive !== undefined ? isActive : true,
+      parentCategory,
+      image
+    });
+
+    await settings.save();
+    res.status(201).json(settings.categories[settings.categories.length - 1]);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
+// Update category
+exports.updateCategory = async (req, res) => {
+  try {
+    const settings = await Settings.findOne();
+    if (!settings) {
+      return res.status(404).json({ message: 'Settings not found' });
+    }
+
+    const { categoryId } = req.params;
+    const categoryIndex = settings.categories.findIndex(cat => cat._id.toString() === categoryId);
+
+    if (categoryIndex === -1) {
+      return res.status(404).json({ message: 'Category not found' });
+    }
+
+    // Check slug uniqueness if it's being updated
+    if (req.body.slug && req.body.slug !== settings.categories[categoryIndex].slug) {
+      const existingCategory = settings.categories.find(
+        cat => cat.slug === req.body.slug && cat._id.toString() !== categoryId
+      );
+      if (existingCategory) {
+        return res.status(400).json({ message: 'Category with this slug already exists' });
+      }
+    }
+
+    Object.assign(settings.categories[categoryIndex], req.body);
+    await settings.save();
+    res.json(settings.categories[categoryIndex]);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
+// Delete category
+exports.deleteCategory = async (req, res) => {
+  try {
+    const settings = await Settings.findOne();
+    if (!settings) {
+      return res.status(404).json({ message: 'Settings not found' });
+    }
+
+    const { categoryId } = req.params;
+    const categoryIndex = settings.categories.findIndex(cat => cat._id.toString() === categoryId);
+
+    if (categoryIndex === -1) {
+      return res.status(404).json({ message: 'Category not found' });
+    }
+
+    // Check if category has children
+    const hasChildren = settings.categories.some(cat => 
+      cat.parentCategory && cat.parentCategory.toString() === categoryId
+    );
+    if (hasChildren) {
+      return res.status(400).json({ message: 'Cannot delete category with subcategories' });
+    }
+
+    settings.categories.splice(categoryIndex, 1);
+    await settings.save();
+    res.json({ message: 'Category deleted successfully' });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
+// Reorder categories
+exports.reorderCategories = async (req, res) => {
+  try {
+    const settings = await Settings.findOne();
+    if (!settings) {
+      return res.status(404).json({ message: 'Settings not found' });
+    }
+
+    const { categoryIds } = req.body;
+    if (!Array.isArray(categoryIds)) {
+      return res.status(400).json({ message: 'categoryIds must be an array' });
+    }
+
+    // Update order for each category
+    categoryIds.forEach((id, index) => {
+      const category = settings.categories.find(cat => cat._id.toString() === id);
+      if (category) {
+        category.order = index;
+      }
+    });
+
+    await settings.save();
     res.json(settings.categories);
   } catch (error) {
-    console.error('Error updating categories:', error);
-    res.status(500).json({ message: 'Error updating categories' });
+    res.status(400).json({ message: error.message });
   }
 };
 
