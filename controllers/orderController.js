@@ -891,12 +891,21 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
       orderData
     } = req.body;
 
+    console.log('Payment verification request:', {
+      razorpay_order_id,
+      razorpay_payment_id,
+      hasSignature: !!razorpay_signature,
+      hasOrderData: !!orderData
+    });
+
     // Verify payment signature
     const isValid = verifyPayment(
       razorpay_order_id,
       razorpay_payment_id,
       razorpay_signature
     );
+
+    console.log('Payment verification result:', isValid);
 
     if (!isValid) {
       return res.status(400).json({
@@ -909,9 +918,12 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
     try {
       const orderNumber = await generateNextOrderNumber();
       
+      // Handle user authentication - use user ID from request or create guest order
+      const userId = req.user?._id || null;
+      
       const order = new Order({
         orderNumber,
-        user: req.user._id,
+        user: userId,
         items: orderData.items,
         shippingDetails: {
           firstName: orderData.shippingInfo.firstName,
@@ -967,22 +979,27 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
       });
 
       const savedOrder = await order.save();
+      console.log('Order created successfully:', savedOrder.orderNumber);
 
       // Populate the order with user and product details
       const populatedOrder = await Order.findById(savedOrder._id)
         .populate('user', 'name email')
         .populate('items.product', 'title images price');
 
+      console.log('Order populated successfully');
+
       res.json({
         success: true,
-        order: populatedOrder
+        order: populatedOrder,
+        message: 'Payment verified and order created successfully'
       });
 
     } catch (orderError) {
       console.error('Error creating order:', orderError);
       res.status(500).json({
         success: false,
-        message: 'Payment verified but failed to create order. Please contact support.'
+        message: 'Payment verified but failed to create order. Please contact support.',
+        error: orderError.message
       });
     }
 
@@ -990,7 +1007,8 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
     console.error('Error verifying payment:', error);
     res.status(500).json({
       success: false,
-      message: 'Error verifying payment'
+      message: 'Error verifying payment',
+      error: error.message
     });
   }
 };
