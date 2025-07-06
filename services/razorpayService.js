@@ -95,7 +95,7 @@ const createOrder = async (amount, currency = 'INR') => {
       currency: currency,
       receipt: `order_${Date.now()}`,
       notes: {
-        source: 'spring_blossoms_florist'
+        source: 'deepak_kumar_badodhe'
       }
     };
 
