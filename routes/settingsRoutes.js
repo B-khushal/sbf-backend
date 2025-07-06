@@ -24,10 +24,7 @@ router.put('/home-sections/:sectionId/content', protect, admin, settingsControll
 
 // Categories management routes
 router.get('/categories', settingsController.getCategories);
-router.post('/categories', protect, admin, settingsController.addCategory);
-router.put('/categories/:categoryId', protect, admin, settingsController.updateCategory);
-router.delete('/categories/:categoryId', protect, admin, settingsController.deleteCategory);
-router.post('/categories/reorder', protect, admin, settingsController.reorderCategories);
+router.put('/categories', protect, admin, settingsController.updateCategories);
 
 // Header settings routes
 router.get('/header', settingsController.getHeaderSettings);
