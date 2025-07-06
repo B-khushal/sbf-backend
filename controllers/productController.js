@@ -166,7 +166,22 @@ const createProduct = async (req, res) => {
     console.log("👤 User Role:", req.user?.role);
     console.log("📝 Received Product Data:", JSON.stringify(req.body, null, 2));
 
-    const { title, price, category, categories, countInStock, images, isFeatured, isNew, discount, description, hidden, careInstructions } = req.body;
+    const { 
+      title, 
+      price, 
+      category, 
+      categories, 
+      countInStock, 
+      images, 
+      isFeatured, 
+      isNew, 
+      discount, 
+      description, 
+      hidden, 
+      careInstructions,
+      isCustomizable,
+      customizationOptions
+    } = req.body;
 
     // Validate required fields
     if (!title || !price || !category || !countInStock || !images || images.length === 0 || !description) {
@@ -229,6 +244,19 @@ const createProduct = async (req, res) => {
       hidden: hidden !== undefined ? hidden : true,  // 🔒 Default to hidden unless explicitly set to false
       details: processedDetails,
       careInstructions: careInstructions || [],
+      isCustomizable: isCustomizable || false,
+      customizationOptions: customizationOptions || {
+        allowPhotoUpload: false,
+        allowCustomNumber: false,
+        customNumberLabel: "Number",
+        allowFlowerAddons: false,
+        flowerAddons: [],
+        allowChocolateAddons: false,
+        chocolateAddons: [],
+        allowMessageCard: false,
+        messageCardPrice: 0,
+        baseLayoutImage: "",
+      },
     });
 
     console.log("📦 Product object before save:", JSON.stringify(product, null, 2));
@@ -267,7 +295,22 @@ const updateProduct = async (req, res) => {
     console.log("📝 Request body:", req.body);
     console.log("🔑 Product ID:", req.params.id);
 
-    const { title, price, discount, description, images, category, categories, countInStock, isFeatured, isNew, hidden, careInstructions } = req.body;
+    const { 
+      title, 
+      price, 
+      discount, 
+      description, 
+      images, 
+      category, 
+      categories, 
+      countInStock, 
+      isFeatured, 
+      isNew, 
+      hidden, 
+      careInstructions,
+      isCustomizable,
+      customizationOptions
+    } = req.body;
     
     // Process details from frontend format to backend format
     let processedDetails;
@@ -306,6 +349,8 @@ const updateProduct = async (req, res) => {
     product.hidden = hidden !== undefined ? hidden : product.hidden;
     product.details = processedDetails || product.details;
     product.careInstructions = careInstructions || product.careInstructions;
+    product.isCustomizable = isCustomizable !== undefined ? isCustomizable : product.isCustomizable;
+    product.customizationOptions = customizationOptions || product.customizationOptions;
     
     // Clean data before saving
     const cleanedProduct = cleanProductData(product);
