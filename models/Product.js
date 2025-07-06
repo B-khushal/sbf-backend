@@ -77,57 +77,6 @@ const productSchema = mongoose.Schema(
       type: Boolean,
       default: false,
     },
-    // Customization fields
-    isCustomizable: {
-      type: Boolean,
-      default: false,
-    },
-    customizationOptions: {
-      allowPhotoUpload: {
-        type: Boolean,
-        default: false,
-      },
-      allowCustomNumber: {
-        type: Boolean,
-        default: false,
-      },
-      customNumberLabel: {
-        type: String,
-        default: "Number",
-      },
-      allowFlowerAddons: {
-        type: Boolean,
-        default: false,
-      },
-      flowerAddons: [{
-        name: String,
-        price: Number,
-        description: String,
-        image: String,
-      }],
-      allowChocolateAddons: {
-        type: Boolean,
-        default: false,
-      },
-      chocolateAddons: [{
-        name: String,
-        price: Number,
-        description: String,
-        image: String,
-      }],
-      allowMessageCard: {
-        type: Boolean,
-        default: false,
-      },
-      messageCardPrice: {
-        type: Number,
-        default: 0,
-      },
-      baseLayoutImage: {
-        type: String,
-        default: "",
-      },
-    },
   },
   {
     timestamps: true,

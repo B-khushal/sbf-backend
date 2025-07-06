@@ -51,15 +51,6 @@ const offerSchema = new mongoose.Schema({
     enum: ['festive', 'sale', 'holiday', 'general'],
     default: 'general'
   },
-  // Tracking fields
-  impressions: {
-    type: Number,
-    default: 0
-  },
-  closes: {
-    type: Number,
-    default: 0
-  },
   createdAt: {
     type: Date,
     default: Date.now
