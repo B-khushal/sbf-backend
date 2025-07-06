@@ -111,6 +111,36 @@ const cleanProductData = (product) => {
   }
 };
 
+// Helper function to generate order number
+const generateOrderNumber = async () => {
+  try {
+    const date = new Date();
+    const year = date.getFullYear().toString().slice(-2);
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+    
+    // Find the last order for the current year and month
+    const lastOrder = await Order.findOne({
+      orderNumber: new RegExp(`^${year}${month}`)
+    }, {}, { sort: { 'orderNumber': -1 } });
+
+    let sequence = '001';
+    if (lastOrder) {
+      // Extract the sequence number from the last order (positions 4-6 in YYMMDDDDD format)
+      const lastSequence = parseInt(lastOrder.orderNumber.substring(4, 7));
+      sequence = (lastSequence + 1).toString().padStart(3, '0');
+    }
+
+    const orderNumber = `${year}${month}${sequence}${day}`;
+    console.log('Generated order number:', orderNumber);
+    return orderNumber;
+  } catch (error) {
+    console.error('Error generating order number:', error);
+    // Fallback to timestamp-based order number
+    const timestamp = Date.now().toString().slice(-8);
+    return `FALLBACK${timestamp}`;
+  }
+};
 
 // @desc    Create new order
 // @route   POST /api/orders
@@ -874,7 +904,7 @@ const createRazorpayOrderHandler = async (req, res) => {
   }
 };
 
-// @desc    Verify Razorpay payment
+// @desc    Verify Razorpay payment and create order
 // @route   POST /api/orders/verify-payment
 // @access  Private
 const verifyRazorpayPaymentHandler = async (req, res) => {
@@ -882,23 +912,152 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
     const {
       razorpay_order_id,
       razorpay_payment_id,
-      razorpay_signature
+      razorpay_signature,
+      orderData
     } = req.body;
 
+    console.log('Verifying payment with data:', {
+      razorpay_order_id,
+      razorpay_payment_id,
+      razorpay_signature: razorpay_signature ? '***' : 'missing',
+      orderData: orderData ? 'present' : 'missing'
+    });
+
+    // Verify payment signature
     const isValid = verifyPayment(
       razorpay_order_id,
       razorpay_payment_id,
       razorpay_signature
     );
 
-    res.json({
-      success: isValid
-    });
+    if (!isValid) {
+      return res.status(400).json({
+        success: false,
+        message: 'Payment verification failed'
+      });
+    }
+
+    // If payment is valid, create the order
+    if (orderData) {
+      try {
+        // Get user from request (assuming auth middleware is applied)
+        const userId = req.user ? req.user.id : null;
+        
+        // Generate order number
+        const orderNumber = await generateOrderNumber();
+        
+        // Create order object
+        const order = new Order({
+          user: userId,
+          orderNumber,
+          items: orderData.items,
+          shippingDetails: {
+            firstName: orderData.shippingInfo.firstName,
+            lastName: orderData.shippingInfo.lastName,
+            email: orderData.shippingInfo.email,
+            phone: orderData.shippingInfo.phone,
+            address: orderData.shippingInfo.address,
+            apartment: orderData.shippingInfo.apartment || '',
+            city: orderData.shippingInfo.city,
+            state: orderData.shippingInfo.state,
+            zipCode: orderData.shippingInfo.zipCode,
+            notes: orderData.shippingInfo.notes || '',
+            timeSlot: orderData.shippingInfo.timeSlot,
+            deliveryOption: orderData.shippingInfo.deliveryOption || 'standard',
+            deliveryFee: orderData.deliveryFee || 0,
+            deliveryDate: orderData.shippingInfo.selectedDate ? new Date(orderData.shippingInfo.selectedDate) : new Date(),
+            giftMessage: orderData.shippingInfo.giftMessage || '',
+            receiverFirstName: orderData.shippingInfo.receiverFirstName || orderData.shippingInfo.firstName,
+            receiverLastName: orderData.shippingInfo.receiverLastName || orderData.shippingInfo.lastName,
+            receiverEmail: orderData.shippingInfo.receiverEmail || orderData.shippingInfo.email,
+            receiverPhone: orderData.shippingInfo.receiverPhone || orderData.shippingInfo.phone,
+            receiverAddress: orderData.shippingInfo.receiverAddress || orderData.shippingInfo.address,
+            receiverApartment: orderData.shippingInfo.receiverApartment || orderData.shippingInfo.apartment || '',
+            receiverCity: orderData.shippingInfo.receiverCity || orderData.shippingInfo.city,
+            receiverState: orderData.shippingInfo.receiverState || orderData.shippingInfo.state,
+            receiverZipCode: orderData.shippingInfo.receiverZipCode || orderData.shippingInfo.zipCode
+          },
+          paymentDetails: {
+            method: 'razorpay',
+            transactionId: razorpay_payment_id,
+            razorpayOrderId: razorpay_order_id,
+            amount: orderData.total,
+            currency: orderData.currency || 'INR',
+            status: 'paid'
+          },
+          pricing: {
+            subtotal: orderData.subtotal,
+            deliveryFee: orderData.deliveryFee || 0,
+            promoCode: orderData.promoCode,
+            promoDiscount: orderData.promoDiscount || 0,
+            total: orderData.total,
+            exchangeRate: orderData.exchangeRate || 1
+          },
+          status: 'order_placed',
+          razorpayOrderId: razorpay_order_id,
+          razorpayPaymentId: razorpay_payment_id
+        });
+
+        // Save the order
+        const savedOrder = await order.save();
+        console.log('Order created successfully:', savedOrder._id);
+
+        // Populate the order for response
+        const populatedOrder = await Order.findById(savedOrder._id)
+          .populate('user', 'name email')
+          .populate('items.product', 'title images price');
+
+        // Send email notification
+        try {
+          await sendEmailNotification({
+            to: orderData.shippingInfo.email,
+            subject: `Order Confirmation - #${orderNumber}`,
+            template: 'orderConfirmation',
+            data: {
+              orderNumber,
+              customerName: `${orderData.shippingInfo.firstName} ${orderData.shippingInfo.lastName}`,
+              total: orderData.total,
+              deliveryDate: orderData.shippingInfo.selectedDate ? new Date(orderData.shippingInfo.selectedDate).toLocaleDateString() : 'As soon as possible'
+            }
+          });
+        } catch (emailError) {
+          console.error('Failed to send order confirmation email:', emailError);
+        }
+
+        // Create notification for admin
+        try {
+          await createOrderNotification(savedOrder._id, 'new_order');
+        } catch (notificationError) {
+          console.error('Failed to create admin notification:', notificationError);
+        }
+
+        return res.json({
+          success: true,
+          order: populatedOrder
+        });
+
+      } catch (orderError) {
+        console.error('Error creating order after payment verification:', orderError);
+        return res.status(500).json({
+          success: false,
+          message: 'Payment verified but failed to create order',
+          error: orderError.message
+        });
+      }
+    } else {
+      // If no orderData provided, just return verification result
+      return res.json({
+        success: true,
+        message: 'Payment verified successfully'
+      });
+    }
+
   } catch (error) {
     console.error('Error verifying payment:', error);
     res.status(500).json({
       success: false,
-      message: 'Error verifying payment'
+      message: 'Error verifying payment',
+      error: error.message
     });
   }
 };
