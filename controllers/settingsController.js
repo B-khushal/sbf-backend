@@ -1,5 +1,4 @@
 const Settings = require('../models/settings');
-const { validateSettings } = require('../utils/validation');
 
 // Get all hero slides
 exports.getHeroSlides = async (req, res) => {
