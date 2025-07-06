@@ -315,30 +315,25 @@ const createOrder = async (req, res) => {
   }
 };
 
-// Standalone function to generate next order number
-const generateNextOrderNumber = async () => {
-  const date = new Date();
-  const year = date.getFullYear().toString().slice(-2);
-  const month = (date.getMonth() + 1).toString().padStart(2, '0');
-  const day = date.getDate().toString().padStart(2, '0');
-  
-  const lastOrder = await Order.findOne({
-    orderNumber: new RegExp(`^${year}${month}`)
-  }, {}, { sort: { 'orderNumber': -1 } });
-
-  let sequence = '001';
-  if (lastOrder) {
-    const lastSequence = parseInt(lastOrder.orderNumber.substring(4, 7));
-    sequence = (lastSequence + 1).toString().padStart(3, '0');
-  }
-
-  return `${year}${month}${sequence}${day}`;
-};
-
 // Function to get the next order number (useful for previews)
 const getNextOrderNumber = async (req, res) => {
   try {
-    const nextOrderNumber = await generateNextOrderNumber();
+    const date = new Date();
+    const year = date.getFullYear().toString().slice(-2);
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+    
+    const lastOrder = await Order.findOne({
+      orderNumber: new RegExp(`^${year}${month}`)
+    }, {}, { sort: { 'orderNumber': -1 } });
+
+    let sequence = '001';
+    if (lastOrder) {
+      const lastSequence = parseInt(lastOrder.orderNumber.substring(4, 7));
+      sequence = (lastSequence + 1).toString().padStart(3, '0');
+    }
+
+    const nextOrderNumber = `${year}${month}${sequence}${day}`;
     
     res.json({
       success: true,
@@ -879,7 +874,7 @@ const createRazorpayOrderHandler = async (req, res) => {
   }
 };
 
-// @desc    Verify Razorpay payment and create order
+// @desc    Verify Razorpay payment
 // @route   POST /api/orders/verify-payment
 // @access  Private
 const verifyRazorpayPaymentHandler = async (req, res) => {
@@ -887,195 +882,23 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
     const {
       razorpay_order_id,
       razorpay_payment_id,
-      razorpay_signature,
-      orderData
+      razorpay_signature
     } = req.body;
 
-    console.log('🔍 Payment verification request received:', {
-      razorpay_order_id,
-      razorpay_payment_id,
-      hasSignature: !!razorpay_signature,
-      hasOrderData: !!orderData,
-      orderDataKeys: orderData ? Object.keys(orderData) : 'No order data'
-    });
-
-    // Validate required fields
-    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
-      console.error('❌ Missing required payment verification parameters');
-      return res.status(400).json({
-        success: false,
-        message: 'Missing required payment verification parameters'
-      });
-    }
-
-    if (!orderData) {
-      console.error('❌ Missing order data');
-      return res.status(400).json({
-        success: false,
-        message: 'Missing order data'
-      });
-    }
-
-    // Verify payment signature
-    console.log('🔐 Verifying payment signature...');
     const isValid = verifyPayment(
       razorpay_order_id,
       razorpay_payment_id,
       razorpay_signature
     );
 
-    console.log('✅ Payment verification result:', isValid);
-
-    if (!isValid) {
-      console.error('❌ Payment signature verification failed');
-      return res.status(400).json({
-        success: false,
-        message: 'Payment verification failed - invalid signature'
-      });
-    }
-
-    // Create order in database
-    console.log('📝 Creating order in database...');
-    try {
-      const orderNumber = await generateNextOrderNumber();
-      console.log('📋 Generated order number:', orderNumber);
-      
-      // Handle user authentication - use user ID from request or create guest order
-      const userId = req.user?._id || null;
-      console.log('👤 User ID for order:', userId || 'Guest order');
-      
-      // Validate and clean order data
-      if (!orderData.items || !Array.isArray(orderData.items) || orderData.items.length === 0) {
-        throw new Error('Invalid or missing order items');
-      }
-
-      if (!orderData.shippingInfo) {
-        throw new Error('Missing shipping information');
-      }
-
-      console.log('📦 Order items count:', orderData.items.length);
-      console.log('📮 Shipping info present:', !!orderData.shippingInfo);
-      
-      const order = new Order({
-        orderNumber,
-        user: userId || undefined, // Use undefined instead of null for guest orders
-        items: orderData.items.map(item => ({
-          product: item.product,
-          title: item.title,
-          price: item.price,
-          quantity: item.quantity,
-          finalPrice: item.finalPrice || item.price,
-          image: item.image || '',
-          customization: item.customization ? {
-            uploadedPhoto: item.customization.uploadedPhoto,
-            customNumber: item.customization.customNumber,
-            flowerAddonQuantities: item.customization.flowerAddonQuantities || {},
-            chocolateAddonQuantities: item.customization.chocolateAddonQuantities || {},
-            messageCard: item.customization.messageCard,
-            includeMessageCard: item.customization.includeMessageCard || false,
-            totalPrice: item.customization.totalPrice,
-            basePrice: item.customization.basePrice,
-            customizations: item.customizations || {}
-          } : null
-        })),
-        shippingDetails: {
-          firstName: orderData.shippingInfo.firstName || '',
-          lastName: orderData.shippingInfo.lastName || '',
-          email: orderData.shippingInfo.email || '',
-          phone: orderData.shippingInfo.phone || '',
-          address: orderData.shippingInfo.address || '',
-          apartment: orderData.shippingInfo.apartment || '',
-          city: orderData.shippingInfo.city || '',
-          state: orderData.shippingInfo.state || '',
-          zipCode: orderData.shippingInfo.zipCode || '',
-          notes: orderData.shippingInfo.notes || '',
-          timeSlot: orderData.shippingInfo.timeSlot || '',
-          deliveryOption: orderData.shippingInfo.deliveryOption || '',
-          deliveryFee: orderData.shippingInfo.deliveryFee || 0,
-          deliveryDate: orderData.shippingInfo.selectedDate || new Date(),
-          giftMessage: orderData.shippingInfo.giftMessage || '',
-          receiverFirstName: orderData.shippingInfo.receiverFirstName || '',
-          receiverLastName: orderData.shippingInfo.receiverLastName || '',
-          receiverEmail: orderData.shippingInfo.receiverEmail || '',
-          receiverPhone: orderData.shippingInfo.receiverPhone || '',
-          receiverAddress: orderData.shippingInfo.receiverAddress || '',
-          receiverApartment: orderData.shippingInfo.receiverApartment || '',
-          receiverCity: orderData.shippingInfo.receiverCity || '',
-          receiverState: orderData.shippingInfo.receiverState || '',
-          receiverZipCode: orderData.shippingInfo.receiverZipCode || ''
-        },
-        subtotal: orderData.subtotal || 0,
-        deliveryFee: orderData.deliveryFee || 0,
-        promoCode: orderData.promoCode || null,
-        promoDiscount: orderData.promoDiscount || 0,
-        total: orderData.total || 0,
-        currency: orderData.currency || 'INR',
-        currencyRate: orderData.exchangeRate || 1,
-        status: 'order_placed',
-        paymentStatus: 'paid',
-        payment: {
-          method: 'razorpay',
-          transactionId: razorpay_payment_id,
-          orderId: razorpay_order_id,
-          amount: orderData.total || 0,
-          currency: orderData.currency || 'INR',
-          status: 'completed'
-        },
-        paymentDetails: {
-          paymentId: razorpay_payment_id,
-          orderId: razorpay_order_id,
-          method: 'razorpay',
-          status: 'completed',
-          amount: orderData.total || 0,
-          currency: orderData.currency || 'INR'
-        }
-      });
-
-      console.log('💾 Saving order to database...');
-      const savedOrder = await order.save();
-      console.log('✅ Order created successfully:', savedOrder.orderNumber);
-
-      // Populate the order with user and product details
-      console.log('🔍 Populating order with user and product details...');
-      const populatedOrder = await Order.findById(savedOrder._id)
-        .populate('user', 'name email')
-        .populate('items.product', 'title images price');
-      
-      // Handle guest orders by adding guest user info
-      if (!populatedOrder.user && orderData.shippingInfo) {
-        populatedOrder.user = {
-          name: `${orderData.shippingInfo.firstName} ${orderData.shippingInfo.lastName}`,
-          email: orderData.shippingInfo.email
-        };
-      }
-
-      console.log('✅ Order populated successfully');
-
-      res.json({
-        success: true,
-        order: populatedOrder,
-        message: 'Payment verified and order created successfully'
-      });
-
-    } catch (orderError) {
-      console.error('❌ Error creating order:', orderError);
-      console.error('❌ Order error stack:', orderError.stack);
-      res.status(500).json({
-        success: false,
-        message: 'Payment verified but failed to create order. Please contact support.',
-        error: orderError.message,
-        details: process.env.NODE_ENV === 'development' ? orderError.stack : undefined
-      });
-    }
-
+    res.json({
+      success: isValid
+    });
   } catch (error) {
-    console.error('❌ Error verifying payment:', error);
-    console.error('❌ Error stack:', error.stack);
+    console.error('Error verifying payment:', error);
     res.status(500).json({
       success: false,
-      message: 'Error verifying payment',
-      error: error.message,
-      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      message: 'Error verifying payment'
     });
   }
 };

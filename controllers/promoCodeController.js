@@ -393,21 +393,10 @@ exports.validatePromoCode = async (req, res) => {
   try {
     const { code, orderAmount, items = [], userId } = req.body;
     
-    console.log('Promo code validation request:', { code, orderAmount, items: items.length, userId });
-    
-    if (!code || orderAmount === undefined || orderAmount === null) {
+    if (!code || !orderAmount) {
       return res.status(400).json({
         success: false,
         message: 'Promo code and order amount are required'
-      });
-    }
-    
-    // Ensure orderAmount is a number
-    const numericOrderAmount = parseFloat(orderAmount);
-    if (isNaN(numericOrderAmount) || numericOrderAmount < 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid order amount'
       });
     }
     
@@ -424,80 +413,23 @@ exports.validatePromoCode = async (req, res) => {
       });
     }
     
-    console.log('Found promo code:', {
-      code: promoCode.code,
-      isActive: promoCode.isActive,
-      validFrom: promoCode.validFrom,
-      validUntil: promoCode.validUntil,
-      usedCount: promoCode.usedCount,
-      usageLimit: promoCode.usageLimit
+    // Check if promo code is applicable
+    const applicabilityCheck = promoCode.isApplicableToOrder({
+      totalAmount: orderAmount,
+      items,
+      userId
     });
     
-    // Check if promo code is currently valid manually
-    const now = new Date();
-    const isCurrentlyValid = promoCode.isActive && 
-                           promoCode.validFrom <= now && 
-                           promoCode.validUntil >= now &&
-                           (promoCode.usageLimit === null || promoCode.usedCount < promoCode.usageLimit);
-    
-    if (!isCurrentlyValid) {
+    if (!applicabilityCheck.valid) {
       return res.status(400).json({
         success: false,
-        message: 'Promo code is not currently valid'
+        message: applicabilityCheck.reason
       });
-    }
-    
-    // Check minimum order amount
-    if (numericOrderAmount < promoCode.minimumOrderAmount) {
-      return res.status(400).json({
-        success: false,
-        message: `Minimum order amount of ₹${promoCode.minimumOrderAmount} required`
-      });
-    }
-    
-    // Check usage limit
-    if (promoCode.usageLimit !== null && promoCode.usedCount >= promoCode.usageLimit) {
-      return res.status(400).json({
-        success: false,
-        message: 'Promo code usage limit exceeded'
-      });
-    }
-    
-    // Check category restrictions
-    if (promoCode.applicableCategories.length > 0) {
-      const hasApplicableCategory = items.some(item => 
-        promoCode.applicableCategories.includes(item.category)
-      );
-      if (!hasApplicableCategory) {
-        return res.status(400).json({
-          success: false,
-          message: `Promo code only applicable to: ${promoCode.applicableCategories.join(', ')}`
-        });
-      }
-    }
-    
-    // Check excluded categories
-    if (promoCode.excludedCategories.length > 0) {
-      const hasExcludedCategory = items.some(item => 
-        promoCode.excludedCategories.includes(item.category)
-      );
-      if (hasExcludedCategory) {
-        return res.status(400).json({
-          success: false,
-          message: `Promo code not applicable to: ${promoCode.excludedCategories.join(', ')}`
-        });
-      }
     }
     
     // Calculate discount
-    const discountAmount = promoCode.calculateDiscount(numericOrderAmount);
-    const finalAmount = Math.max(0, numericOrderAmount - discountAmount);
-    
-    console.log('Promo code validation successful:', {
-      code: promoCode.code,
-      discountAmount,
-      finalAmount
-    });
+    const discountAmount = promoCode.calculateDiscount(orderAmount);
+    const finalAmount = Math.max(0, orderAmount - discountAmount);
     
     res.json({
       success: true,
@@ -512,11 +444,11 @@ exports.validatePromoCode = async (req, res) => {
         },
         discount: {
           amount: discountAmount,
-          percentage: Math.round((discountAmount / numericOrderAmount) * 100),
+          percentage: Math.round((discountAmount / orderAmount) * 100),
           savings: discountAmount
         },
         order: {
-          originalAmount: numericOrderAmount,
+          originalAmount: orderAmount,
           discountAmount: discountAmount,
           finalAmount: finalAmount
         }
