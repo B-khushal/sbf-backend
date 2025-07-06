@@ -1,108 +1,34 @@
 const mongoose = require('mongoose');
 
 const heroSlideSchema = new mongoose.Schema({
-  id: {
-    type: Number,
-    required: true
-  },
-  title: {
-    type: String,
-    required: true
-  },
-  subtitle: {
-    type: String,
-    required: true
-  },
-  image: {
-    type: String,
-    required: true
-  },
-  ctaText: {
-    type: String,
-    required: true
-  },
-  ctaLink: {
-    type: String,
-    required: true
-  },
-  enabled: {
-    type: Boolean,
-    default: true
-  },
-  order: {
-    type: Number,
-    required: true
-  }
+  id: { type: String, required: true },
+  title: { type: String, required: true },
+  subtitle: { type: String, required: true },
+  image: { type: String, required: true },
+  ctaText: { type: String, required: true },
+  ctaLink: { type: String, required: true },
+  enabled: { type: Boolean, default: true },
+  order: { type: Number, default: 0 }
 });
 
 const homeSectionSchema = new mongoose.Schema({
-  id: {
-    type: String,
-    required: true,
-    unique: true
-  },
-  type: {
-    type: String,
-    required: true,
-    enum: ['hero', 'categories', 'featured', 'new', 'philosophy', 'offers', 'custom']
-  },
-  enabled: {
-    type: Boolean,
-    default: true
-  },
-  order: {
-    type: Number,
-    required: true
-  },
-  title: String,
-  subtitle: String,
-  content: {
-    type: mongoose.Schema.Types.Mixed,
-    default: {}
-  }
+  id: { type: String, required: true },
+  title: { type: String, required: true },
+  subtitle: { type: String },
+  type: { type: String, required: true },
+  enabled: { type: Boolean, default: true },
+  order: { type: Number, default: 0 },
+  content: mongoose.Schema.Types.Mixed
 });
 
 const categorySchema = new mongoose.Schema({
-  name: {
-    type: String,
-    required: true,
-    trim: true
-  },
-  slug: {
-    type: String,
-    required: true,
-    unique: true,
-    trim: true
-  },
-  description: {
-    type: String,
-    trim: true
-  },
-  order: {
-    type: Number,
-    default: 0
-  },
-  isActive: {
-    type: Boolean,
-    default: true
-  },
-  parentCategory: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Category',
-    default: null
-  },
-  image: {
-    type: String,
-    default: null
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now
-  }
+  name: { type: String, required: true },
+  slug: { type: String, required: true },
+  description: String,
+  order: { type: Number, default: 0 },
+  isActive: { type: Boolean, default: true },
+  parentCategory: { type: mongoose.Schema.Types.ObjectId, ref: 'Category' },
+  image: String
 });
 
 const navigationItemSchema = new mongoose.Schema({
@@ -118,20 +44,9 @@ const navigationItemSchema = new mongoose.Schema({
 
 const headerSettingsSchema = new mongoose.Schema({
   logo: String,
-  navigationItems: [navigationItemSchema],
-  searchPlaceholder: String,
-  showWishlist: {
-    type: Boolean,
-    default: true
-  },
-  showCart: {
-    type: Boolean,
-    default: true
-  },
-  showCurrencyConverter: {
-    type: Boolean,
-    default: true
-  }
+  showSearch: { type: Boolean, default: true },
+  showCart: { type: Boolean, default: true },
+  showWishlist: { type: Boolean, default: true }
 });
 
 const socialLinkSchema = new mongoose.Schema({
@@ -158,21 +73,10 @@ const footerSectionSchema = new mongoose.Schema({
 });
 
 const footerSettingsSchema = new mongoose.Schema({
-  companyName: String,
-  description: String,
-  socialLinks: [socialLinkSchema],
-  contactInfo: {
-    email: String,
-    phone: String,
-    address: String
-  },
-  links: [footerSectionSchema],
-  copyright: String,
-  showMap: {
-    type: Boolean,
-    default: true
-  },
-  mapEmbedUrl: String
+  logo: String,
+  showSocials: { type: Boolean, default: true },
+  showNewsletter: { type: Boolean, default: true },
+  copyrightText: String
 });
 
 const settingsSchema = new mongoose.Schema({
@@ -221,11 +125,13 @@ const settingsSchema = new mongoose.Schema({
   homeSections: [homeSectionSchema],
   headerSettings: headerSettingsSchema,
   footerSettings: footerSettingsSchema,
-  updatedAt: {
-    type: Date,
-    default: Date.now
-  }
+  updatedAt: { type: Date, default: Date.now }
 });
+
+// Ensure indexes for better query performance
+settingsSchema.index({ 'categories.slug': 1 });
+settingsSchema.index({ 'categories.parentCategory': 1 });
+settingsSchema.index({ updatedAt: -1 });
 
 // Update timestamp on save
 settingsSchema.pre('save', function(next) {
@@ -244,7 +150,7 @@ settingsSchema.statics.initializeDefaultSettings = async function() {
   if (!settings) {
     const defaultHeroSlides = [
       {
-        id: 1,
+        id: "1",
         title: "Spring Collection",
         subtitle: "Freshly picked arrangements to brighten your day",
         image: "/images/1.jpg",
@@ -254,7 +160,7 @@ settingsSchema.statics.initializeDefaultSettings = async function() {
         order: 0
       },
       {
-        id: 2,
+        id: "2",
         title: "Signature Bouquets",
         subtitle: "Handcrafted with love and attention to detail",
         image: "/images/2.jpg",
@@ -264,7 +170,7 @@ settingsSchema.statics.initializeDefaultSettings = async function() {
         order: 1
       },
       {
-        id: 3,
+        id: "3",
         title: "Seasonal Specials",
         subtitle: "Limited edition arrangements for every occasion",
         image: "/images/3.jpg",

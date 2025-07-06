@@ -1,17 +1,85 @@
 const Settings = require('../models/settings');
 
+// Initialize default settings
+const defaultSettings = {
+  heroSlides: [
+    {
+      id: 'default-slide-1',
+      title: 'Welcome to SB Florist',
+      subtitle: 'Fresh Flowers & Beautiful Arrangements',
+      image: '/images/default-hero.jpg',
+      ctaText: 'Shop Now',
+      ctaLink: '/shop',
+      enabled: true,
+      order: 0
+    }
+  ],
+  homeSections: [
+    {
+      id: 'featured-products',
+      title: 'Featured Products',
+      subtitle: 'Our Most Popular Arrangements',
+      type: 'products',
+      enabled: true,
+      order: 0
+    },
+    {
+      id: 'categories-section',
+      title: 'Shop by Category',
+      subtitle: 'Browse Our Collections',
+      type: 'categories',
+      enabled: true,
+      order: 1
+    }
+  ],
+  categories: [
+    {
+      name: 'Birthday',
+      slug: 'birthday',
+      description: 'Beautiful birthday flower arrangements',
+      order: 0,
+      isActive: true
+    },
+    {
+      name: 'Anniversary',
+      slug: 'anniversary',
+      description: 'Romantic anniversary flowers',
+      order: 1,
+      isActive: true
+    },
+    {
+      name: 'Wedding',
+      slug: 'wedding',
+      description: 'Elegant wedding flowers and decorations',
+      order: 2,
+      isActive: true
+    }
+  ],
+  headerSettings: {
+    logo: '/images/logo.png',
+    showSearch: true,
+    showCart: true,
+    showWishlist: true
+  },
+  footerSettings: {
+    logo: '/images/logo.png',
+    showSocials: true,
+    showNewsletter: true,
+    copyrightText: '© 2024 SB Florist. All rights reserved.'
+  }
+};
+
 // Get all hero slides
 exports.getHeroSlides = async (req, res) => {
   try {
     let settings = await Settings.findOne();
     
-    // Initialize default settings if none exist
     if (!settings) {
-      await Settings.initializeDefaultSettings();
-      settings = await Settings.findOne();
+      settings = new Settings(defaultSettings);
+      await settings.save();
     }
 
-    res.json(settings.heroSlides || []);
+    res.json(settings.heroSlides || defaultSettings.heroSlides);
   } catch (error) {
     console.error('Error fetching hero slides:', error);
     res.status(500).json({ message: 'Error fetching hero slides' });
@@ -25,7 +93,7 @@ exports.updateHeroSlides = async (req, res) => {
 
     let settings = await Settings.findOne();
     if (!settings) {
-      settings = new Settings();
+      settings = new Settings(defaultSettings);
     }
 
     settings.heroSlides = slides;
@@ -43,13 +111,12 @@ exports.getHomeSections = async (req, res) => {
   try {
     let settings = await Settings.findOne();
     
-    // Initialize default settings if none exist
     if (!settings) {
-      await Settings.initializeDefaultSettings();
-      settings = await Settings.findOne();
+      settings = new Settings(defaultSettings);
+      await settings.save();
     }
 
-    res.json(settings.homeSections);
+    res.json(settings.homeSections || defaultSettings.homeSections);
   } catch (error) {
     console.error('Error fetching home sections:', error);
     res.status(500).json({ message: 'Error fetching home sections' });
@@ -112,20 +179,22 @@ exports.getAllSettings = async (req, res) => {
     let settings = await Settings.findOne();
     
     if (!settings) {
-      await Settings.initializeDefaultSettings();
-      settings = await Settings.findOne();
+      // Initialize with default settings if none exist
+      settings = new Settings(defaultSettings);
+      await settings.save();
     }
 
+    // Return all settings
     res.json({
-      heroSlides: settings.heroSlides || [],
-      homeSections: settings.homeSections || [],
-      categories: settings.categories || [],
-      headerSettings: settings.headerSettings || {},
-      footerSettings: settings.footerSettings || {}
+      heroSlides: settings.heroSlides || defaultSettings.heroSlides,
+      homeSections: settings.homeSections || defaultSettings.homeSections,
+      categories: settings.categories || defaultSettings.categories,
+      headerSettings: settings.headerSettings || defaultSettings.headerSettings,
+      footerSettings: settings.footerSettings || defaultSettings.footerSettings
     });
   } catch (error) {
     console.error('Error fetching all settings:', error);
-    res.status(500).json({ message: 'Error fetching all settings' });
+    res.status(500).json({ message: 'Error fetching settings', error: error.message });
   }
 };
 
@@ -139,58 +208,20 @@ exports.updateAllSettings = async (req, res) => {
       settings = new Settings();
     }
 
-    // Validate hero slides before updating
-    if (heroSlides) {
-      const validSlides = heroSlides.every(slide => 
-        slide.id && 
-        slide.title && 
-        slide.subtitle && 
-        slide.image && 
-        slide.ctaText && 
-        slide.ctaLink && 
-        typeof slide.enabled === 'boolean' && 
-        typeof slide.order === 'number'
-      );
-      
-      if (!validSlides) {
-        return res.status(400).json({ 
-          message: 'Invalid hero slides data. All required fields must be provided.',
-          requiredFields: ['id', 'title', 'subtitle', 'image', 'ctaText', 'ctaLink', 'enabled', 'order']
-        });
-      }
-      settings.heroSlides = heroSlides;
-    }
-
+    // Update only provided fields
+    if (heroSlides) settings.heroSlides = heroSlides;
     if (homeSections) settings.homeSections = homeSections;
     if (categories) settings.categories = categories;
     if (headerSettings) settings.headerSettings = headerSettings;
     if (footerSettings) settings.footerSettings = footerSettings;
 
     settings.updatedAt = Date.now();
-    
-    try {
-      await settings.save();
-    } catch (saveError) {
-      console.error('Mongoose validation error:', saveError);
-      return res.status(400).json({ 
-        message: 'Failed to save settings due to validation errors',
-        errors: saveError.errors
-      });
-    }
+    await settings.save();
 
-    res.json({
-      heroSlides: settings.heroSlides,
-      homeSections: settings.homeSections,
-      categories: settings.categories,
-      headerSettings: settings.headerSettings,
-      footerSettings: settings.footerSettings
-    });
+    res.json(settings);
   } catch (error) {
-    console.error('Error updating all settings:', error);
-    res.status(500).json({ 
-      message: 'Error updating all settings',
-      error: error.message 
-    });
+    console.error('Error updating settings:', error);
+    res.status(500).json({ message: 'Error updating settings', error: error.message });
   }
 };
 

@@ -3,6 +3,12 @@ const router = express.Router();
 const settingsController = require('../controllers/settingsController');
 const { protect, admin } = require('../middleware/authMiddleware');
 
+// Get all settings (public)
+router.get('/all', settingsController.getAllSettings);
+
+// Update all settings (admin only)
+router.put('/all', protect, admin, settingsController.updateAllSettings);
+
 // Hero Slides Routes
 router.get('/hero-slides', settingsController.getHeroSlides);
 router.put('/hero-slides', protect, admin, settingsController.updateHeroSlides);
