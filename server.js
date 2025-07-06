@@ -35,7 +35,17 @@ const corsOptions = {
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  allowedHeaders: [
+    'Content-Type', 
+    'Authorization', 
+    'X-Requested-With', 
+    'Accept', 
+    'Origin',
+    'x-rtb-fingerprint-id' // Allow Razorpay fingerprint header
+  ],
+  exposedHeaders: [
+    'x-rtb-fingerprint-id' // Expose Razorpay fingerprint header
+  ],
   preflightContinue: false,
   optionsSuccessStatus: 200
 };
@@ -139,6 +149,12 @@ app.use((req, res, next) => {
   if (origin) {
     console.log(`🌐 Request from origin: ${origin} to ${req.method} ${req.path}`);
   }
+  
+  // Handle Razorpay-specific headers
+  if (req.headers['x-rtb-fingerprint-id']) {
+    res.setHeader('Access-Control-Expose-Headers', 'x-rtb-fingerprint-id');
+  }
+  
   next();
 });
 

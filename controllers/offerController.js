@@ -86,6 +86,52 @@ const toggleOfferStatus = async (req, res) => {
   }
 };
 
+// Track offer impression
+const trackImpression = async (req, res) => {
+  try {
+    const offer = await Offer.findById(req.params.id);
+    if (!offer) {
+      return res.status(404).json({ message: 'Offer not found' });
+    }
+    
+    // Increment impression count if it exists, otherwise initialize it
+    if (!offer.impressions) {
+      offer.impressions = 0;
+    }
+    offer.impressions += 1;
+    
+    await offer.save();
+    
+    res.json({ success: true, impressions: offer.impressions });
+  } catch (error) {
+    console.error('Error tracking offer impression:', error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Track offer close
+const trackClose = async (req, res) => {
+  try {
+    const offer = await Offer.findById(req.params.id);
+    if (!offer) {
+      return res.status(404).json({ message: 'Offer not found' });
+    }
+    
+    // Increment close count if it exists, otherwise initialize it
+    if (!offer.closes) {
+      offer.closes = 0;
+    }
+    offer.closes += 1;
+    
+    await offer.save();
+    
+    res.json({ success: true, closes: offer.closes });
+  } catch (error) {
+    console.error('Error tracking offer close:', error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
 // Export all controller functions
 module.exports = {
   getActiveOffers,
@@ -93,5 +139,7 @@ module.exports = {
   createOffer,
   updateOffer,
   deleteOffer,
-  toggleOfferStatus
+  toggleOfferStatus,
+  trackImpression,
+  trackClose
 }; 

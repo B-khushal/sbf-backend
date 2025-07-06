@@ -11,7 +11,9 @@ const {
   createOffer,
   updateOffer,
   deleteOffer,
-  toggleOfferStatus
+  toggleOfferStatus,
+  trackImpression,
+  trackClose
 } = require('../controllers/offerController');
 
 // Debug logging for controller functions
@@ -21,11 +23,17 @@ console.log('Controller functions loaded:', {
   createOffer: typeof createOffer,
   updateOffer: typeof updateOffer,
   deleteOffer: typeof deleteOffer,
-  toggleOfferStatus: typeof toggleOfferStatus
+  toggleOfferStatus: typeof toggleOfferStatus,
+  trackImpression: typeof trackImpression,
+  trackClose: typeof trackClose
 });
 
 // Public routes
 router.get('/active', getActiveOffers);
+
+// Tracking routes (public - no authentication required)
+router.post('/:id/impression', trackImpression);
+router.post('/:id/close', trackClose);
 
 // Admin routes (protected)
 router.get('/all', protect, admin, getAllOffers);
