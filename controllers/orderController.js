@@ -179,7 +179,31 @@ const createOrder = async (req, res) => {
         product: item.product,
         quantity: item.quantity,
         price: item.price,
-        finalPrice: item.finalPrice
+        finalPrice: item.finalPrice,
+        // Add customization data if present
+        customization: item.customization ? {
+          uploadedPhoto: item.customization.uploadedPhoto || null,
+          customNumber: item.customization.customNumber || null,
+          customNumberLabel: item.customization.customizations?.number ? 
+            item.customization.customizations.number.split(':')[0] : null,
+          flowerAddonQuantities: item.customization.flowerAddonQuantities || {},
+          chocolateAddonQuantities: item.customization.chocolateAddonQuantities || {},
+          messageCard: item.customization.messageCard || null,
+          includeMessageCard: item.customization.includeMessageCard || false,
+          messageCardPrice: item.customization.totalPrice - item.customization.basePrice - 
+            (Object.entries(item.customization.flowerAddonQuantities || {}).reduce((sum, [_, qty]) => sum + qty, 0) * 0) - 
+            (Object.entries(item.customization.chocolateAddonQuantities || {}).reduce((sum, [_, qty]) => sum + qty, 0) * 0),
+          totalCustomizationPrice: item.customization.totalPrice - item.customization.basePrice,
+          basePrice: item.customization.basePrice || item.price,
+          // Create summary for easy display
+          customizationSummary: {
+            photo: item.customization.customizations?.photo || null,
+            number: item.customization.customizations?.number || null,
+            flowers: item.customization.customizations?.flowers || [],
+            chocolates: item.customization.customizations?.chocolates || [],
+            messageCard: item.customization.customizations?.messageCard || null
+          }
+        } : null
       })),
       paymentDetails: {
         method: paymentDetails.method,
