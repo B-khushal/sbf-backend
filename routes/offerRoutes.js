@@ -27,6 +27,27 @@ console.log('Controller functions loaded:', {
 // Public routes
 router.get('/active', getActiveOffers);
 
+// Offer tracking routes (public)
+router.post('/:id/impression', async (req, res) => {
+  try {
+    console.log('Offer impression tracked:', req.params.id);
+    res.json({ success: true, message: 'Impression tracked' });
+  } catch (error) {
+    console.error('Error tracking impression:', error);
+    res.status(500).json({ success: false, message: 'Failed to track impression' });
+  }
+});
+
+router.post('/:id/close', async (req, res) => {
+  try {
+    console.log('Offer close tracked:', req.params.id);
+    res.json({ success: true, message: 'Close tracked' });
+  } catch (error) {
+    console.error('Error tracking close:', error);
+    res.status(500).json({ success: false, message: 'Failed to track close' });
+  }
+});
+
 // Admin routes (protected)
 router.get('/all', protect, admin, getAllOffers);
 router.post('/', protect, admin, createOffer);
