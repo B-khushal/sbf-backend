@@ -315,25 +315,30 @@ const createOrder = async (req, res) => {
   }
 };
 
+// Standalone function to generate next order number
+const generateNextOrderNumber = async () => {
+  const date = new Date();
+  const year = date.getFullYear().toString().slice(-2);
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const day = date.getDate().toString().padStart(2, '0');
+  
+  const lastOrder = await Order.findOne({
+    orderNumber: new RegExp(`^${year}${month}`)
+  }, {}, { sort: { 'orderNumber': -1 } });
+
+  let sequence = '001';
+  if (lastOrder) {
+    const lastSequence = parseInt(lastOrder.orderNumber.substring(4, 7));
+    sequence = (lastSequence + 1).toString().padStart(3, '0');
+  }
+
+  return `${year}${month}${sequence}${day}`;
+};
+
 // Function to get the next order number (useful for previews)
 const getNextOrderNumber = async (req, res) => {
   try {
-    const date = new Date();
-    const year = date.getFullYear().toString().slice(-2);
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const day = date.getDate().toString().padStart(2, '0');
-    
-    const lastOrder = await Order.findOne({
-      orderNumber: new RegExp(`^${year}${month}`)
-    }, {}, { sort: { 'orderNumber': -1 } });
-
-    let sequence = '001';
-    if (lastOrder) {
-      const lastSequence = parseInt(lastOrder.orderNumber.substring(4, 7));
-      sequence = (lastSequence + 1).toString().padStart(3, '0');
-    }
-
-    const nextOrderNumber = `${year}${month}${sequence}${day}`;
+    const nextOrderNumber = await generateNextOrderNumber();
     
     res.json({
       success: true,
@@ -874,7 +879,7 @@ const createRazorpayOrderHandler = async (req, res) => {
   }
 };
 
-// @desc    Verify Razorpay payment
+// @desc    Verify Razorpay payment and create order
 // @route   POST /api/orders/verify-payment
 // @access  Private
 const verifyRazorpayPaymentHandler = async (req, res) => {
@@ -882,18 +887,105 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
     const {
       razorpay_order_id,
       razorpay_payment_id,
-      razorpay_signature
+      razorpay_signature,
+      orderData
     } = req.body;
 
+    // Verify payment signature
     const isValid = verifyPayment(
       razorpay_order_id,
       razorpay_payment_id,
       razorpay_signature
     );
 
-    res.json({
-      success: isValid
-    });
+    if (!isValid) {
+      return res.status(400).json({
+        success: false,
+        message: 'Payment verification failed'
+      });
+    }
+
+    // Create order in database
+    try {
+      const orderNumber = await generateNextOrderNumber();
+      
+      const order = new Order({
+        orderNumber,
+        user: req.user._id,
+        items: orderData.items,
+        shippingDetails: {
+          firstName: orderData.shippingInfo.firstName,
+          lastName: orderData.shippingInfo.lastName,
+          email: orderData.shippingInfo.email,
+          phone: orderData.shippingInfo.phone,
+          address: orderData.shippingInfo.address,
+          apartment: orderData.shippingInfo.apartment,
+          city: orderData.shippingInfo.city,
+          state: orderData.shippingInfo.state,
+          zipCode: orderData.shippingInfo.zipCode,
+          notes: orderData.shippingInfo.notes,
+          timeSlot: orderData.shippingInfo.timeSlot,
+          deliveryOption: orderData.shippingInfo.deliveryOption,
+          deliveryFee: orderData.shippingInfo.deliveryFee,
+          deliveryDate: orderData.shippingInfo.selectedDate,
+          giftMessage: orderData.shippingInfo.giftMessage,
+          receiverFirstName: orderData.shippingInfo.receiverFirstName,
+          receiverLastName: orderData.shippingInfo.receiverLastName,
+          receiverEmail: orderData.shippingInfo.receiverEmail,
+          receiverPhone: orderData.shippingInfo.receiverPhone,
+          receiverAddress: orderData.shippingInfo.receiverAddress,
+          receiverApartment: orderData.shippingInfo.receiverApartment,
+          receiverCity: orderData.shippingInfo.receiverCity,
+          receiverState: orderData.shippingInfo.receiverState,
+          receiverZipCode: orderData.shippingInfo.receiverZipCode
+        },
+        subtotal: orderData.subtotal,
+        deliveryFee: orderData.deliveryFee,
+        promoCode: orderData.promoCode,
+        promoDiscount: orderData.promoDiscount,
+        total: orderData.total,
+        currency: orderData.currency,
+        currencyRate: orderData.exchangeRate,
+        status: 'order_placed',
+        paymentStatus: 'paid',
+        payment: {
+          method: 'razorpay',
+          transactionId: razorpay_payment_id,
+          orderId: razorpay_order_id,
+          amount: orderData.total,
+          currency: orderData.currency,
+          status: 'completed'
+        },
+        paymentDetails: {
+          paymentId: razorpay_payment_id,
+          orderId: razorpay_order_id,
+          method: 'razorpay',
+          status: 'completed',
+          amount: orderData.total,
+          currency: orderData.currency
+        }
+      });
+
+      const savedOrder = await order.save();
+
+      // Populate the order with user and product details
+      const populatedOrder = await Order.findById(savedOrder._id)
+        .populate('user', 'name email')
+        .populate('items.product', 'title images price');
+
+      res.json({
+        success: true,
+        order: populatedOrder
+      });
+
+    } catch (orderError) {
+      console.error('Error creating order:', orderError);
+      res.status(500).json({
+        success: false,
+        message: 'Payment verified but failed to create order. Please contact support.'
+      });
+    }
+
   } catch (error) {
     console.error('Error verifying payment:', error);
     res.status(500).json({
