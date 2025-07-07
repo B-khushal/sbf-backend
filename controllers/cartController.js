@@ -45,7 +45,7 @@ const getCart = async (req, res) => {
 // @access  Private
 const addToCart = async (req, res) => {
   try {
-    const { productId, quantity = 1 } = req.body;
+    const { productId, quantity = 1, customizations, customPrice } = req.body;
 
     if (!productId) {
       return res.status(400).json({ message: 'Product ID is required' });
@@ -62,9 +62,9 @@ const addToCart = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Check if item already exists in cart
+    // Check if item already exists in cart (same productId and customizations)
     const existingItemIndex = user.cart.findIndex(
-      item => item.productId.toString() === productId
+      item => item.productId.toString() === productId && JSON.stringify(item.customizations) === JSON.stringify(customizations)
     );
 
     if (existingItemIndex > -1) {
@@ -75,7 +75,9 @@ const addToCart = async (req, res) => {
       user.cart.push({
         productId,
         quantity,
-        addedAt: new Date()
+        addedAt: new Date(),
+        customizations: customizations,
+        customPrice: customPrice
       });
     }
 
@@ -84,18 +86,22 @@ const addToCart = async (req, res) => {
     // Return updated cart
     const updatedUser = await User.findById(req.user._id).populate({
       path: 'cart.productId',
-      select: 'title price images discount category description'
+      select: 'title price images discount category description careInstructions isNewArrival isFeatured'
     });
 
     const cartItems = updatedUser.cart.map(item => ({
       _id: item.productId._id,
       productId: item.productId._id,
       title: item.productId.title,
-      price: item.productId.price,
+      price: item.customPrice !== undefined ? item.customPrice : item.productId.price,
       images: item.productId.images,
       discount: item.productId.discount,
       category: item.productId.category,
       description: item.productId.description,
+      careInstructions: item.productId.careInstructions,
+      isNewArrival: item.productId.isNewArrival,
+      isFeatured: item.productId.isFeatured,
+      customizations: item.customizations,
       quantity: item.quantity,
       addedAt: item.addedAt
     }));

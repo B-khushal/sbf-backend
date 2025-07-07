@@ -81,6 +81,14 @@ const userSchema = new mongoose.Schema({
         addedAt: {
             type: Date,
             default: Date.now
+        },
+        customizations: {
+            type: mongoose.Schema.Types.Mixed,
+            default: undefined
+        },
+        customPrice: {
+            type: Number,
+            default: undefined
         }
     }],
     wishlist: [{
