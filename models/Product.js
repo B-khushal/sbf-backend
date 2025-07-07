@@ -1,5 +1,21 @@
 ﻿const mongoose = require("mongoose");
 
+const addonOptionSchema = mongoose.Schema({
+  name: {
+    type: String,
+    required: true,
+  },
+  price: {
+    type: Number,
+    required: true,
+  },
+  type: {
+    type: String,
+    enum: ['flower', 'chocolate'],
+    required: true,
+  }
+});
+
 const productSchema = mongoose.Schema(
   {
     user: { 
@@ -76,6 +92,41 @@ const productSchema = mongoose.Schema(
     hidden: {
       type: Boolean,
       default: false,
+    },
+    // Customization fields
+    isCustomizable: {
+      type: Boolean,
+      default: false,
+    },
+    customizationOptions: {
+      allowPhotoUpload: {
+        type: Boolean,
+        default: false,
+      },
+      allowNumberInput: {
+        type: Boolean,
+        default: false,
+      },
+      numberInputLabel: {
+        type: String,
+        default: "Enter number",
+      },
+      allowMessageCard: {
+        type: Boolean,
+        default: false,
+      },
+      messageCardPrice: {
+        type: Number,
+        default: 0,
+      },
+      addons: {
+        flowers: [addonOptionSchema],
+        chocolates: [addonOptionSchema],
+      },
+      previewImage: {
+        type: String,
+        default: "",
+      },
     },
   },
   {
