@@ -10,7 +10,7 @@ const {
   updateOrderToDelivered,
   updateOrderStatus,
   getNextOrderNumber,
-  createRazorpayOrder,
+  createRazorpayOrderHandler,
   verifyRazorpayPayment,
   getUpcomingDeliveries,
   getDeliveryCalendar,
