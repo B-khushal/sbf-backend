@@ -2,7 +2,7 @@ const Order = require('../models/Order');
 const Product = require('../models/Product');
 const User = require('../models/User');
 const moment = require('moment'); // Import moment.js for date formatting
-const { createOrder: createRazorpayOrder, verifyPayment } = require('../services/razorpayService');
+const { createOrder: createRazorpayOrder, verifyPayment, RAZORPAY_KEY_ID } = require('../services/razorpayService');
 const Notification = require('../models/Notification');
 const { admin } = require('../middleware/authMiddleware');
 const { createOrderNotification } = require('./notificationController');
@@ -830,8 +830,11 @@ const createRazorpayOrderHandler = async (req, res) => {
       });
     }
 
-    console.log('Creating Razorpay order with:', { amount, currency });
-    const order = await createRazorpayOrder(amount, currency);
+    // Convert amount to paise if needed
+    const amountInPaise = Math.round(parseFloat(amount) * 100);
+
+    console.log('Creating Razorpay order with:', { amount: amountInPaise, currency });
+    const order = await createRazorpayOrder(amountInPaise, currency);
     console.log('Razorpay order created:', order);
     
     // Send back the response in the format Razorpay expects
@@ -839,8 +842,8 @@ const createRazorpayOrderHandler = async (req, res) => {
       success: true,
       amount: order.amount,
       currency: order.currency,
-      order_id: order.id,  // This is the key field Razorpay expects
-      key: RAZORPAY_KEY_ID // Add the key ID for frontend
+      order_id: order.id,
+      key: RAZORPAY_KEY_ID
     });
   } catch (error) {
     console.error('Detailed error creating Razorpay order:', error);

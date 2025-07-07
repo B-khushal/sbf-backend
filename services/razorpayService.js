@@ -85,11 +85,21 @@ const createOrder = async (amount, currency = 'INR') => {
       throw new Error('Invalid amount provided');
     }
 
+    // Log the incoming amount for debugging
+    console.log('💰 Incoming amount:', amount, typeof amount);
+
+    // Ensure amount is a number
+    const amountValue = typeof amount === 'string' ? parseFloat(amount) : amount;
+    if (isNaN(amountValue)) {
+      throw new Error('Invalid amount format');
+    }
+
     // Ensure amount is in paise (smallest currency unit)
-    const amountInPaise = Math.round(amount);
+    const amountInPaise = Math.round(amountValue);
 
     console.log('Creating Razorpay order with:', { 
       amount: amountInPaise,
+      originalAmount: amount,
       currency,
       keyId: RAZORPAY_KEY_ID.substring(0, 10) + '...',
       isLive: isLiveMode()
@@ -101,7 +111,8 @@ const createOrder = async (amount, currency = 'INR') => {
       receipt: `order_${Date.now()}`,
       notes: {
         environment: process.env.NODE_ENV || 'development',
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        originalAmount: amount
       }
     };
 
@@ -127,6 +138,12 @@ const createOrder = async (amount, currency = 'INR') => {
     if (error.error) {
       const errorCode = error.error.code;
       const errorDescription = error.error.description || error.error.message;
+      
+      console.error('Razorpay API Error Details:', {
+        code: errorCode,
+        description: errorDescription,
+        error: error.error
+      });
       
       if (errorCode === 'BAD_REQUEST_ERROR') {
         if (errorDescription.includes('key_id')) {
