@@ -830,8 +830,8 @@ const createRazorpayOrderHandler = async (req, res) => {
       });
     }
 
-    // Convert amount to paise if needed
-    const amountInPaise = Math.round(parseFloat(amount) * 100);
+    // Amount should already be in paise from frontend
+    const amountInPaise = Math.round(parseFloat(amount));
 
     console.log('Creating Razorpay order with:', { amount: amountInPaise, currency });
     const order = await createRazorpayOrder(amountInPaise, currency);
