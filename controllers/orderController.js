@@ -844,6 +844,26 @@ const createRazorpayOrderHandler = async (req, res) => {
     });
   } catch (error) {
     console.error('Detailed error creating Razorpay order:', error);
+    
+    // Check for specific Razorpay errors
+    if (error.error) {
+      const errorCode = error.error.code;
+      const errorDescription = error.error.description || error.error.message;
+      
+      console.error('Razorpay API Error:', {
+        code: errorCode,
+        description: errorDescription,
+        details: error.error
+      });
+      
+      return res.status(400).json({
+        success: false,
+        message: `Razorpay Error: ${errorDescription}`,
+        code: errorCode
+      });
+    }
+    
+    // Generic error handling
     res.status(500).json({
       success: false,
       message: error.message || 'Error creating order',

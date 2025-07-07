@@ -43,7 +43,7 @@ router.route('/:id/status')
 router.post('/next-number', getNextOrderNumber);
 
 // Razorpay specific routes
-router.post('/create-razorpay-order', protect, createRazorpayOrder);
+router.post('/create-razorpay-order', protect, createRazorpayOrderHandler);
 router.post('/verify-payment', protect, verifyRazorpayPayment);
 
 module.exports = router;

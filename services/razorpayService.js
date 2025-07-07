@@ -88,17 +88,36 @@ const createOrder = async (amount, currency = 'INR') => {
     // Ensure amount is in paise (smallest currency unit)
     const amountInPaise = Math.round(amount);
 
-    console.log('Creating Razorpay order with:', { amountInPaise, currency });
+    console.log('Creating Razorpay order with:', { 
+      amount: amountInPaise,
+      currency,
+      keyId: RAZORPAY_KEY_ID.substring(0, 10) + '...',
+      isLive: isLiveMode()
+    });
     
     const options = {
       amount: amountInPaise,
       currency: currency,
       receipt: `order_${Date.now()}`,
+      notes: {
+        environment: process.env.NODE_ENV || 'development',
+        timestamp: new Date().toISOString()
+      }
     };
 
-    console.log('Razorpay options:', options);
+    console.log('Razorpay options:', {
+      ...options,
+      amount: options.amount,
+      currency: options.currency
+    });
+    
     const order = await razorpay.orders.create(options);
-    console.log('Razorpay order created successfully:', order);
+    console.log('Razorpay order created successfully:', {
+      id: order.id,
+      amount: order.amount,
+      currency: order.currency,
+      receipt: order.receipt
+    });
     
     return order;
   } catch (error) {
