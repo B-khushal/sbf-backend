@@ -255,7 +255,7 @@ const createProduct = async (req, res) => {
       images,
       isFeatured: isFeatured || false,
       isNew: isNew || false,
-      hidden: hidden !== undefined ? hidden : true,  // 🔒 Default to hidden unless explicitly set to false
+      hidden: hidden !== undefined ? hidden : false,  // ✅ Default to visible unless explicitly set to true
       details: processedDetails,
       careInstructions: careInstructions || [],
       isCustomizable: Boolean(isCustomizable),
