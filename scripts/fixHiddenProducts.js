@@ -17,7 +17,7 @@ const fixHiddenProducts = async () => {
       return;
     }
 
-    // Update all hidden products to be visible
+    // Update all hidden products to be visible (except those that should remain hidden)
     const result = await Product.updateMany(
       { hidden: true },
       { hidden: false }
