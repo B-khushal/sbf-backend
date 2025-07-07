@@ -834,11 +834,12 @@ const createRazorpayOrderHandler = async (req, res) => {
     const order = await createRazorpayOrder(amount, currency);
     console.log('Razorpay order created:', order);
     
+    // Send back the response in the format Razorpay expects
     res.json({
       success: true,
       amount: order.amount,
       currency: order.currency,
-      id: order.id
+      order_id: order.id  // This is the key field Razorpay expects
     });
   } catch (error) {
     console.error('Detailed error creating Razorpay order:', error);
