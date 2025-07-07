@@ -858,23 +858,203 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
     const {
       razorpay_order_id,
       razorpay_payment_id,
-      razorpay_signature
+      razorpay_signature,
+      orderData
     } = req.body;
 
+    console.log('Verifying payment:', {
+      razorpay_order_id,
+      razorpay_payment_id,
+      razorpay_signature: razorpay_signature ? 'present' : 'missing',
+      orderData: orderData ? 'present' : 'missing'
+    });
+
+    // Verify payment signature
     const isValid = verifyPayment(
       razorpay_order_id,
       razorpay_payment_id,
       razorpay_signature
     );
 
-    res.json({
-      success: isValid
-    });
+    if (!isValid) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid payment signature'
+      });
+    }
+
+    // If payment is verified and orderData is provided, create the order
+    if (orderData) {
+      // Validate required data
+      if (!orderData.items || orderData.items.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Order must contain items'
+        });
+      }
+
+      if (!req.user || !req.user._id) {
+        return res.status(401).json({
+          success: false,
+          message: 'User not authenticated'
+        });
+      }
+
+      // Generate order number in YYMM-XXX-DD format
+      const date = new Date();
+      const year = date.getFullYear().toString().slice(-2);
+      const month = (date.getMonth() + 1).toString().padStart(2, '0');
+      const day = date.getDate().toString().padStart(2, '0');
+      
+      // Find the last order for the current year and month
+      const lastOrder = await Order.findOne({
+        orderNumber: new RegExp(`^${year}${month}`)
+      }, {}, { sort: { 'orderNumber': -1 } });
+
+      let sequence = '001';
+      if (lastOrder) {
+        // Extract the sequence number from the last order (positions 4-6 in YYMMDDDDD format)
+        const lastSequence = parseInt(lastOrder.orderNumber.substring(4, 7));
+        sequence = (lastSequence + 1).toString().padStart(3, '0');
+      }
+
+      const orderNumber = `${year}${month}${sequence}${day}`;
+
+      // Create the order object with all required fields
+      const orderDbData = {
+        orderNumber,
+        user: req.user._id,
+        shippingDetails: {
+          fullName: orderData.shippingDetails.fullName,
+          email: orderData.shippingDetails.email,
+          phone: orderData.shippingDetails.phone,
+          address: orderData.shippingDetails.address,
+          apartment: orderData.shippingDetails.apartment || '',
+          city: orderData.shippingDetails.city,
+          state: orderData.shippingDetails.state,
+          zipCode: orderData.shippingDetails.zipCode,
+          notes: orderData.shippingDetails.notes || '',
+          deliveryDate: orderData.shippingDetails.deliveryDate,
+          timeSlot: orderData.shippingDetails.timeSlot
+        },
+        items: orderData.items.map(item => ({
+          product: item.product,
+          quantity: item.quantity,
+          price: item.price,
+          finalPrice: item.finalPrice
+        })),
+        paymentDetails: {
+          method: 'razorpay',
+          razorpayOrderId: razorpay_order_id,
+          razorpayPaymentId: razorpay_payment_id,
+          razorpaySignature: razorpay_signature
+        },
+        totalAmount: orderData.totalAmount,
+        currency: orderData.currency || 'INR',
+        currencyRate: orderData.currencyRate || 1,
+        originalCurrency: orderData.originalCurrency || orderData.currency || 'INR',
+        status: 'order_placed'
+      };
+
+      // Add gift details if present
+      if (orderData.giftDetails) {
+        orderDbData.giftDetails = orderData.giftDetails;
+      }
+
+      console.log('Creating order with verified payment data:', JSON.stringify(orderDbData, null, 2));
+
+      const order = new Order(orderDbData);
+      const savedOrder = await order.save();
+
+      console.log('Order saved successfully after payment verification:', JSON.stringify(savedOrder, null, 2));
+
+      // Send notifications after order is successfully created
+      try {
+        // Get customer details
+        const customer = await User.findById(req.user._id);
+        
+        // Populate product details for notifications
+        const populatedOrder = await Order.findById(savedOrder._id)
+          .populate({
+            path: 'items.product',
+            select: 'name title price images'
+          });
+
+        // Prepare notification data
+        const notificationData = {
+          order: populatedOrder,
+          customer: {
+            name: customer.name,
+            email: customer.email,
+            phone: customer.phone || populatedOrder.shippingDetails.phone
+          },
+          items: populatedOrder.items
+        };
+
+        // Send email notification (includes both customer and admin emails)
+        const emailResult = await sendEmailNotification(notificationData);
+        console.log('Email notification result:', emailResult);
+        
+        // Create admin notification for real-time updates
+        try {
+          const adminNotification = await createOrderNotification({
+            orderId: savedOrder._id,
+            orderNumber: savedOrder.orderNumber,
+            customerName: customer.name,
+            amount: savedOrder.totalAmount,
+            currency: savedOrder.currency || 'INR'
+          });
+          console.log('✅ Admin notification created successfully for order:', savedOrder.orderNumber);
+          
+          // Store in a global variable for real-time polling (optional backup)
+          global.latestNotifications = global.latestNotifications || [];
+          global.latestNotifications.unshift({
+            id: adminNotification.id || `order-${Date.now()}`,
+            type: 'order',
+            title: '🎉 New Order Received!',
+            message: `Order ${savedOrder.orderNumber} placed by ${customer.name}. Amount: ${savedOrder.currency === 'INR' ? '₹' : '$'}${savedOrder.totalAmount}`,
+            createdAt: new Date().toISOString(),
+            isRead: false,
+            orderId: savedOrder._id,
+            orderNumber: savedOrder.orderNumber
+          });
+          
+          // Keep only last 50 notifications in memory
+          if (global.latestNotifications.length > 50) {
+            global.latestNotifications = global.latestNotifications.slice(0, 50);
+          }
+          
+          console.log('📨 Notification added to global notifications for real-time polling');
+          
+        } catch (adminNotificationError) {
+          console.error('❌ Error creating admin notification:', adminNotificationError);
+        }
+        
+        // Add notification status to response
+        savedOrder.emailNotificationStatus = emailResult;
+        
+      } catch (notificationError) {
+        console.error('❌ Error sending order notifications:', notificationError);
+        // Don't fail the order creation if notifications fail
+      }
+
+      res.json({
+        success: true,
+        order: savedOrder
+      });
+    } else {
+      // If no orderData, just return verification result
+      res.json({
+        success: true
+      });
+    }
   } catch (error) {
-    console.error('Error verifying payment:', error);
+    console.error('Error verifying payment and creating order:', error);
+    console.error('Error stack:', error.stack);
     res.status(500).json({
       success: false,
-      message: 'Error verifying payment'
+      message: 'Error verifying payment',
+      error: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 };

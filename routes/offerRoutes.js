@@ -11,7 +11,9 @@ const {
   createOffer,
   updateOffer,
   deleteOffer,
-  toggleOfferStatus
+  toggleOfferStatus,
+  trackOfferImpression,
+  trackOfferClose
 } = require('../controllers/offerController');
 
 // Debug logging for controller functions
@@ -26,6 +28,10 @@ console.log('Controller functions loaded:', {
 
 // Public routes
 router.get('/active', getActiveOffers);
+
+// Tracking routes (public)
+router.post('/:id/impression', trackOfferImpression);
+router.post('/:id/close', trackOfferClose);
 
 // Admin routes (protected)
 router.get('/all', protect, admin, getAllOffers);
