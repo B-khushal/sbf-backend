@@ -277,9 +277,16 @@ const createOrder = async (req, res) => {
       // Don't fail the order creation if notifications fail
     }
 
+    // Populate the order with product details before sending to frontend
+    const populatedOrder = await Order.findById(savedOrder._id)
+      .populate({
+        path: 'items.product',
+        select: 'name title price images sku discount'
+      });
+
     res.status(201).json({
       success: true,
-      order: savedOrder
+      order: populatedOrder
     });
   } catch (error) {
     console.error('Detailed error creating order:', error);
@@ -590,7 +597,10 @@ const getOrders = async (req, res) => {
 const updateOrderStatus = async (req, res) => {
   try {
     const { status } = req.body;
-    const order = await Order.findById(req.params.id).populate('items.product');
+    const order = await Order.findById(req.params.id).populate({
+      path: 'items.product',
+      select: 'title price images sku discount'
+    });
 
     if (!order) {
       return res.status(404).json({ message: 'Order not found' });
@@ -1065,9 +1075,16 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
         // Don't fail the order creation if notifications fail
       }
 
+      // Populate the order with product details before sending to frontend
+      const populatedOrder = await Order.findById(savedOrder._id)
+        .populate({
+          path: 'items.product',
+          select: 'name title price images sku discount'
+        });
+
       res.json({
         success: true,
-        order: savedOrder
+        order: populatedOrder
       });
     } else {
       // If no orderData, just return verification result
@@ -1302,7 +1319,10 @@ const testDeliveryEmail = async (req, res) => {
       return res.status(400).json({ message: 'Order ID is required' });
     }
 
-    const order = await Order.findById(orderId).populate('items.product');
+    const order = await Order.findById(orderId).populate({
+      path: 'items.product',
+      select: 'title price images sku discount'
+    });
     
     if (!order) {
       return res.status(404).json({ message: 'Order not found' });
