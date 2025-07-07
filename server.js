@@ -56,6 +56,8 @@ app.use('/api/orders', require('./routes/orderRoutes'));
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/uploads', require('./routes/uploadRoutes'));
 app.use('/api/notifications', require('./routes/notificationRoutes'));
+app.use('/api/cart', require('./routes/cartRoutes'));
+app.use('/api/wishlist', require('./routes/wishlistRoutes'));
 const settingsRoutes = require('./routes/settingsRoutes');
 const newsletterRoutes = require('./routes/newsletterRoutes');
 app.use('/api/dashboard', require('./routes/dashboardRoutes'));
