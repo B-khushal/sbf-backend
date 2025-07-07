@@ -10,7 +10,7 @@ const {
   updateOrderToDelivered,
   updateOrderStatus,
   getNextOrderNumber,
-  createRazorpayOrderHandler,
+  createRazorpayOrder,
   verifyRazorpayPayment,
   getUpcomingDeliveries,
   getDeliveryCalendar,
@@ -43,7 +43,7 @@ router.route('/:id/status')
 router.post('/next-number', getNextOrderNumber);
 
 // Razorpay specific routes
-router.post('/create-razorpay-order', protect, createRazorpayOrderHandler);
+router.post('/create-razorpay-order', protect, createRazorpayOrder);
 router.post('/verify-payment', protect, verifyRazorpayPayment);
 
 module.exports = router;
