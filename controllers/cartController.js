@@ -8,7 +8,7 @@ const getCart = async (req, res) => {
   try {
     const user = await User.findById(req.user._id).populate({
       path: 'cart.productId',
-      select: 'title price images discount category description'
+      select: 'title price images discount category description careInstructions isNewArrival isFeatured'
     });
 
     if (!user) {
@@ -20,11 +20,15 @@ const getCart = async (req, res) => {
       _id: item.productId._id,
       productId: item.productId._id,
       title: item.productId.title,
-      price: item.productId.price,
+      price: item.customPrice !== undefined ? item.customPrice : item.productId.price,
       images: item.productId.images,
       discount: item.productId.discount,
       category: item.productId.category,
       description: item.productId.description,
+      careInstructions: item.productId.careInstructions,
+      isNewArrival: item.productId.isNewArrival,
+      isFeatured: item.productId.isFeatured,
+      customizations: item.customizations,
       quantity: item.quantity,
       addedAt: item.addedAt
     }));
@@ -149,18 +153,22 @@ const updateCartItem = async (req, res) => {
     // Return updated cart
     const updatedUser = await User.findById(req.user._id).populate({
       path: 'cart.productId',
-      select: 'title price images discount category description'
+      select: 'title price images discount category description careInstructions isNewArrival isFeatured'
     });
 
     const cartItems = updatedUser.cart.map(item => ({
       _id: item.productId._id,
       productId: item.productId._id,
       title: item.productId.title,
-      price: item.productId.price,
+      price: item.customPrice !== undefined ? item.customPrice : item.productId.price,
       images: item.productId.images,
       discount: item.productId.discount,
       category: item.productId.category,
       description: item.productId.description,
+      careInstructions: item.productId.careInstructions,
+      isNewArrival: item.productId.isNewArrival,
+      isFeatured: item.productId.isFeatured,
+      customizations: item.customizations,
       quantity: item.quantity,
       addedAt: item.addedAt
     }));
@@ -198,18 +206,22 @@ const removeFromCart = async (req, res) => {
     // Return updated cart
     const updatedUser = await User.findById(req.user._id).populate({
       path: 'cart.productId',
-      select: 'title price images discount category description'
+      select: 'title price images discount category description careInstructions isNewArrival isFeatured'
     });
 
     const cartItems = updatedUser.cart.map(item => ({
       _id: item.productId._id,
       productId: item.productId._id,
       title: item.productId.title,
-      price: item.productId.price,
+      price: item.customPrice !== undefined ? item.customPrice : item.productId.price,
       images: item.productId.images,
       discount: item.productId.discount,
       category: item.productId.category,
       description: item.productId.description,
+      careInstructions: item.productId.careInstructions,
+      isNewArrival: item.productId.isNewArrival,
+      isFeatured: item.productId.isFeatured,
+      customizations: item.customizations,
       quantity: item.quantity,
       addedAt: item.addedAt
     }));
