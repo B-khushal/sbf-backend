@@ -166,7 +166,7 @@ const createProduct = async (req, res) => {
     console.log("👤 User Role:", req.user?.role);
     console.log("📝 Received Product Data:", JSON.stringify(req.body, null, 2));
 
-    const { title, price, category, categories, countInStock, images, isFeatured, isNew, discount, description, hidden, careInstructions } = req.body;
+    const { title, price, category, categories, countInStock, images, isFeatured, isNew, discount, description, hidden, careInstructions, isCustomizable, customizationOptions } = req.body;
 
     // Validate required fields
     if (!title || !price || !category || !countInStock || !images || images.length === 0 || !description) {
@@ -213,6 +213,35 @@ const createProduct = async (req, res) => {
 
     console.log("📝 Processed categories:", processedCategories);
 
+    // Process customization options
+    let processedCustomizationOptions = {
+      allowPhotoUpload: false,
+      allowNumberInput: false,
+      numberInputLabel: "Enter number",
+      allowMessageCard: false,
+      messageCardPrice: 0,
+      addons: {
+        flowers: [],
+        chocolates: []
+      },
+      previewImage: ""
+    };
+
+    if (customizationOptions) {
+      processedCustomizationOptions = {
+        allowPhotoUpload: Boolean(customizationOptions.allowPhotoUpload),
+        allowNumberInput: Boolean(customizationOptions.allowNumberInput),
+        numberInputLabel: customizationOptions.numberInputLabel || "Enter number",
+        allowMessageCard: Boolean(customizationOptions.allowMessageCard),
+        messageCardPrice: Number(customizationOptions.messageCardPrice) || 0,
+        addons: {
+          flowers: Array.isArray(customizationOptions.addons?.flowers) ? customizationOptions.addons.flowers : [],
+          chocolates: Array.isArray(customizationOptions.addons?.chocolates) ? customizationOptions.addons.chocolates : []
+        },
+        previewImage: customizationOptions.previewImage || ""
+      };
+    }
+
     // Create new product
     const product = new Product({
       user: req.user._id,
@@ -229,9 +258,15 @@ const createProduct = async (req, res) => {
       hidden: hidden !== undefined ? hidden : true,  // 🔒 Default to hidden unless explicitly set to false
       details: processedDetails,
       careInstructions: careInstructions || [],
+      isCustomizable: Boolean(isCustomizable),
+      customizationOptions: processedCustomizationOptions
     });
 
     console.log("📦 Product object before save:", JSON.stringify(product, null, 2));
+    console.log("🎨 Customization data:", {
+      isCustomizable: product.isCustomizable,
+      customizationOptions: product.customizationOptions
+    });
 
     // Save the product
     const savedProduct = await product.save();
@@ -267,7 +302,7 @@ const updateProduct = async (req, res) => {
     console.log("📝 Request body:", req.body);
     console.log("🔑 Product ID:", req.params.id);
 
-    const { title, price, discount, description, images, category, categories, countInStock, isFeatured, isNew, hidden, careInstructions } = req.body;
+    const { title, price, discount, description, images, category, categories, countInStock, isFeatured, isNew, hidden, careInstructions, isCustomizable, customizationOptions } = req.body;
     
     // Process details from frontend format to backend format
     let processedDetails;
@@ -307,9 +342,33 @@ const updateProduct = async (req, res) => {
     product.details = processedDetails || product.details;
     product.careInstructions = careInstructions || product.careInstructions;
     
+    // Update customization fields
+    if (isCustomizable !== undefined) {
+      product.isCustomizable = isCustomizable;
+    }
+    
+    if (customizationOptions) {
+      product.customizationOptions = {
+        allowPhotoUpload: customizationOptions.allowPhotoUpload !== undefined ? customizationOptions.allowPhotoUpload : product.customizationOptions?.allowPhotoUpload || false,
+        allowNumberInput: customizationOptions.allowNumberInput !== undefined ? customizationOptions.allowNumberInput : product.customizationOptions?.allowNumberInput || false,
+        numberInputLabel: customizationOptions.numberInputLabel || product.customizationOptions?.numberInputLabel || "Enter number",
+        allowMessageCard: customizationOptions.allowMessageCard !== undefined ? customizationOptions.allowMessageCard : product.customizationOptions?.allowMessageCard || false,
+        messageCardPrice: customizationOptions.messageCardPrice !== undefined ? customizationOptions.messageCardPrice : product.customizationOptions?.messageCardPrice || 0,
+        addons: {
+          flowers: Array.isArray(customizationOptions.addons?.flowers) ? customizationOptions.addons.flowers : (product.customizationOptions?.addons?.flowers || []),
+          chocolates: Array.isArray(customizationOptions.addons?.chocolates) ? customizationOptions.addons.chocolates : (product.customizationOptions?.addons?.chocolates || [])
+        },
+        previewImage: customizationOptions.previewImage || product.customizationOptions?.previewImage || ""
+      };
+    }
+    
     // Clean data before saving
     const cleanedProduct = cleanProductData(product);
     console.log("📦 Cleaned product data before save:", cleanedProduct);
+    console.log("🎨 Customization data:", {
+      isCustomizable: cleanedProduct.isCustomizable,
+      customizationOptions: cleanedProduct.customizationOptions
+    });
 
     // Save updated product
     const updatedProduct = await cleanedProduct.save();
