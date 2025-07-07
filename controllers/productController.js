@@ -868,10 +868,6 @@ const removeFromCart = async (req, res) => {
     );
     
     await user.save();
-    
-    // Populate product details for response
-    await user.populate('cart.productId');
-    
     res.status(200).json({ 
       message: "Product removed from cart",
       cart: user.cart
@@ -913,10 +909,6 @@ const updateCartQuantity = async (req, res) => {
     }
     
     await user.save();
-    
-    // Populate product details for response
-    await user.populate('cart.productId');
-    
     res.status(200).json({ 
       message: "Cart updated",
       cart: user.cart
