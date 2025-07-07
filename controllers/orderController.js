@@ -839,7 +839,8 @@ const createRazorpayOrderHandler = async (req, res) => {
       success: true,
       amount: order.amount,
       currency: order.currency,
-      order_id: order.id  // This is the key field Razorpay expects
+      order_id: order.id,  // This is the key field Razorpay expects
+      key: RAZORPAY_KEY_ID // Add the key ID for frontend
     });
   } catch (error) {
     console.error('Detailed error creating Razorpay order:', error);
