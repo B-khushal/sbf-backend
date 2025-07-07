@@ -17,12 +17,6 @@ const {
   getProductsByCategory,
   addToWishlist,
   removeFromWishlist,
-  addToCart,
-  removeFromCart,
-  updateCartQuantity,
-  getCart,
-  clearCart,
-  getWishlist,
 } = require('../controllers/productController');
 
 const {
@@ -134,38 +128,6 @@ router.post('/fix-details', protect, admin, async (req, res) => {
     });
   }
 });
-
-// Cart routes (protected)
-// @route   POST /api/products/cart
-// @desc    Add item to cart
-// @access  Private
-router.route('/cart').post(protect, addToCart);
-
-// @route   GET /api/products/cart
-// @desc    Get user's cart
-// @access  Private
-router.route('/cart').get(protect, getCart);
-
-// @route   DELETE /api/products/cart
-// @desc    Clear user's cart
-// @access  Private
-router.route('/cart').delete(protect, clearCart);
-
-// @route   DELETE /api/products/cart/:productId
-// @desc    Remove item from cart
-// @access  Private
-router.route('/cart/:productId').delete(protect, removeFromCart);
-
-// @route   PUT /api/products/cart/:productId
-// @desc    Update cart item quantity
-// @access  Private
-router.route('/cart/:productId').put(protect, updateCartQuantity);
-
-// Wishlist routes (protected)
-// @route   GET /api/products/wishlist
-// @desc    Get user's wishlist
-// @access  Private
-router.route('/wishlist').get(protect, getWishlist);
 
 // @route   POST /api/products/:id/wishlist
 // @desc    Add to wishlist
