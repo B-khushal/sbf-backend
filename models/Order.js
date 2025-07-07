@@ -42,6 +42,10 @@ const orderSchema = new mongoose.Schema({
     finalPrice: {
       type: Number,
       required: true
+    },
+    customizations: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null
     }
   }],
   paymentDetails: {

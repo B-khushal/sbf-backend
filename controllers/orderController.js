@@ -179,7 +179,8 @@ const createOrder = async (req, res) => {
         product: item.product,
         quantity: item.quantity,
         price: item.price,
-        finalPrice: item.finalPrice
+        finalPrice: item.finalPrice,
+        customizations: item.customizations || null
       })),
       paymentDetails: {
         method: paymentDetails.method,
@@ -966,7 +967,8 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
           product: item.product,
           quantity: item.quantity,
           price: item.price,
-          finalPrice: item.finalPrice
+          finalPrice: item.finalPrice,
+          customizations: item.customizations || null
         })),
         paymentDetails: {
           method: 'razorpay',
