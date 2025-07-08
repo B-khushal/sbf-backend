@@ -549,8 +549,8 @@ const getNewProducts = async (req, res) => {
 // @access Private/Admin
 const getAdminProducts = async (req, res) => {
   try {
-    const pageSize = 15;
-    const page = Number(req.query.page) || 1;
+    // const pageSize = 15;
+    // const page = Number(req.query.page) || 1;
 
     const keyword = req.query.search
       ? {
@@ -563,15 +563,14 @@ const getAdminProducts = async (req, res) => {
 
     // No hidden filter for admin
     const count = await Product.countDocuments(keyword);
+    // Remove pagination: fetch all products
     const products = await Product.find(keyword)
-      .limit(pageSize)
-      .skip(pageSize * (page - 1))
       .sort({ createdAt: -1 });
 
     // Add real review statistics
     const productsWithReviews = await addReviewStats(products);
 
-    res.json({ products: productsWithReviews, page, pages: Math.ceil(count / pageSize), total: count });
+    res.json({ products: productsWithReviews, total: count });
   } catch (error) {
     console.error("Error fetching admin products:", error);
     res.status(500).json({ message: "Server Error: Failed to fetch admin products" });
