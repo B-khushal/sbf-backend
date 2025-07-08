@@ -16,6 +16,75 @@ const addonOptionSchema = mongoose.Schema({
   }
 });
 
+const comboItemSchema = mongoose.Schema({
+  name: {
+    type: String,
+    required: true,
+  },
+  description: {
+    type: String,
+    default: "",
+  },
+  image: {
+    type: String,
+    default: "",
+  },
+  customizationOptions: {
+    allowMessage: {
+      type: Boolean,
+      default: false,
+    },
+    messageLabel: {
+      type: String,
+      default: "Message",
+    },
+    allowColorChoice: {
+      type: Boolean,
+      default: false,
+    },
+    colorOptions: {
+      type: [String],
+      default: [],
+    },
+    allowSizeChoice: {
+      type: Boolean,
+      default: false,
+    },
+    sizeOptions: {
+      type: [String],
+      default: [],
+    },
+    allowQuantity: {
+      type: Boolean,
+      default: false,
+    },
+    maxQuantity: {
+      type: Number,
+      default: 1,
+    },
+    allowPhotoUpload: {
+      type: Boolean,
+      default: false,
+    },
+    allowCustomText: {
+      type: Boolean,
+      default: false,
+    },
+    customTextLabel: {
+      type: String,
+      default: "Custom Text",
+    },
+    allowAddons: {
+      type: Boolean,
+      default: false,
+    },
+    addonOptions: {
+      type: [String],
+      default: [],
+    },
+  },
+});
+
 const productSchema = mongoose.Schema(
   {
     user: { 
@@ -127,6 +196,19 @@ const productSchema = mongoose.Schema(
         type: String,
         default: "",
       },
+    },
+    // Combo-specific fields
+    comboItems: {
+      type: [comboItemSchema],
+      default: [],
+    },
+    comboName: {
+      type: String,
+      default: "",
+    },
+    comboDescription: {
+      type: String,
+      default: "",
     },
   },
   {
