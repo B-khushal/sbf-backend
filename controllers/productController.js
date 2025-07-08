@@ -512,7 +512,8 @@ const getTopProducts = async (req, res) => {
 // @access  Public
 const getFeaturedProducts = async (req, res) => {
   try {
-    const products = await Product.find({ isFeatured: true, hidden: { $ne: true } }).limit(8);
+    const products = await Product.find({ isFeatured: true, hidden: { $ne: true } })
+      .sort({ createdAt: -1 }); // Removed .limit(8)
     console.log("Featured Products Query:", { isFeatured: true, hidden: { $ne: true } });
     console.log("Fetched Featured Products:", products.map(p => ({ title: p.title, isFeatured: p.isFeatured })));
     
@@ -531,7 +532,8 @@ const getFeaturedProducts = async (req, res) => {
 // @access  Public
 const getNewProducts = async (req, res) => {
   try {
-    const products = await Product.find({ isNew: true, hidden: { $ne: true } }).limit(8);
+    const products = await Product.find({ isNew: true, hidden: { $ne: true } })
+      .sort({ createdAt: -1 }); // Removed .limit(8)
     console.log("Fetched New Products:", products.map(p => ({ title: p.title, isNew: p.isNew })));
     
     // Add real review statistics
