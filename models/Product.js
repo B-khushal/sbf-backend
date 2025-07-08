@@ -16,6 +16,21 @@ const addonOptionSchema = mongoose.Schema({
   }
 });
 
+const comboItemVariantSchema = mongoose.Schema({
+  name: {
+    type: String,
+    required: true,
+  },
+  price: {
+    type: Number,
+    required: true,
+  },
+  description: {
+    type: String,
+    default: "",
+  },
+});
+
 const comboItemSchema = mongoose.Schema({
   name: {
     type: String,
@@ -26,6 +41,20 @@ const comboItemSchema = mongoose.Schema({
     default: "",
   },
   image: {
+    type: String,
+    default: "",
+  },
+  price: {
+    type: Number,
+    required: true,
+    default: 0,
+  },
+  quantity: {
+    type: Number,
+    required: true,
+    default: 1,
+  },
+  notes: {
     type: String,
     default: "",
   },
@@ -81,6 +110,19 @@ const comboItemSchema = mongoose.Schema({
     addonOptions: {
       type: [String],
       default: [],
+    },
+    // Pricing variants for size/type selection
+    variants: {
+      type: [comboItemVariantSchema],
+      default: [],
+    },
+    allowVariants: {
+      type: Boolean,
+      default: false,
+    },
+    variantLabel: {
+      type: String,
+      default: "Size",
     },
   },
 });
