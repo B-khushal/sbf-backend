@@ -120,8 +120,8 @@ const getProducts = async (req, res) => {
       }
     : {};
 
-    // Filter out hidden products for public API
-    const query = { ...category, ...keyword, hidden: { $ne: true } };
+    // Show all products in shop page (including hidden ones)
+    const query = { ...category, ...keyword };
     
     const count = await Product.countDocuments(query);
     const products = await Product.find(query)
@@ -649,8 +649,8 @@ const getCategoriesWithCounts = async (req, res) => {
   try {
     // Get categories with counts using aggregation
     const categoriesWithCounts = await Product.aggregate([
-      // Match only non-hidden products
-      { $match: { hidden: { $ne: true } } },
+      // Include all products (including hidden ones)
+      { $match: {} },
       // Unwind the categories array to de-normalize it
       { $unwind: "$categories" },
       // Group by category name and count products
@@ -674,8 +674,8 @@ const getCategoriesWithCounts = async (req, res) => {
 
     // Also get primary category counts
     const primaryCategoryCounts = await Product.aggregate([
-      // Match only non-hidden products
-      { $match: { hidden: { $ne: true } } },
+      // Include all products (including hidden ones)
+      { $match: {} },
       // Group by primary category and count products
       { 
         $group: { 
@@ -741,8 +741,7 @@ const getProductsByCategory = async (req, res) => {
       $or: [
         { category: { $regex: new RegExp(`^${category}$`, 'i') } },
         { categories: { $regex: new RegExp(`^${category}$`, 'i') } }
-      ],
-      hidden: { $ne: true }
+      ]
     };
     
     const count = await Product.countDocuments(query);
