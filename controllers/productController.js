@@ -102,8 +102,8 @@ const addReviewStats = async (products) => {
 // @access Public
 const getProducts = async (req, res) => {
   try {
-    const pageSize = 12;
-    const page = Number(req.query.page) || 1;
+    // const pageSize = 12;
+    // const page = Number(req.query.page) || 1;
     const category = req.query.category ? { category: req.query.category } : {};
 
     // ✅ Search by title, description, category, or categories using regex (case-insensitive)
@@ -124,15 +124,14 @@ const getProducts = async (req, res) => {
     const query = { ...category, ...keyword };
     
     const count = await Product.countDocuments(query);
+    // Remove pagination: fetch all products
     const products = await Product.find(query)
-      .limit(pageSize)
-      .skip(pageSize * (page - 1))
       .sort({ createdAt: -1 });
 
     // Add real review statistics
     const productsWithReviews = await addReviewStats(products);
 
-    return res.json({ products: productsWithReviews, page, pages: Math.ceil(count / pageSize), total: count });
+    return res.json({ products: productsWithReviews, total: count });
   } catch (error) {
     console.error("❌ Error fetching products:", error);
     return res.status(500).json({ message: "Server Error: Failed to fetch products" });
