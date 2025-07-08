@@ -164,8 +164,14 @@ const createProduct = async (req, res) => {
     console.log("🔄 Starting product creation...");
     console.log("👤 User Role:", req.user?.role);
     console.log("📝 Received Product Data:", JSON.stringify(req.body, null, 2));
+    console.log("🎁 Combo Data Check:", {
+      category: req.body.category,
+      comboItems: req.body.comboItems,
+      comboName: req.body.comboName,
+      comboDescription: req.body.comboDescription
+    });
 
-    const { title, price, category, categories, countInStock, images, isFeatured, isNew, discount, description, hidden, careInstructions, isCustomizable, customizationOptions } = req.body;
+    const { title, price, category, categories, countInStock, images, isFeatured, isNew, discount, description, hidden, careInstructions, isCustomizable, customizationOptions, comboItems, comboName, comboDescription } = req.body;
 
     // Validate required fields
     if (!title || !price || !category || !countInStock || !images || images.length === 0 || !description) {
@@ -258,13 +264,22 @@ const createProduct = async (req, res) => {
       details: processedDetails,
       careInstructions: careInstructions || [],
       isCustomizable: Boolean(isCustomizable),
-      customizationOptions: processedCustomizationOptions
+      customizationOptions: processedCustomizationOptions,
+      // Combo-specific fields
+      comboItems: comboItems || [],
+      comboName: comboName || "",
+      comboDescription: comboDescription || ""
     });
 
     console.log("📦 Product object before save:", JSON.stringify(product, null, 2));
     console.log("🎨 Customization data:", {
       isCustomizable: product.isCustomizable,
       customizationOptions: product.customizationOptions
+    });
+    console.log("🎁 Combo data before save:", {
+      comboItems: product.comboItems,
+      comboName: product.comboName,
+      comboDescription: product.comboDescription
     });
 
     // Save the product
@@ -300,8 +315,14 @@ const updateProduct = async (req, res) => {
     console.log("🔄 Starting product update...");
     console.log("📝 Request body:", req.body);
     console.log("🔑 Product ID:", req.params.id);
+    console.log("🎁 Update - Combo Data Check:", {
+      category: req.body.category,
+      comboItems: req.body.comboItems,
+      comboName: req.body.comboName,
+      comboDescription: req.body.comboDescription
+    });
 
-    const { title, price, discount, description, images, category, categories, countInStock, isFeatured, isNew, hidden, careInstructions, isCustomizable, customizationOptions } = req.body;
+    const { title, price, discount, description, images, category, categories, countInStock, isFeatured, isNew, hidden, careInstructions, isCustomizable, customizationOptions, comboItems, comboName, comboDescription } = req.body;
     
     // Process details from frontend format to backend format
     let processedDetails;
@@ -359,6 +380,17 @@ const updateProduct = async (req, res) => {
         },
         previewImage: customizationOptions.previewImage || product.customizationOptions?.previewImage || ""
       };
+    }
+    
+    // Update combo fields
+    if (comboItems !== undefined) {
+      product.comboItems = comboItems;
+    }
+    if (comboName !== undefined) {
+      product.comboName = comboName;
+    }
+    if (comboDescription !== undefined) {
+      product.comboDescription = comboDescription;
     }
     
     // Clean data before saving
