@@ -26,11 +26,19 @@ const startServer = async () => {
     const corsOptions = {
       origin: function(origin, callback) {
         const allowedOrigins = [
+          // Production domains
           'https://sbflorist.in',
           'https://www.sbflorist.in',
+          // Render deployment URLs
+          'https://sbf-frontend.onrender.com',
+          'https://sbf-backend.onrender.com',
+          // Local development
           'http://localhost:8080',
           'http://localhost:3000',
-          'http://localhost:5173'
+          'http://localhost:5173',
+          'http://127.0.0.1:8080',
+          'http://127.0.0.1:3000',
+          'http://127.0.0.1:5173'
         ];
         
         // Allow requests with no origin (like mobile apps or curl requests)
