@@ -1,5 +1,6 @@
 const Product = require("../models/Product");
 const User = require('../models/User');
+const Vendor = require('../models/Vendor');
 const Order = require('../models/Order');
 const Review = require('../models/Review');
 const asyncHandler = require('express-async-handler');
@@ -216,9 +217,19 @@ const createProduct = asyncHandler(async (req, res) => {
     priceVariantsIsArray: Array.isArray(priceVariants)
   });
 
-    const product = new Product({
-      user: req.user._id,
-      title,
+  // If user is a vendor, find their vendor profile and set it
+  let vendorId = null;
+  if (req.user.role === 'vendor') {
+    const vendor = await Vendor.findOne({ user: req.user._id });
+    if (vendor) {
+      vendorId = vendor._id;
+    }
+  }
+
+  const product = new Product({
+    user: req.user._id,
+    vendor: vendorId,
+    title,
     description,
       price,
       discount: discount || 0,
