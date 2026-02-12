@@ -23,7 +23,7 @@ const {
   createProductReview,
   getProductReviews,
 } = require('../controllers/reviewController');
-const { protect, admin } = require('../middleware/authMiddleware');
+const { protect, admin, adminOrVendor } = require('../middleware/authMiddleware');
 const Product = require('../models/Product');
 const mongoose = require('mongoose');
 const path = require('path');
@@ -79,7 +79,7 @@ router.get('/debug/list', async (req, res) => {
 
 router.route('/')
   .get(getProducts)
-  .post(protect, admin, createProduct);
+  .post(protect, adminOrVendor, createProduct);
 
 router.get('/top', getTopProducts);
 router.get('/featured', getFeaturedProducts);
@@ -89,17 +89,17 @@ router.get('/categories-with-counts', getCategoriesWithCounts);
 
 router.route('/:id')
   .get(getProductById)
-  .put(protect, admin, updateProduct)
-  .delete(protect, admin, deleteProduct);
+  .put(protect, adminOrVendor, updateProduct)
+  .delete(protect, adminOrVendor, deleteProduct);
 
 router.route('/:id/reviews')
   .get(getProductReviews)
   .post(protect, createProductReview);
 
 // Admin routes for product management
-router.get('/admin/list', protect, admin, getAdminProducts);
-router.put('/admin/:id/toggle-visibility', protect, admin, toggleProductVisibility);
-router.get('/admin/low-stock', protect, admin, getLowStockProducts);
+router.get('/admin/list', protect, adminOrVendor, getAdminProducts);
+router.put('/admin/:id/toggle-visibility', protect, adminOrVendor, toggleProductVisibility);
+router.get('/admin/low-stock', protect, adminOrVendor, getLowStockProducts);
 
 // @route   GET /api/products/category/:category
 // @desc    Get products by category

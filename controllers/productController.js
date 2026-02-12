@@ -180,7 +180,7 @@ const getProductById = async (req, res) => {
 
 // @desc Create a new product
 // @route POST /api/products
-// @access Private/Admin
+// @access Private/Admin or Vendor
 const createProduct = asyncHandler(async (req, res) => {
   console.log('🆕 Creating new product');
   console.log('📦 Request body:', JSON.stringify(req.body, null, 2));
@@ -260,7 +260,7 @@ const createProduct = asyncHandler(async (req, res) => {
 
 // @desc Update a product
 // @route PUT /api/products/:id
-// @access Private/Admin
+// @access Private/Admin or Vendor (own products only)
 const updateProduct = asyncHandler(async (req, res) => {
   console.log('🔄 Updating product with ID:', req.params.id);
   console.log('📦 Request body:', JSON.stringify(req.body, null, 2));
@@ -299,6 +299,12 @@ const updateProduct = asyncHandler(async (req, res) => {
     const product = await Product.findById(req.params.id);
 
   if (product) {
+    // Check authorization: vendors can only update their own products
+    if (req.user.role === 'vendor' && product.user.toString() !== req.user._id.toString()) {
+      res.status(403);
+      throw new Error('Not authorized to update this product');
+    }
+    
     console.log('📋 Current product state:', {
       hasPriceVariants: product.hasPriceVariants,
       priceVariants: product.priceVariants,
@@ -355,12 +361,17 @@ const updateProduct = asyncHandler(async (req, res) => {
 
 // @desc    Delete a product
 // @route   DELETE /api/products/:id
-// @access  Private/Admin
+// @access  Private/Admin or Vendor (own products only)
 const deleteProduct = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
 
     if (product) {
+      // Check authorization: vendors can only delete their own products
+      if (req.user.role === 'vendor' && product.user.toString() !== req.user._id.toString()) {
+        return res.status(403).json({ message: 'Not authorized to delete this product' });
+      }
+      
       await product.deleteOne();
       res.json({ message: 'Product removed' });
     } else {
@@ -527,7 +538,7 @@ const getNewProducts = async (req, res) => {
 
 // @desc Get all products for admin (includes hidden)
 // @route GET /api/products/admin/list
-// @access Private/Admin
+// @access Private/Admin or Vendor (vendors see only their products)
 const getAdminProducts = async (req, res) => {
   try {
     // const pageSize = 15;
@@ -542,10 +553,17 @@ const getAdminProducts = async (req, res) => {
         }
       : {};
 
+    // Vendors can only see their own products
+    const userFilter = req.user.role === 'vendor' 
+      ? { user: req.user._id } 
+      : {};
+
+    const query = { ...keyword, ...userFilter };
+
     // No hidden filter for admin
-    const count = await Product.countDocuments(keyword);
+    const count = await Product.countDocuments(query);
     // Remove pagination: fetch all products
-    const products = await Product.find(keyword)
+    const products = await Product.find(query)
       .sort({ createdAt: -1 });
 
     // Add real review statistics
@@ -560,11 +578,16 @@ const getAdminProducts = async (req, res) => {
 
 // @desc Toggle product visibility
 // @route PUT /api/products/admin/:id/toggle-visibility
-// @access Private/Admin
+// @access Private/Admin or Vendor (vendors can only toggle their own products)
 const toggleProductVisibility = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
     if (!product) return res.status(404).json({ message: 'Product not found' });
+
+    // Check authorization: vendors can only toggle visibility of their own products
+    if (req.user.role === 'vendor' && product.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Not authorized to toggle visibility of this product' });
+    }
 
     product.hidden = !product.hidden;
     await product.save();
@@ -575,11 +598,18 @@ const toggleProductVisibility = async (req, res) => {
   } catch (error) {
     console.error('Error toggling product visibility:', error);
     res.status(500).json({ message: 'Server error' });
-  }
-};
+  } or Vendor (vendors see only their products)
+const getLowStockProducts = async (req, res) => {
+  try {
+    const lowStockThreshold = 10;
+    
+    // Vendors can only see their own products
+    const userFilter = req.user.role === 'vendor' 
+      ? { user: req.user._id } 
+      : {};
 
-// @desc Get low stock products
-// @route GET /api/products/admin/low-stock
+    const products = await Product.find({
+      ...userFilter,ck
 // @access Private/Admin
 const getLowStockProducts = async (req, res) => {
   try {
