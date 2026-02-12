@@ -17,6 +17,9 @@ const {
   getProductsByCategory,
   addToWishlist,
   removeFromWishlist,
+  getPendingProducts,
+  approveProduct,
+  rejectProduct,
 } = require('../controllers/productController');
 
 const {
@@ -101,6 +104,9 @@ router.route('/:id/reviews')
 router.get('/admin/list', protect, adminOrVendor, getAdminProducts);
 router.put('/admin/:id/toggle-visibility', protect, adminOrVendor, toggleProductVisibility);
 router.get('/admin/low-stock', protect, adminOrVendor, getLowStockProducts);
+router.get('/admin/pending-approval', protect, admin, getPendingProducts);
+router.put('/admin/:id/approve', protect, admin, approveProduct);
+router.put('/admin/:id/reject', protect, admin, rejectProduct);
 
 // @route   GET /api/products/category/:category
 // @desc    Get products by category

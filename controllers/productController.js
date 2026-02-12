@@ -123,7 +123,13 @@ const getProducts = async (req, res) => {
     : {};
 
     // Only show visible products to customers (exclude hidden ones)
-    const query = { ...category, ...keyword, hidden: { $ne: true } };
+    // Also only show approved products to non-admin users
+    const query = { 
+      ...category, 
+      ...keyword, 
+      hidden: { $ne: true },
+      approvalStatus: 'approved' // Only show approved products to public
+    };
     
     const count = await Product.countDocuments(query);
     // Remove pagination: fetch all products
@@ -219,16 +225,20 @@ const createProduct = asyncHandler(async (req, res) => {
 
   // If user is a vendor, find their vendor profile and set it
   let vendorId = null;
+  let approvalStatus = 'approved'; // Admin products are auto-approved
+  
   if (req.user.role === 'vendor') {
     const vendor = await Vendor.findOne({ user: req.user._id });
     if (vendor) {
       vendorId = vendor._id;
+      approvalStatus = 'pending'; // Vendor products need approval
     }
   }
 
   const product = new Product({
     user: req.user._id,
     vendor: vendorId,
+    approvalStatus,
     title,
     description,
       price,
@@ -343,6 +353,11 @@ const updateProduct = asyncHandler(async (req, res) => {
     product.comboName = comboName || '';
     product.comboDescription = comboDescription || '';
     product.comboSubcategory = comboSubcategory || '';
+
+    // If vendor updates product, set to pending approval
+    if (req.user.role === 'vendor') {
+      product.approvalStatus = 'pending';
+    }
 
     // Defensive patch for price variants
     if (typeof product.hasPriceVariants !== 'boolean') product.hasPriceVariants = false;
@@ -837,6 +852,74 @@ const removeFromWishlist = async (req, res) => {
   }
 };
 
+// @desc Get pending products for approval
+// @route GET /api/products/admin/pending-approval
+// @access Private/Admin
+const getPendingProducts = async (req, res) => {
+  try {
+    const products = await Product.find({ approvalStatus: 'pending' })
+      .populate('user', 'name email')
+      .populate('vendor', 'storeName')
+      .sort({ createdAt: -1 });
+
+    res.json({ products, total: products.length });
+  } catch (error) {
+    console.error('Error fetching pending products:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc Approve a product
+// @route PUT /api/products/admin/:id/approve
+// @access Private/Admin
+const approveProduct = async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id);
+    
+    if (!product) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+
+    product.approvalStatus = 'approved';
+    product.rejectionReason = '';
+    await product.save();
+
+    res.json({ 
+      message: 'Product approved successfully',
+      product 
+    });
+  } catch (error) {
+    console.error('Error approving product:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc Reject a product
+// @route PUT /api/products/admin/:id/reject
+// @access Private/Admin
+const rejectProduct = async (req, res) => {
+  try {
+    const { reason } = req.body;
+    const product = await Product.findById(req.params.id);
+    
+    if (!product) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+
+    product.approvalStatus = 'rejected';
+    product.rejectionReason = reason || 'No reason provided';
+    await product.save();
+
+    res.json({ 
+      message: 'Product rejected',
+      product 
+    });
+  } catch (error) {
+    console.error('Error rejecting product:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 
 module.exports = {
   getProducts,
@@ -856,4 +939,7 @@ module.exports = {
   getProductsByCategory,
   addToWishlist,
   removeFromWishlist,
+  getPendingProducts,
+  approveProduct,
+  rejectProduct,
 };

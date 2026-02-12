@@ -231,6 +231,16 @@ const productSchema = mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // Approval status for vendor products
+    approvalStatus: {
+      type: String,
+      enum: ['pending', 'approved', 'rejected'],
+      default: 'approved', // Admin products are auto-approved
+    },
+    rejectionReason: {
+      type: String,
+      default: '',
+    },
     // Customization fields
     isCustomizable: {
       type: Boolean,
