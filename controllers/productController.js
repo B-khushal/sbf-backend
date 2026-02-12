@@ -159,6 +159,18 @@ const getProductById = async (req, res) => {
       return res.status(404).json({ message: "Product not found" });
     }
 
+    // Check if product is not approved and user is not admin/vendor owner
+    if (product.approvalStatus !== 'approved') {
+      const isAuthorized = req.user && (
+        req.user.role === 'admin' || 
+        (req.user.role === 'vendor' && product.user.toString() === req.user._id.toString())
+      );
+      
+      if (!isAuthorized) {
+        return res.status(404).json({ message: "Product not found" });
+      }
+    }
+
     console.log('📋 Product from database:', {
       id: product._id,
       title: product.title,
@@ -512,7 +524,10 @@ const createProductReview = async (req, res) => {
 // @access  Public
 const getTopProducts = async (req, res) => {
   try {
-    const products = await Product.find({ hidden: { $ne: true } }).sort({ rating: -1 }).limit(4);
+    const products = await Product.find({ 
+      hidden: { $ne: true },
+      approvalStatus: 'approved'
+    }).sort({ rating: -1 }).limit(4);
     
     // Add real review statistics
     const productsWithReviews = await addReviewStats(products);
@@ -528,9 +543,13 @@ const getTopProducts = async (req, res) => {
 // @access  Public
 const getFeaturedProducts = async (req, res) => {
   try {
-    const products = await Product.find({ isFeatured: true, hidden: { $ne: true } })
+    const products = await Product.find({ 
+      isFeatured: true, 
+      hidden: { $ne: true },
+      approvalStatus: 'approved'
+    })
       .sort({ createdAt: -1 }); // Removed .limit(8)
-    console.log("Featured Products Query:", { isFeatured: true, hidden: { $ne: true } });
+    console.log("Featured Products Query:", { isFeatured: true, hidden: { $ne: true }, approvalStatus: 'approved' });
     console.log("Fetched Featured Products:", products.map(p => ({ title: p.title, isFeatured: p.isFeatured })));
     
     // Add real review statistics
@@ -548,7 +567,11 @@ const getFeaturedProducts = async (req, res) => {
 // @access  Public
 const getNewProducts = async (req, res) => {
   try {
-    const products = await Product.find({ isNew: true, hidden: { $ne: true } })
+    const products = await Product.find({ 
+      isNew: true, 
+      hidden: { $ne: true },
+      approvalStatus: 'approved'
+    })
       .sort({ createdAt: -1 }); // Removed .limit(8)
     console.log("Fetched New Products:", products.map(p => ({ title: p.title, isNew: p.isNew })));
     
@@ -657,8 +680,8 @@ const getProductCategories = async (req, res) => {
   try {
     // Use aggregation to get a clean list of unique, non-empty categories from visible products only
     const categories = await Product.aggregate([
-      // Only include visible products
-      { $match: { hidden: { $ne: true } } },
+      // Only include visible and approved products
+      { $match: { hidden: { $ne: true }, approvalStatus: 'approved' } },
       // Unwind the categories array to de-normalize it
       { $unwind: "$categories" },
       // Group by the category name to get unique values
@@ -686,8 +709,8 @@ const getCategoriesWithCounts = async (req, res) => {
   try {
     // Get categories with counts using aggregation (only visible products)
     const categoriesWithCounts = await Product.aggregate([
-      // Only include visible products
-      { $match: { hidden: { $ne: true } } },
+      // Only include visible and approved products
+      { $match: { hidden: { $ne: true }, approvalStatus: 'approved' } },
       // Unwind the categories array to de-normalize it
       { $unwind: "$categories" },
       // Group by category name and count products
@@ -782,7 +805,8 @@ const getProductsByCategory = async (req, res) => {
             { categories: { $regex: new RegExp(`^${category}$`, 'i') } }
           ]
         },
-        { hidden: { $ne: true } }
+        { hidden: { $ne: true } },
+        { approvalStatus: 'approved' }
       ]
     };
     
