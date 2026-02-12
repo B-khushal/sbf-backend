@@ -225,7 +225,140 @@ const deactivateDeviceToken = async (req, res) => {
   }
 };
 
-// @desc    Test push notification (for testing only)
+// @desc    Get all admin device tokens (for admin panel to list devices)
+// @route   GET /api/device-tokens/admin-devices
+// @access  Private (requires authentication)
+const getAdminDeviceTokens = async (req, res) => {
+  try {
+    console.log('📱 Fetching all admin device tokens...');
+
+    // Get all active device tokens with populated user info
+    const tokens = await DeviceToken.find({ isActive: true })
+      .populate('userId', 'name email role')
+      .sort({ lastUsed: -1 });
+
+    // Filter admin users only
+    const adminTokens = tokens.filter(t => 
+      t.userId && (t.userId.role === 'admin' || t.userId.role === 'super_admin')
+    );
+
+    console.log(`✅ Found ${adminTokens.length} admin device(s)`);
+
+    res.json({
+      success: true,
+      count: adminTokens.length,
+      data: adminTokens.map(token => ({
+        id: token._id,
+        deviceType: token.deviceType,
+        deviceInfo: token.deviceInfo,
+        lastUsed: token.lastUsed,
+        createdAt: token.createdAt,
+        user: {
+          name: token.userId?.name || 'Unknown',
+          email: token.userId?.email || 'Unknown'
+        }
+      }))
+    });
+  } catch (error) {
+    console.error('❌ Error fetching admin devices:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch admin devices',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Send test notification to specific device by ID
+// @route   POST /api/device-tokens/test-by-id
+// @access  Private (requires authentication)
+const testPushNotificationById = async (req, res) => {
+  try {
+    const { deviceId, title, body, data } = req.body;
+
+    console.log('🧪 Testing push notification by device ID...');
+
+    if (!deviceId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Device ID is required'
+      });
+    }
+
+    // Find device token
+    const deviceToken = await DeviceToken.findById(deviceId);
+    
+    if (!deviceToken) {
+      return res.status(404).json({
+        success: false,
+        message: 'Device token not found'
+      });
+    }
+
+    if (!deviceToken.isActive) {
+      return res.status(400).json({
+        success: false,
+        message: 'Device token is inactive'
+      });
+    }
+
+    console.log('📱 Sending test notification to device:', deviceId);
+
+    // Prepare notification
+    const notification = {
+      title: title || '🧪 Test Notification',
+      body: body || 'This is a test push notification from SBF Florist Admin Panel'
+    };
+
+    const testData = {
+      type: 'TEST',
+      timestamp: new Date().toISOString(),
+      source: 'admin_panel',
+      ...(data || {})
+    };
+
+    const result = await sendPushNotification(deviceToken.token, notification, testData);
+
+    if (result.success) {
+      // Update last used
+      await deviceToken.updateLastUsed();
+      
+      console.log('✅ Test notification sent successfully');
+      res.json({
+        success: true,
+        message: 'Test notification sent successfully',
+        data: {
+          messageId: result.messageId,
+          deviceType: deviceToken.deviceType
+        }
+      });
+    } else {
+      console.error('❌ Failed to send test notification:', result.error);
+      
+      // Handle invalid token
+      if (result.invalidToken) {
+        deviceToken.isActive = false;
+        await deviceToken.save();
+        console.log('🗑️  Invalid token deactivated');
+      }
+
+      res.status(400).json({
+        success: false,
+        message: 'Failed to send test notification',
+        error: result.error
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error testing push notification:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to test push notification',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Test push notification (for testing with raw token - backward compatibility)
 // @route   POST /api/device-tokens/test
 // @access  Public (No auth required for testing)
 const testPushNotification = async (req, res) => {
@@ -326,5 +459,7 @@ module.exports = {
   deleteDeviceToken,
   deactivateDeviceToken,
   testPushNotification,
+  testPushNotificationById,
+  getAdminDeviceTokens,
   cleanupOldTokens
 };
