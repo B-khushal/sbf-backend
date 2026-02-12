@@ -281,7 +281,11 @@ const createOrder = async (req, res) => {
     const populatedOrder = await Order.findById(savedOrder._id)
       .populate({
         path: 'items.product',
-        select: 'name title price images sku discount'
+        select: 'name title price images sku discount vendor',
+        populate: {
+          path: 'vendor',
+          select: 'storeName'
+        }
       });
 
     res.status(201).json({
@@ -340,7 +344,11 @@ const getOrderById = async (req, res) => {
     const order = await Order.findById(req.params.id)
       .populate({
         path: 'items.product',
-        select: 'title price images sku discount' // Include all needed fields
+        select: 'title price images sku discount vendor',
+        populate: {
+          path: 'vendor',
+          select: 'storeName'
+        }
       })
       .populate('user', 'name email');
 
@@ -556,7 +564,14 @@ const updateOrderToDelivered = async (req, res) => {
 const getUserOrders = async (req, res) => {
   try {
     const orders = await Order.find({ user: req.user._id })
-      .populate('items.product', 'title images price discount')
+      .populate({
+        path: 'items.product',
+        select: 'title images price discount vendor',
+        populate: {
+          path: 'vendor',
+          select: 'storeName'
+        }
+      })
       .sort({ createdAt: -1 });
 
     res.json(orders);
@@ -652,7 +667,11 @@ const getOrders = async (req, res) => {
         },
         {
           path: 'items.product',
-          select: 'title images price discount'
+          select: 'title images price discount vendor',
+          populate: {
+            path: 'vendor',
+            select: 'storeName'
+          }
         }
       ])
       .sort({ createdAt: -1 })
