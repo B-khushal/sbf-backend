@@ -598,7 +598,12 @@ const toggleProductVisibility = async (req, res) => {
   } catch (error) {
     console.error('Error toggling product visibility:', error);
     res.status(500).json({ message: 'Server error' });
-  } or Vendor (vendors see only their products)
+  }
+};
+
+// @desc Get low stock products
+// @route GET /api/products/admin/low-stock
+// @access Private/Admin or Vendor (vendors see only their products)
 const getLowStockProducts = async (req, res) => {
   try {
     const lowStockThreshold = 10;
@@ -609,12 +614,7 @@ const getLowStockProducts = async (req, res) => {
       : {};
 
     const products = await Product.find({
-      ...userFilter,ck
-// @access Private/Admin
-const getLowStockProducts = async (req, res) => {
-  try {
-    const lowStockThreshold = 10;
-    const products = await Product.find({
+      ...userFilter,
       countInStock: { $lte: lowStockThreshold },
     }).sort({ countInStock: 1 }); // Sort by lowest stock first
     res.json(products);
