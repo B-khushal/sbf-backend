@@ -32,6 +32,7 @@ const mongoose = require('mongoose');
 const path = require('path');
 const { fixProductDetails } = require(path.join(__dirname, '../scripts/fixProductDetails'));
 const fixVendorProducts = require('../scripts/fixVendorProducts');
+const fixApprovalStatuses = require('../scripts/fixApprovalStatuses');
 
 router.use((req, res, next) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -149,6 +150,29 @@ router.post('/fix-vendor-products', protect, admin, async (req, res) => {
     res.json({
       success: true,
       message: 'Vendor products migration completed successfully'
+    });
+  } catch (error) {
+    console.error('❌ Migration failed:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Migration failed',
+      error: error.message
+    });
+  }
+});
+
+// @route   POST /api/products/fix-approval-statuses
+// @desc    Fix products missing approval status (migration endpoint)
+// @access  Private/Admin
+router.post('/fix-approval-statuses', protect, admin, async (req, res) => {
+  try {
+    console.log('🔧 Starting approval statuses migration via API...');
+    
+    await fixApprovalStatuses();
+    
+    res.json({
+      success: true,
+      message: 'Approval statuses migration completed successfully'
     });
   } catch (error) {
     console.error('❌ Migration failed:', error);
