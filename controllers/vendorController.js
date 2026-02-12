@@ -272,7 +272,7 @@ const getVendorProducts = async (req, res) => {
         }
 
         const products = await Product.find(query)
-            .select('title images price countInStock category hidden isFeatured isNew createdAt')
+            .select('title images price countInStock category hidden isFeatured isNew approvalStatus rejectionReason createdAt')
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit);
