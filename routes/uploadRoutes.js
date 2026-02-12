@@ -1,7 +1,7 @@
 const express = require("express");
 const multer = require("multer");
 const path = require("path");
-const { protect, admin } = require("../middleware/authMiddleware");
+const { protect, admin, adminOrVendor } = require("../middleware/authMiddleware");
 const { uploadToCloudinary } = require("../config/cloudinary");
 
 const router = express.Router();
@@ -103,8 +103,8 @@ router.get("/auth-test", protect, admin, (req, res) => {
 
 // @route   POST /api/uploads
 // @desc    Upload an image to Cloudinary
-// @access  Private/Admin
-router.post("/", protect, admin, (req, res, next) => {
+// @access  Private/Admin/Vendor
+router.post("/", protect, adminOrVendor, (req, res, next) => {
   upload.single("image")(req, res, (err) => {
     if (err instanceof multer.MulterError) {
       console.error('❌ Multer error:', err);
@@ -196,8 +196,8 @@ router.post("/", protect, admin, (req, res, next) => {
 
 // @route   DELETE /api/uploads/:publicId
 // @desc    Delete an image from Cloudinary
-// @access  Private/Admin
-router.delete("/:publicId", protect, admin, async (req, res) => {
+// @access  Private/Admin/Vendor
+router.delete("/:publicId", protect, adminOrVendor, async (req, res) => {
   try {
     const { publicId } = req.params;
     
