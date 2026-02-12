@@ -89,6 +89,7 @@ const startServer = async () => {
     app.use('/api/vendors', require('./routes/vendorRoutes'));
     app.use('/api/reviews', require('./routes/reviewRoutes')); // Review system enabled
     app.use('/api/holidays', require('./routes/holidayRoutes')); // Holiday management
+    app.use('/api/device-tokens', require('./routes/deviceTokenRoutes')); // FCM Push Notifications
     app.use('/wake-up', require('./routes/wakeUpRoutes'));
     app.use('/api/settings', settingsRoutes);
     app.use('/api/newsletter', newsletterRoutes);

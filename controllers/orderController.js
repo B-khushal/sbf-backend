@@ -7,6 +7,7 @@ const Notification = require('../models/Notification');
 const { admin } = require('../middleware/authMiddleware');
 const { createOrderNotification } = require('./notificationController');
 const { sendEmailNotification, sendDeliveryConfirmationWithInvoice } = require('../services/emailNotificationService');
+const { sendOrderNotificationToAdmins } = require('../services/fcmService');
 
 // Helper function to recursively flatten arrays and extract strings
 const flattenToStrings = (value) => {
@@ -782,6 +783,31 @@ const updateOrderStatus = async (req, res) => {
     
     const previousStatus = order.status;
     order.status = status;
+
+    // Send FCM push notification to all admins when order is confirmed (received status)
+    if (status === 'received' && previousStatus !== 'received') {
+      console.log('🔔 Order confirmed! Sending push notification to admins...');
+      try {
+        const notificationResult = await sendOrderNotificationToAdmins({
+          orderId: order._id,
+          orderNumber: order.orderNumber,
+          customerName: order.shippingDetails?.fullName || 'Customer',
+          totalAmount: order.totalAmount
+        });
+        
+        if (notificationResult.success) {
+          console.log('✅ Push notification sent to admins:', notificationResult.successCount, 'devices');
+          if (notificationResult.invalidTokensRemoved > 0) {
+            console.log('🗑️  Cleaned up', notificationResult.invalidTokensRemoved, 'invalid tokens');
+          }
+        } else {
+          console.warn('⚠️  Failed to send push notification:', notificationResult.error);
+        }
+      } catch (fcmError) {
+        console.error('❌ Error sending FCM notification:', fcmError.message);
+        // Don\'t fail the order status update if FCM fails
+      }
+    }
     
     if (status === 'delivered') {
       order.isDelivered = true;
