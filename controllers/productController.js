@@ -123,12 +123,15 @@ const getProducts = async (req, res) => {
     : {};
 
     // Only show visible products to customers (exclude hidden ones)
-    // Also only show approved products to non-admin users
+    // Also only show approved products to non-admin users (or products without status for backward compatibility)
     const query = { 
       ...category, 
       ...keyword, 
       hidden: { $ne: true },
-      approvalStatus: 'approved' // Only show approved products to public
+      $or: [
+        { approvalStatus: 'approved' },
+        { approvalStatus: { $exists: false } } // Backward compatibility
+      ]
     };
     
     const count = await Product.countDocuments(query);
@@ -160,7 +163,8 @@ const getProductById = async (req, res) => {
     }
 
     // Check if product is not approved and user is not admin/vendor owner
-    if (product.approvalStatus !== 'approved') {
+    // Products without approval status are treated as approved (backward compatibility)
+    if (product.approvalStatus && product.approvalStatus !== 'approved') {
       const isAuthorized = req.user && (
         req.user.role === 'admin' || 
         (req.user.role === 'vendor' && product.user.toString() === req.user._id.toString())
@@ -526,7 +530,10 @@ const getTopProducts = async (req, res) => {
   try {
     const products = await Product.find({ 
       hidden: { $ne: true },
-      approvalStatus: 'approved'
+      $or: [
+        { approvalStatus: 'approved' },
+        { approvalStatus: { $exists: false } }
+      ]
     }).sort({ rating: -1 }).limit(4);
     
     // Add real review statistics
@@ -546,10 +553,13 @@ const getFeaturedProducts = async (req, res) => {
     const products = await Product.find({ 
       isFeatured: true, 
       hidden: { $ne: true },
-      approvalStatus: 'approved'
+      $or: [
+        { approvalStatus: 'approved' },
+        { approvalStatus: { $exists: false } }
+      ]
     })
       .sort({ createdAt: -1 }); // Removed .limit(8)
-    console.log("Featured Products Query:", { isFeatured: true, hidden: { $ne: true }, approvalStatus: 'approved' });
+    console.log("Featured Products Query:", { isFeatured: true, hidden: { $ne: true }, approvalOrNoStatus: true });
     console.log("Fetched Featured Products:", products.map(p => ({ title: p.title, isFeatured: p.isFeatured })));
     
     // Add real review statistics
@@ -570,7 +580,10 @@ const getNewProducts = async (req, res) => {
     const products = await Product.find({ 
       isNew: true, 
       hidden: { $ne: true },
-      approvalStatus: 'approved'
+      $or: [
+        { approvalStatus: 'approved' },
+        { approvalStatus: { $exists: false } }
+      ]
     })
       .sort({ createdAt: -1 }); // Removed .limit(8)
     console.log("Fetched New Products:", products.map(p => ({ title: p.title, isNew: p.isNew })));
@@ -680,8 +693,14 @@ const getProductCategories = async (req, res) => {
   try {
     // Use aggregation to get a clean list of unique, non-empty categories from visible products only
     const categories = await Product.aggregate([
-      // Only include visible and approved products
-      { $match: { hidden: { $ne: true }, approvalStatus: 'approved' } },
+      // Only include visible and approved products (or products without status)
+      { $match: { 
+        hidden: { $ne: true },
+        $or: [
+          { approvalStatus: 'approved' },
+          { approvalStatus: { $exists: false } }
+        ]
+      } },
       // Unwind the categories array to de-normalize it
       { $unwind: "$categories" },
       // Group by the category name to get unique values
@@ -709,8 +728,14 @@ const getCategoriesWithCounts = async (req, res) => {
   try {
     // Get categories with counts using aggregation (only visible products)
     const categoriesWithCounts = await Product.aggregate([
-      // Only include visible and approved products
-      { $match: { hidden: { $ne: true }, approvalStatus: 'approved' } },
+      // Only include visible and approved products (or products without status)
+      { $match: { 
+        hidden: { $ne: true },
+        $or: [
+          { approvalStatus: 'approved' },
+          { approvalStatus: { $exists: false } }
+        ]
+      } },
       // Unwind the categories array to de-normalize it
       { $unwind: "$categories" },
       // Group by category name and count products
@@ -806,7 +831,12 @@ const getProductsByCategory = async (req, res) => {
           ]
         },
         { hidden: { $ne: true } },
-        { approvalStatus: 'approved' }
+        {
+          $or: [
+            { approvalStatus: 'approved' },
+            { approvalStatus: { $exists: false } }
+          ]
+        }
       ]
     };
     
