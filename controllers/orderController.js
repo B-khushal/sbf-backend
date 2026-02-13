@@ -270,6 +270,32 @@ const createOrder = async (req, res) => {
         console.error('❌ Error creating admin notification:', adminNotificationError);
       }
       
+      // Send FCM push notification to ALL admin devices immediately when order is placed
+      try {
+        console.log('🔔 Sending push notification to all admin devices...');
+        const fcmResult = await sendToAllAdmins({
+          title: '🎉 New Order Received!',
+          body: `Order #${savedOrder.orderNumber} - ${savedOrder.currency === 'INR' ? '₹' : '$'}${savedOrder.totalAmount}`,
+          orderId: savedOrder._id.toString(),
+          orderNumber: savedOrder.orderNumber,
+          customerName: customer.name,
+          amount: savedOrder.totalAmount.toString(),
+          type: 'NEW_ORDER'  // MUST be "NEW_ORDER" for 3x ring + vibration
+        });
+        
+        if (fcmResult.success) {
+          console.log(`✅ Push notification sent to ${fcmResult.sent}/${fcmResult.total} admin devices`);
+          if (fcmResult.failed > 0) {
+            console.log(`⚠️  ${fcmResult.failed} notification(s) failed`);
+          }
+        } else {
+          console.warn('⚠️  Failed to send push notification:', fcmResult.error);
+        }
+      } catch (fcmError) {
+        console.error('❌ Error sending FCM push notification:', fcmError.message);
+        // Don't fail order creation if FCM fails
+      }
+      
       // Add notification status to response
       savedOrder.emailNotificationStatus = emailResult;
       
