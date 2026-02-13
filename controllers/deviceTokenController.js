@@ -322,7 +322,7 @@ const testPushNotificationById = async (req, res) => {
     };
 
     const testData = {
-      type: 'TEST',
+      type: 'NEW_ORDER',
       timestamp: new Date().toISOString(),
       source: 'admin_panel',
       ...(data || {})
@@ -411,7 +411,7 @@ const testPushNotification = async (req, res) => {
     };
 
     const testData = {
-      type: 'TEST',
+      type: 'NEW_ORDER',
       timestamp: new Date().toISOString(),
       ...(data || {})
     };
