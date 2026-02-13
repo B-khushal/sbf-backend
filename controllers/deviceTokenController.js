@@ -1,5 +1,5 @@
 const DeviceToken = require('../models/DeviceToken');
-const { sendPushNotification, getFirebaseStatus } = require('../services/fcmService');
+const { sendPushNotification, getFirebaseStatus, sendToAllAdmins } = require('../services/fcmService');
 
 // @desc    Register or update a device token
 // @route   POST /api/device-tokens/register
@@ -514,6 +514,44 @@ const checkFCMStatus = async (req, res) => {
   }
 };
 
+// @desc    Test push notification to ALL admin devices
+// @route   POST /api/device-tokens/test-all
+// @access  Private (admin only recommended)
+const testNotificationToAll = async (req, res) => {
+  try {
+    const { title, body, data } = req.body;
+
+    console.log('🧪 Testing notification to ALL admin devices...');
+    console.log('📝 Request from:', req.user.email, `(${req.user.role})`);
+
+    const result = await sendToAllAdmins({
+      title: title || '🧪 Test Notification',
+      body: body || 'This is a test notification to all admin devices',
+      orderId: 'TEST-' + Date.now(),
+      orderNumber: 'TEST-' + Date.now().toString().slice(-6),
+      customerName: 'Test Customer',
+      amount: '999',
+      type: 'NEW_ORDER',
+      ...(data || {})
+    });
+
+    console.log(`📊 Test notification result: ${result.sent}/${result.total} sent, ${result.failed} failed`);
+
+    res.json({
+      success: true,
+      message: `Test notification sent to ${result.sent}/${result.total} devices`,
+      data: result
+    });
+  } catch (error) {
+    console.error('❌ Error testing notification to all:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to send test notification',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   registerDeviceToken,
   getUserDeviceTokens,
@@ -521,6 +559,7 @@ module.exports = {
   deactivateDeviceToken,
   testPushNotification,
   testPushNotificationById,
+  testNotificationToAll,
   getAdminDeviceTokens,
   cleanupOldTokens,
   checkFCMStatus

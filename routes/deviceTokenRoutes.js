@@ -7,6 +7,7 @@ const {
   deactivateDeviceToken,
   testPushNotification,
   testPushNotificationById,
+  testNotificationToAll,
   getAdminDeviceTokens,
   cleanupOldTokens,
   checkFCMStatus
@@ -24,6 +25,7 @@ router.post('/register', protect, registerDeviceToken);
 router.get('/', protect, getUserDeviceTokens);
 router.get('/admin-devices', protect, getAdminDeviceTokens); // Get all admin devices
 router.post('/test-by-id', protect, testPushNotificationById); // Test specific device (admin only in practice)
+router.post('/test-all', protect, testNotificationToAll); // Test notification to ALL admin devices
 router.delete('/:id', protect, deleteDeviceToken);
 router.put('/:id/deactivate', protect, deactivateDeviceToken);
 

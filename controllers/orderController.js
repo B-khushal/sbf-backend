@@ -7,7 +7,7 @@ const Notification = require('../models/Notification');
 const { admin } = require('../middleware/authMiddleware');
 const { createOrderNotification } = require('./notificationController');
 const { sendEmailNotification, sendDeliveryConfirmationWithInvoice } = require('../services/emailNotificationService');
-const { sendOrderNotificationToAdmins } = require('../services/fcmService');
+const { sendOrderNotificationToAdmins, sendToAllAdmins } = require('../services/fcmService');
 
 // Helper function to recursively flatten arrays and extract strings
 const flattenToStrings = (value) => {
@@ -786,19 +786,22 @@ const updateOrderStatus = async (req, res) => {
 
     // Send FCM push notification to all admins when order is confirmed (received status)
     if (status === 'received' && previousStatus !== 'received') {
-      console.log('🔔 Order confirmed! Sending push notification to admins...');
+      console.log('🔔 Order confirmed! Sending push notification to all admins...');
       try {
-        const notificationResult = await sendOrderNotificationToAdmins({
-          orderId: order._id,
+        const notificationResult = await sendToAllAdmins({
+          title: '🎉 New Order Received!',
+          body: `Order #${order.orderNumber} - ₹${order.totalAmount}`,
+          orderId: order._id.toString(),
           orderNumber: order.orderNumber,
           customerName: order.shippingDetails?.fullName || 'Customer',
-          totalAmount: order.totalAmount
+          amount: order.totalAmount.toString(),
+          type: 'NEW_ORDER'  // MUST be "NEW_ORDER" for 3x ring + vibration
         });
         
         if (notificationResult.success) {
-          console.log('✅ Push notification sent to admins:', notificationResult.successCount, 'devices');
-          if (notificationResult.invalidTokensRemoved > 0) {
-            console.log('🗑️  Cleaned up', notificationResult.invalidTokensRemoved, 'invalid tokens');
+          console.log(`✅ Push notification sent to ${notificationResult.sent}/${notificationResult.total} devices`);
+          if (notificationResult.failed > 0) {
+            console.log(`⚠️  ${notificationResult.failed} notification(s) failed`);
           }
         } else {
           console.warn('⚠️  Failed to send push notification:', notificationResult.error);

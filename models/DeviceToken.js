@@ -123,6 +123,26 @@ deviceTokenSchema.statics.deactivateToken = async function(token) {
   return result;
 };
 
+// Static method to get all active admin device tokens
+deviceTokenSchema.statics.getActiveAdminTokens = async function() {
+  const User = require('./User');
+  
+  // Find all admin users
+  const admins = await User.find({ role: 'admin', status: 'active' }).select('_id');
+  
+  if (!admins || admins.length === 0) {
+    return [];
+  }
+  
+  const adminIds = admins.map(admin => admin._id);
+  
+  // Get all active device tokens for admins
+  return await this.find({
+    userId: { $in: adminIds },
+    isActive: true
+  }).sort({ lastUsed: -1 });
+};
+
 // Pre-save hook to update lastUsed
 deviceTokenSchema.pre('save', function(next) {
   if (this.isModified('isActive') && this.isActive) {

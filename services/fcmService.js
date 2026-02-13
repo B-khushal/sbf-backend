@@ -383,10 +383,95 @@ const sendOrderNotificationToAdmins = async (orderData) => {
   }
 };
 
+/**
+ * Send notification to ALL admin devices (sends individually for better control)
+ * This automatically sends to every registered admin device
+ * @param {Object} data - Notification data {title, body, orderId, orderNumber, customerName, amount, type}
+ * @returns {Promise<Object>} - Result with sent/failed counts
+ */
+const sendToAllAdmins = async (data) => {
+  if (!firebaseInitialized) {
+    console.warn('⚠️  Firebase not initialized, skipping notification');
+    return { success: false, error: 'Firebase not initialized' };
+  }
+
+  try {
+    const DeviceToken = require('../models/DeviceToken');
+    
+    // Get ALL active admin tokens
+    const adminTokens = await DeviceToken.getActiveAdminTokens();
+    
+    if (adminTokens.length === 0) {
+      console.log('⚠️  No admin devices registered');
+      return { success: true, total: 0, sent: 0, failed: 0 };
+    }
+    
+    console.log(`📱 Sending to ${adminTokens.length} admin device(s)...`);
+    
+    // Send to EACH device individually
+    const results = [];
+    for (const tokenDoc of adminTokens) {
+      const message = {
+        token: tokenDoc.token,
+        data: {
+          title: data.title || 'Notification',
+          body: data.body || '',
+          orderId: data.orderId || '',
+          orderNumber: data.orderNumber || '',
+          customerName: data.customerName || '',
+          amount: data.amount || '',
+          type: data.type || 'GENERAL'
+        },
+        android: {
+          priority: 'high',  // CRITICAL: High priority for Android
+          ttl: 3600 * 1000
+        }
+      };
+      
+      try {
+        const response = await admin.messaging().send(message);
+        results.push({ success: true, messageId: response });
+        console.log(`✅ Sent to device: ${tokenDoc.token.substring(0, 20)}...`);
+        
+        // Update last used timestamp
+        await tokenDoc.updateLastUsed();
+      } catch (error) {
+        console.error(`❌ Failed to send to device:`, error.message);
+        results.push({ success: false, error: error.message });
+        
+        // Remove invalid tokens
+        if (error.code === 'messaging/invalid-registration-token' ||
+            error.code === 'messaging/registration-token-not-registered') {
+          tokenDoc.isActive = false;
+          await tokenDoc.save();
+          console.log(`🗑️  Invalid token deactivated: ${tokenDoc.token.substring(0, 20)}...`);
+        }
+      }
+    }
+    
+    const successCount = results.filter(r => r.success).length;
+    const failedCount = results.filter(r => !r.success).length;
+    
+    console.log(`✅ Notification sent: ${successCount}/${adminTokens.length} successful, ${failedCount} failed`);
+    
+    return {
+      success: true,
+      total: adminTokens.length,
+      sent: successCount,
+      failed: failedCount
+    };
+    
+  } catch (error) {
+    console.error('❌ Error sending to admins:', error.message);
+    return { success: false, error: error.message };
+  }
+};
+
 module.exports = {
   isFirebaseInitialized,
   getFirebaseStatus,
   sendPushNotification,
   sendMulticastNotification,
-  sendOrderNotificationToAdmins
+  sendOrderNotificationToAdmins,
+  sendToAllAdmins
 };
