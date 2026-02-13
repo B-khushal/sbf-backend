@@ -45,6 +45,28 @@ initializeFirebase();
 
 /**
  * Check if Firebase is properly initialized
+ * @returns {Object} - Status object with initialization details
+ */
+const getFirebaseStatus = () => {
+  const hasCredentials = !!(
+    process.env.FIREBASE_PROJECT_ID &&
+    process.env.FIREBASE_CLIENT_EMAIL &&
+    process.env.FIREBASE_PRIVATE_KEY
+  );
+
+  return {
+    initialized: firebaseInitialized,
+    hasCredentials: hasCredentials,
+    projectId: process.env.FIREBASE_PROJECT_ID || 'Not configured',
+    clientEmail: process.env.FIREBASE_CLIENT_EMAIL ? 
+      process.env.FIREBASE_CLIENT_EMAIL.substring(0, 10) + '...' : 
+      'Not configured',
+    timestamp: new Date().toISOString()
+  };
+};
+
+/**
+ * Check if Firebase is properly initialized
  * @returns {boolean}
  */
 const isFirebaseInitialized = () => {
@@ -77,19 +99,18 @@ const sendPushNotification = async (token, notification, data = {}, options = {}
 
     // Build message payload - Data-only message format
     // App handles notification display from data payload
+    // FCM requires all data values to be strings
+    const dataPayload = Object.keys(data).reduce((acc, key) => {
+      acc[key] = String(data[key]);
+      return acc;
+    }, {});
+
     const message = {
       token: token,
       data: {
-        title: notification.title,
-        body: notification.body,
-        ...data,
-        // Ensure all data values are strings (FCM requirement)
-        ...Object.keys(data).reduce((acc, key) => {
-          if (key !== 'title' && key !== 'body') {
-            acc[key] = String(data[key]);
-          }
-          return acc;
-        }, {})
+        title: String(notification.title),
+        body: String(notification.body),
+        ...dataPayload
       },
       // Android-specific configuration
       android: {
@@ -364,6 +385,7 @@ const sendOrderNotificationToAdmins = async (orderData) => {
 
 module.exports = {
   isFirebaseInitialized,
+  getFirebaseStatus,
   sendPushNotification,
   sendMulticastNotification,
   sendOrderNotificationToAdmins

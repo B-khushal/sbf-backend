@@ -1,5 +1,5 @@
 const DeviceToken = require('../models/DeviceToken');
-const { sendPushNotification } = require('../services/fcmService');
+const { sendPushNotification, getFirebaseStatus } = require('../services/fcmService');
 
 // @desc    Register or update a device token
 // @route   POST /api/device-tokens/register
@@ -277,6 +277,14 @@ const testPushNotificationById = async (req, res) => {
     const { deviceId, title, body, data } = req.body;
 
     console.log('🧪 Testing push notification by device ID...');
+    console.log('📋 Request details:', { 
+      deviceId, 
+      title, 
+      body, 
+      data,
+      userId: req.user._id,
+      userRole: req.user.role
+    });
 
     if (!deviceId) {
       return res.status(400).json({
@@ -289,6 +297,7 @@ const testPushNotificationById = async (req, res) => {
     const deviceToken = await DeviceToken.findById(deviceId);
     
     if (!deviceToken) {
+      console.log('❌ Device token not found:', deviceId);
       return res.status(404).json({
         success: false,
         message: 'Device token not found'
@@ -296,6 +305,7 @@ const testPushNotificationById = async (req, res) => {
     }
 
     if (!deviceToken.isActive) {
+      console.log('❌ Device token is inactive:', deviceId);
       return res.status(400).json({
         success: false,
         message: 'Device token is inactive'
@@ -303,6 +313,7 @@ const testPushNotificationById = async (req, res) => {
     }
 
     console.log('📱 Sending test notification to device:', deviceId);
+    console.log('🔑 FCM Token (first 20 chars):', deviceToken.token.substring(0, 20) + '...');
 
     // Prepare notification
     const notification = {
@@ -317,7 +328,11 @@ const testPushNotificationById = async (req, res) => {
       ...(data || {})
     };
 
+    console.log('📤 Sending notification with payload:', { notification, testData });
+
     const result = await sendPushNotification(deviceToken.token, notification, testData);
+
+    console.log('📥 FCM Response:', result);
 
     if (result.success) {
       // Update last used
@@ -329,15 +344,46 @@ const testPushNotificationById = async (req, res) => {
         message: 'Test notification sent successfully',
         data: {
           messageId: result.messageId,
-          deviceType: deviceToken.deviceType
+          deviceType: deviceToken.deviceType,
+          sentAt: new Date().toISOString()
         }
       });
     } else {
       console.error('❌ Failed to send test notification:', result.error);
+      console.error('🔍 Error details:', { 
+        invalidToken: result.invalidToken, 
+        error: result.error 
+      });
       
       // Handle invalid token
       if (result.invalidToken) {
         deviceToken.isActive = false;
+        await deviceToken.save();
+        console.log('🗑️  Invalid token deactivated');
+        
+        return res.status(400).json({
+          success: false,
+          message: 'Device token is no longer valid and has been deactivated',
+          error: result.error
+        });
+      }
+
+      res.status(400).json({
+        success: false,
+        message: 'Failed to send test notification',
+        error: result.error
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error testing push notification:', error.message);
+    console.error('🔍 Full error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to test push notification',
+      error: error.message
+    });
+  }
+};
         await deviceToken.save();
         console.log('🗑️  Invalid token deactivated');
       }
@@ -453,6 +499,32 @@ const cleanupOldTokens = async (req, res) => {
   }
 };
 
+// @desc    Check FCM service status
+// @route   GET /api/device-tokens/fcm-status
+// @access  Private (admin only recommended)
+const checkFCMStatus = async (req, res) => {
+  try {
+    const status = getFirebaseStatus();
+    
+    console.log('🔍 FCM Status check:', status);
+    
+    res.json({
+      success: true,
+      fcm: status,
+      message: status.initialized ? 
+        'FCM service is running and ready' : 
+        'FCM service is not initialized - check Firebase credentials'
+    });
+  } catch (error) {
+    console.error('❌ Error checking FCM status:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to check FCM status',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   registerDeviceToken,
   getUserDeviceTokens,
@@ -461,5 +533,6 @@ module.exports = {
   testPushNotification,
   testPushNotificationById,
   getAdminDeviceTokens,
-  cleanupOldTokens
+  cleanupOldTokens,
+  checkFCMStatus
 };
