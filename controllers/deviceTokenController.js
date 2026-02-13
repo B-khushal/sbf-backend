@@ -317,12 +317,16 @@ const testPushNotificationById = async (req, res) => {
 
     // Prepare notification
     const notification = {
-      title: title || '🧪 Test Notification',
-      body: body || 'This is a test push notification from SBF Florist Admin Panel'
+      title: title || '🎉 New Order Received!',
+      body: body || 'Order #123 - ₹500'
     };
 
     const testData = {
       type: 'NEW_ORDER',
+      orderId: 'test123',
+      orderNumber: '123',
+      customerName: 'Test Customer',
+      amount: '500',
       timestamp: new Date().toISOString(),
       source: 'admin_panel',
       ...(data || {})
@@ -406,12 +410,16 @@ const testPushNotification = async (req, res) => {
 
     // Prepare notification
     const notification = {
-      title: title || '🧪 Test Notification',
-      body: body || 'This is a test push notification from SBF Florist'
+      title: title || '🎉 New Order Received!',
+      body: body || 'Order #123 - ₹500'
     };
 
     const testData = {
       type: 'NEW_ORDER',
+      orderId: 'test123',
+      orderNumber: '123',
+      customerName: 'Test Customer',
+      amount: '500',
       timestamp: new Date().toISOString(),
       ...(data || {})
     };
