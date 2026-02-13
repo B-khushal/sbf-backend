@@ -1328,6 +1328,23 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
           
           console.log('📨 Notification added to global notifications for real-time polling');
           
+          // Send FCM push notification to all admin devices
+          try {
+            console.log('🔔 Sending push notification to all admin devices...');
+            const fcmResult = await sendToAllAdmins({
+              title: '🎉 New Order Received!',
+              body: `Order #${savedOrder.orderNumber} - ${savedOrder.currency === 'INR' ? '₹' : '$'}${savedOrder.totalAmount}`,
+              orderId: savedOrder._id.toString(),
+              orderNumber: savedOrder.orderNumber,
+              customerName: customer.name,
+              amount: savedOrder.totalAmount.toString(),
+              type: 'NEW_ORDER'
+            });
+            console.log('📱 Sent push notification to all admins:', fcmResult);
+          } catch (fcmError) {
+            console.error('❌ Error sending FCM push notification:', fcmError.message);
+          }
+          
         } catch (adminNotificationError) {
           console.error('❌ Error creating admin notification:', adminNotificationError);
         }
