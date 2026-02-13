@@ -384,25 +384,6 @@ const testPushNotificationById = async (req, res) => {
     });
   }
 };
-        await deviceToken.save();
-        console.log('🗑️  Invalid token deactivated');
-      }
-
-      res.status(400).json({
-        success: false,
-        message: 'Failed to send test notification',
-        error: result.error
-      });
-    }
-  } catch (error) {
-    console.error('❌ Error testing push notification:', error.message);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to test push notification',
-      error: error.message
-    });
-  }
-};
 
 // @desc    Test push notification (for testing with raw token - backward compatibility)
 // @route   POST /api/device-tokens/test
