@@ -321,17 +321,17 @@ const sendOrderNotificationToAdmins = async (orderData) => {
 
     // Prepare notification payload
     const notification = {
-      title: 'New Order Received!',
-      body: `Order #${orderData.orderNumber} from ${orderData.customerName || 'Customer'} - ₹${orderData.totalAmount || 0}`
+      title: '🎉 New Order Received!',
+      body: `Order #${orderData.orderNumber} - ₹${orderData.totalAmount || 0}`
     };
 
     // Prepare data payload for deep linking (matches app's expected format)
     const data = {
+      type: 'NEW_ORDER',
       orderId: String(orderData.orderId),
       orderNumber: String(orderData.orderNumber),
       customerName: String(orderData.customerName || 'Customer'),
-      amount: String(orderData.totalAmount || 0),
-      type: 'NEW_ORDER'
+      amount: String(orderData.totalAmount || 0)
     };
 
     // Send multicast notification
