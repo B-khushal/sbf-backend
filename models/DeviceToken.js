@@ -46,6 +46,12 @@ deviceTokenSchema.methods.deactivate = function() {
   return this.save();
 };
 
+// Method to update last used timestamp
+deviceTokenSchema.methods.updateLastUsed = function() {
+  this.lastUsed = new Date();
+  return this.save();
+};
+
 // Static method to clean up old inactive tokens (older than 90 days)
 deviceTokenSchema.statics.cleanupOldTokens = async function() {
   const ninetyDaysAgo = new Date();
