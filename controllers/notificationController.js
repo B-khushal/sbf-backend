@@ -69,7 +69,6 @@ exports.getNotifications = async (req, res) => {
     }
     
     const limitCount = showHistory === 'true' ? 100 : 50;
-    console.log(`📨 Returning ${allNotifications.length} notifications for ${req.user.role} user (history: ${showHistory})`);
     
     res.json({ 
       notifications: allNotifications.slice(0, limitCount)

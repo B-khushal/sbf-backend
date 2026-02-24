@@ -11,6 +11,7 @@ const {
   getNewProducts,
   getAdminProducts,
   toggleProductVisibility,
+  toggleProductNewStatus,
   getLowStockProducts,
   getProductCategories,
   getCategoriesWithCounts,
@@ -104,6 +105,7 @@ router.route('/:id/reviews')
 // Admin routes for product management
 router.get('/admin/list', protect, adminOrVendor, getAdminProducts);
 router.put('/admin/:id/toggle-visibility', protect, adminOrVendor, toggleProductVisibility);
+router.put('/admin/:id/toggle-new', protect, adminOrVendor, toggleProductNewStatus);
 router.get('/admin/low-stock', protect, adminOrVendor, getLowStockProducts);
 router.get('/admin/pending-approval', protect, admin, getPendingProducts);
 router.put('/admin/:id/approve', protect, admin, approveProduct);

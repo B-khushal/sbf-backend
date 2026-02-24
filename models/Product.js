@@ -226,6 +226,7 @@ const productSchema = mongoose.Schema(
     isNew: {
       type: Boolean,
       default: false,
+      alias: "isNewArrival",
     },
     hidden: {
       type: Boolean,

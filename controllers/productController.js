@@ -206,7 +206,6 @@ const getProductById = async (req, res) => {
 // @access Private/Admin or Vendor
 const createProduct = asyncHandler(async (req, res) => {
   console.log('🆕 Creating new product');
-  console.log('📦 Request body:', JSON.stringify(req.body, null, 2));
   
   const {
     title,
@@ -220,6 +219,7 @@ const createProduct = asyncHandler(async (req, res) => {
     details,
     careInstructions,
     isNewArrival,
+    isNew,
     isFeatured,
     hidden,
     isCustomizable,
@@ -231,13 +231,6 @@ const createProduct = asyncHandler(async (req, res) => {
     comboDescription,
     comboSubcategory,
   } = req.body;
-
-  console.log('💰 Price variant data received:', {
-    hasPriceVariants,
-    priceVariants,
-    priceVariantsType: typeof priceVariants,
-    priceVariantsIsArray: Array.isArray(priceVariants)
-  });
 
   // If user is a vendor, find their vendor profile and set it
   let vendorId = null;
@@ -265,7 +258,7 @@ const createProduct = asyncHandler(async (req, res) => {
       images,
     details: details || [],
     careInstructions: careInstructions || [],
-    isNewArrival: isNewArrival || false,
+    isNew: typeof isNew === 'boolean' ? isNew : Boolean(isNewArrival),
       isFeatured: isFeatured || false,
     hidden: hidden || false,
     isCustomizable: isCustomizable || false,
@@ -299,8 +292,6 @@ const createProduct = asyncHandler(async (req, res) => {
 // @route PUT /api/products/:id
 // @access Private/Admin or Vendor (own products only)
 const updateProduct = asyncHandler(async (req, res) => {
-  console.log('🔄 Updating product with ID:', req.params.id);
-  console.log('📦 Request body:', JSON.stringify(req.body, null, 2));
   
   const {
     title,
@@ -314,6 +305,7 @@ const updateProduct = asyncHandler(async (req, res) => {
     details,
     careInstructions,
     isNewArrival,
+    isNew,
     isFeatured,
     hidden,
     isCustomizable,
@@ -326,14 +318,7 @@ const updateProduct = asyncHandler(async (req, res) => {
     comboSubcategory,
   } = req.body;
 
-  console.log('💰 Price variant data received:', {
-    hasPriceVariants,
-    priceVariants,
-    priceVariantsType: typeof priceVariants,
-    priceVariantsIsArray: Array.isArray(priceVariants)
-  });
-
-    const product = await Product.findById(req.params.id);
+  const product = await Product.findById(req.params.id);
 
   if (product) {
     // Check authorization: vendors can only update their own products
@@ -341,61 +326,48 @@ const updateProduct = asyncHandler(async (req, res) => {
       res.status(403);
       throw new Error('Not authorized to update this product');
     }
-    
-    console.log('📋 Current product state:', {
-      hasPriceVariants: product.hasPriceVariants,
-      priceVariants: product.priceVariants,
-      priceVariantsCount: product.priceVariants ? product.priceVariants.length : 'undefined'
-    });
-    
-    product.title = title;
-    product.description = description;
-    product.price = price;
-    product.discount = discount || 0;
-    product.category = category;
-    product.categories = categories || [];
-    product.countInStock = countInStock;
-    product.images = images;
-    product.details = details || [];
-    product.careInstructions = careInstructions || [];
-    product.isNewArrival = isNewArrival || false;
-    product.isFeatured = isFeatured || false;
-    product.hidden = hidden || false;
-    product.isCustomizable = isCustomizable || false;
-    product.customizationOptions = customizationOptions || {};
-    product.hasPriceVariants = hasPriceVariants ?? false;
-    product.priceVariants = priceVariants ?? [];
-    product.comboItems = comboItems || [];
-    product.comboName = comboName || '';
-    product.comboDescription = comboDescription || '';
-    product.comboSubcategory = comboSubcategory || '';
+
+    const resolvedIsNew = typeof isNew === 'boolean'
+      ? isNew
+      : (typeof isNewArrival === 'boolean' ? isNewArrival : product.isNew);
+
+    const updateData = {
+      title,
+      description,
+      price,
+      discount: discount || 0,
+      category,
+      categories: categories || [],
+      countInStock,
+      images,
+      details: details || [],
+      careInstructions: careInstructions || [],
+      isNew: resolvedIsNew,
+      isFeatured: Boolean(isFeatured),
+      hidden: Boolean(hidden),
+      isCustomizable: Boolean(isCustomizable),
+      customizationOptions: customizationOptions || {},
+      hasPriceVariants: hasPriceVariants ?? false,
+      priceVariants: Array.isArray(priceVariants) ? priceVariants : [],
+      comboItems: comboItems || [],
+      comboName: comboName || '',
+      comboDescription: comboDescription || '',
+      comboSubcategory: comboSubcategory || '',
+    };
 
     // If vendor updates product, set to pending approval
     if (req.user.role === 'vendor') {
-      product.approvalStatus = 'pending';
+      updateData.approvalStatus = 'pending';
     }
 
-    // Defensive patch for price variants
-    if (typeof product.hasPriceVariants !== 'boolean') product.hasPriceVariants = false;
-    if (!Array.isArray(product.priceVariants)) product.priceVariants = [];
+    const updatedProduct = await Product.findByIdAndUpdate(
+      req.params.id,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    );
 
-    console.log('📋 Product state before save:', {
-      hasPriceVariants: product.hasPriceVariants,
-      priceVariants: product.priceVariants,
-      priceVariantsCount: product.priceVariants.length
-    });
-
-    const updatedProduct = await product.save();
-    
-    console.log('✅ Product updated successfully:', {
-      hasPriceVariants: updatedProduct.hasPriceVariants,
-      priceVariants: updatedProduct.priceVariants,
-      priceVariantsCount: updatedProduct.priceVariants.length
-    });
-    
     res.json(updatedProduct);
   } else {
-    console.log('❌ Product not found:', req.params.id);
     res.status(404);
     throw new Error('Product not found');
   }
@@ -452,7 +424,6 @@ const createProductReview = async (req, res) => {
     const product = await Product.findById(req.params.id);
 
     if (!product) {
-      console.log("❌ Product not found:", req.params.id);
       return res.status(404).json({ message: "Product not found" });
     }
     
@@ -577,13 +548,23 @@ const getFeaturedProducts = async (req, res) => {
 // @access  Public
 const getNewProducts = async (req, res) => {
   try {
-    const products = await Product.find({ 
-      isNew: true, 
-      hidden: { $ne: true },
-      $or: [
-        { approvalStatus: 'approved' },
-        { approvalStatus: { $exists: false } }
-      ]
+    const products = await Product.find({
+      $and: [
+        {
+          $or: [
+            { isNew: true },
+            // Backward compatibility for legacy records
+            { isNewArrival: true },
+          ],
+        },
+        { hidden: { $ne: true } },
+        {
+          $or: [
+            { approvalStatus: 'approved' },
+            { approvalStatus: { $exists: false } },
+          ],
+        },
+      ],
     })
       .sort({ createdAt: -1 }); // Removed .limit(8)
     console.log("Fetched New Products:", products.map(p => ({ title: p.title, isNew: p.isNew })));
@@ -659,6 +640,32 @@ const toggleProductVisibility = async (req, res) => {
     });
   } catch (error) {
     console.error('Error toggling product visibility:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc Toggle product new status
+// @route PUT /api/products/admin/:id/toggle-new
+// @access Private/Admin or Vendor (vendors can only toggle their own products)
+const toggleProductNewStatus = async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id);
+    if (!product) return res.status(404).json({ message: 'Product not found' });
+
+    // Check authorization: vendors can only toggle "new" status of their own products
+    if (req.user.role === 'vendor' && product.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Not authorized to update this product' });
+    }
+
+    product.isNew = !product.isNew;
+    await product.save();
+
+    res.json({
+      message: `Product marked as ${product.isNew ? 'new' : 'regular'}`,
+      product,
+    });
+  } catch (error) {
+    console.error('Error toggling product new status:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -987,6 +994,7 @@ module.exports = {
   getNewProducts,
   getAdminProducts,
   toggleProductVisibility,
+  toggleProductNewStatus,
   getLowStockProducts,
   getProductCategories,
   getCategoriesWithCounts,

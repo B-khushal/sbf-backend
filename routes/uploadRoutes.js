@@ -1,4 +1,4 @@
-const express = require("express");
+﻿const express = require("express");
 const multer = require("multer");
 const path = require("path");
 const { protect, admin, adminOrVendor } = require("../middleware/authMiddleware");
@@ -11,7 +11,7 @@ const storage = multer.memoryStorage();
 
 // Validate file type
 const fileFilter = (req, file, cb) => {
-  console.log('🔍 File filter check:', {
+  console.log('ðŸ” File filter check:', {
     originalname: file.originalname,
     mimetype: file.mimetype,
     fieldname: file.fieldname
@@ -21,10 +21,10 @@ const fileFilter = (req, file, cb) => {
   const isValid = filetypes.test(path.extname(file.originalname).toLowerCase()) && filetypes.test(file.mimetype);
   
   if (isValid) {
-    console.log('✅ File type is valid');
+    console.log('âœ… File type is valid');
     cb(null, true);
   } else {
-    console.log('❌ File type is invalid');
+    console.log('âŒ File type is invalid');
     cb("Images only! (jpg, jpeg, png, webp)");
   }
 };
@@ -107,7 +107,7 @@ router.get("/auth-test", protect, admin, (req, res) => {
 router.post("/", protect, adminOrVendor, (req, res, next) => {
   upload.single("image")(req, res, (err) => {
     if (err instanceof multer.MulterError) {
-      console.error('❌ Multer error:', err);
+      console.error('âŒ Multer error:', err);
       if (err.code === 'LIMIT_FILE_SIZE') {
         return res.status(413).json({ 
           message: "File too large. Maximum size is 50MB.", 
@@ -119,7 +119,7 @@ router.post("/", protect, adminOrVendor, (req, res, next) => {
         error: err.message 
       });
     } else if (err) {
-      console.error('❌ File filter error:', err);
+      console.error('âŒ File filter error:', err);
       return res.status(400).json({ 
         message: "File validation error", 
         error: err 
@@ -129,7 +129,7 @@ router.post("/", protect, adminOrVendor, (req, res, next) => {
   });
 }, async (req, res) => {
   try {
-    console.log('📸 Upload request received:', {
+    console.log('ðŸ“¸ Upload request received:', {
       method: req.method,
       url: req.url,
       headers: req.headers,
@@ -143,11 +143,11 @@ router.post("/", protect, adminOrVendor, (req, res, next) => {
     });
 
     if (!req.file) {
-      console.log('❌ No file uploaded');
+      console.log('âŒ No file uploaded');
       return res.status(400).json({ message: "No file uploaded" });
     }
 
-    console.log('📸 Starting Cloudinary upload:', {
+    console.log('ðŸ“¸ Starting Cloudinary upload:', {
       originalName: req.file.originalname,
       size: req.file.size,
       mimetype: req.file.mimetype
@@ -157,13 +157,22 @@ router.post("/", protect, adminOrVendor, (req, res, next) => {
     const filename = `image-${Date.now()}-${Math.round(Math.random() * 1E9)}`;
     
     // Determine folder based on upload type (from query params or default to products)
-    const uploadType = req.query.type || 'product';
-    const folder = uploadType === 'category' ? 'sbf-categories' : 'sbf-products';
+    const uploadType = String(req.query.type || 'product').toLowerCase();
+    const folderByType = {
+      category: 'sbf-categories',
+      logo: 'sbf-branding',
+      header: 'sbf-branding',
+      footer: 'sbf-branding',
+      branding: 'sbf-branding',
+      hero: 'sbf-hero',
+      product: 'sbf-products',
+    };
+    const folder = folderByType[uploadType] || 'sbf-products';
     
     // Upload to Cloudinary
     const result = await uploadToCloudinary(req.file.buffer, filename, folder);
     
-    console.log('✅ Cloudinary upload successful:', {
+    console.log('âœ… Cloudinary upload successful:', {
       url: result.secure_url,
       publicId: result.public_id,
       format: result.format,
@@ -187,9 +196,14 @@ router.post("/", protect, adminOrVendor, (req, res, next) => {
 
   } catch (error) {
     console.error('❌ Upload error:', error);
-    res.status(500).json({ 
-      message: "Failed to upload image", 
-      error: error.message 
+    const isRetryableNetworkError = ['ECONNRESET', 'ETIMEDOUT', 'ESOCKETTIMEDOUT', 'EPIPE', 'ECONNABORTED'].includes(error?.code);
+
+    res.status(isRetryableNetworkError ? 503 : 500).json({
+      message: isRetryableNetworkError
+        ? "Upload temporarily failed due to network issue. Please retry."
+        : "Failed to upload image",
+      error: error.message,
+      code: error?.code || null,
     });
   }
 });
@@ -201,12 +215,12 @@ router.delete("/:publicId", protect, adminOrVendor, async (req, res) => {
   try {
     const { publicId } = req.params;
     
-    console.log('🗑️ Deleting image from Cloudinary:', publicId);
+    console.log('ðŸ—‘ï¸ Deleting image from Cloudinary:', publicId);
     
     const { deleteFromCloudinary } = require("../config/cloudinary");
     const result = await deleteFromCloudinary(publicId);
     
-    console.log('✅ Image deleted successfully:', result);
+    console.log('âœ… Image deleted successfully:', result);
     
     res.json({ 
       message: "Image deleted successfully", 
@@ -214,7 +228,7 @@ router.delete("/:publicId", protect, adminOrVendor, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Delete error:', error);
+    console.error('âŒ Delete error:', error);
     res.status(500).json({ 
       message: "Failed to delete image", 
       error: error.message 
@@ -223,3 +237,5 @@ router.delete("/:publicId", protect, adminOrVendor, async (req, res) => {
 });
 
 module.exports = router;
+
+

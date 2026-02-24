@@ -1,10 +1,10 @@
-const cloudinary = require('cloudinary').v2;
+﻿const cloudinary = require('cloudinary').v2;
 
 // Debug environment variables
-console.log('🔧 Cloudinary Configuration Check:', {
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME ? '✅ Set' : '❌ Missing',
-  api_key: process.env.CLOUDINARY_API_KEY ? '✅ Set' : '❌ Missing',
-  api_secret: process.env.CLOUDINARY_API_SECRET ? '✅ Set' : '❌ Missing',
+console.log('ðŸ”§ Cloudinary Configuration Check:', {
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME ? 'âœ… Set' : 'âŒ Missing',
+  api_key: process.env.CLOUDINARY_API_KEY ? 'âœ… Set' : 'âŒ Missing',
+  api_secret: process.env.CLOUDINARY_API_SECRET ? 'âœ… Set' : 'âŒ Missing',
   node_env: process.env.NODE_ENV || 'development'
 });
 
@@ -15,44 +15,83 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// Upload image to Cloudinary with optimization transformations
-const uploadToCloudinary = async (buffer, filename, folder = 'sbf-products') => {
-  return new Promise((resolve, reject) => {
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isRetryableUploadError = (error) => {
+  if (!error) return false;
+
+  const retryableCodes = new Set([
+    'ECONNRESET',
+    'ETIMEDOUT',
+    'ESOCKETTIMEDOUT',
+    'EPIPE',
+    'ECONNABORTED',
+  ]);
+
+  if (error.code && retryableCodes.has(error.code)) return true;
+  if (typeof error.http_code === 'number' && error.http_code >= 500) return true;
+
+  const message = String(error.message || '').toLowerCase();
+  return message.includes('timeout') || message.includes('socket hang up');
+};
+
+const uploadToCloudinaryOnce = (buffer, filename, folder) =>
+  new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       {
         resource_type: 'auto',
-        folder: folder, // Organize uploads in folders
-        public_id: filename.split('.')[0], // Use filename without extension
+        folder,
+        public_id: filename.split('.')[0],
         transformation: [
           {
             width: 1200,
-            crop: "scale"
+            crop: "scale",
           },
           {
-            quality: "auto:best"
+            quality: "auto:best",
           },
           {
-            fetch_format: "auto"
-          }
+            fetch_format: "auto",
+          },
         ],
-        // Add timeout and retry options
-        timeout: 60000, // 60 seconds timeout
-        chunk_size: 6000000, // 6MB chunks for large files
+        timeout: 60000,
       },
       (error, result) => {
-        if (error) {
-          console.error('❌ Cloudinary upload error:', error);
-          reject(error);
-        } else {
-          console.log('✅ Cloudinary upload success:', result.secure_url);
-          console.log('📐 Image transformations applied: width=1200, quality=auto, format=auto');
-          resolve(result);
-        }
+        if (error) return reject(error);
+        return resolve(result);
       }
     );
-    
+
     stream.end(buffer);
   });
+
+// Upload image to Cloudinary with retry for transient network failures
+const uploadToCloudinary = async (buffer, filename, folder = 'sbf-products') => {
+  const maxAttempts = 3;
+  let lastError;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const result = await uploadToCloudinaryOnce(buffer, filename, folder);
+      console.log('Cloudinary upload success:', result.secure_url);
+      return result;
+    } catch (error) {
+      lastError = error;
+      const shouldRetry = attempt < maxAttempts && isRetryableUploadError(error);
+
+      console.error(`Cloudinary upload attempt ${attempt}/${maxAttempts} failed:`, {
+        code: error?.code,
+        message: error?.message,
+        http_code: error?.http_code,
+        retrying: shouldRetry,
+      });
+
+      if (!shouldRetry) throw error;
+      await sleep(700 * attempt);
+    }
+  }
+
+  throw lastError;
 };
 
 // Generate optimized image URLs with transformations
@@ -171,10 +210,10 @@ const getEnhancedProductImageUrl = (publicId, options = {}) => {
 const deleteFromCloudinary = async (publicId) => {
   try {
     const result = await cloudinary.uploader.destroy(publicId);
-    console.log('🗑️ Cloudinary delete result:', result);
+    console.log('ðŸ—‘ï¸ Cloudinary delete result:', result);
     return result;
   } catch (error) {
-    console.error('❌ Cloudinary delete error:', error);
+    console.error('âŒ Cloudinary delete error:', error);
     throw error;
   }
 };

@@ -68,7 +68,10 @@ const startServer = async () => {
     // Middleware
     app.use(express.json({ limit: '50mb' }));
     app.use(express.urlencoded({ limit: '50mb', extended: true }));
-    app.use(morgan('dev'));
+    app.use(morgan('dev', {
+      // Reduce noise from high-frequency notification polling.
+      skip: (req) => req.method === 'GET' && req.originalUrl.startsWith('/api/notifications'),
+    }));
 
     // Routes
     app.use('/api/products', require('./routes/productRoutes'));

@@ -8,7 +8,7 @@ const getCart = async (req, res) => {
   try {
     const user = await User.findById(req.user._id).populate({
       path: 'cart.productId',
-      select: 'title price images discount category description careInstructions isNewArrival isFeatured'
+      select: 'title price images discount category description careInstructions isNew isNewArrival isFeatured'
     });
 
     if (!user) {
@@ -26,7 +26,11 @@ const getCart = async (req, res) => {
       category: item.productId.category,
       description: item.productId.description,
       careInstructions: item.productId.careInstructions,
-      isNewArrival: item.productId.isNewArrival,
+      isNewArrival: Boolean(
+        typeof item.productId.isNew === 'boolean'
+          ? item.productId.isNew
+          : item.productId.isNewArrival
+      ),
       isFeatured: item.productId.isFeatured,
       customizations: item.customizations,
       selectedVariant: item.selectedVariant,
@@ -98,7 +102,7 @@ const addToCart = async (req, res) => {
     // Return updated cart
     const updatedUser = await User.findById(req.user._id).populate({
       path: 'cart.productId',
-      select: 'title price images discount category description careInstructions isNewArrival isFeatured'
+      select: 'title price images discount category description careInstructions isNew isNewArrival isFeatured'
     });
 
     const cartItems = updatedUser.cart.map(item => ({
@@ -111,7 +115,11 @@ const addToCart = async (req, res) => {
       category: item.productId.category,
       description: item.productId.description,
       careInstructions: item.productId.careInstructions,
-      isNewArrival: item.productId.isNewArrival,
+      isNewArrival: Boolean(
+        typeof item.productId.isNew === 'boolean'
+          ? item.productId.isNew
+          : item.productId.isNewArrival
+      ),
       isFeatured: item.productId.isFeatured,
       customizations: item.customizations,
       selectedVariant: item.selectedVariant,
@@ -162,7 +170,7 @@ const updateCartItem = async (req, res) => {
     // Return updated cart
     const updatedUser = await User.findById(req.user._id).populate({
       path: 'cart.productId',
-      select: 'title price images discount category description careInstructions isNewArrival isFeatured'
+      select: 'title price images discount category description careInstructions isNew isNewArrival isFeatured'
     });
 
     const cartItems = updatedUser.cart.map(item => ({
@@ -175,7 +183,11 @@ const updateCartItem = async (req, res) => {
       category: item.productId.category,
       description: item.productId.description,
       careInstructions: item.productId.careInstructions,
-      isNewArrival: item.productId.isNewArrival,
+      isNewArrival: Boolean(
+        typeof item.productId.isNew === 'boolean'
+          ? item.productId.isNew
+          : item.productId.isNewArrival
+      ),
       isFeatured: item.productId.isFeatured,
       customizations: item.customizations,
       selectedVariant: item.selectedVariant,
@@ -216,7 +228,7 @@ const removeFromCart = async (req, res) => {
     // Return updated cart
     const updatedUser = await User.findById(req.user._id).populate({
       path: 'cart.productId',
-      select: 'title price images discount category description careInstructions isNewArrival isFeatured'
+      select: 'title price images discount category description careInstructions isNew isNewArrival isFeatured'
     });
 
     const cartItems = updatedUser.cart.map(item => ({
@@ -229,7 +241,11 @@ const removeFromCart = async (req, res) => {
       category: item.productId.category,
       description: item.productId.description,
       careInstructions: item.productId.careInstructions,
-      isNewArrival: item.productId.isNewArrival,
+      isNewArrival: Boolean(
+        typeof item.productId.isNew === 'boolean'
+          ? item.productId.isNew
+          : item.productId.isNewArrival
+      ),
       isFeatured: item.productId.isFeatured,
       customizations: item.customizations,
       selectedVariant: item.selectedVariant,
