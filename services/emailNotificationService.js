@@ -1,5 +1,8 @@
 const nodemailer = require('nodemailer');
 const pdf = require('html-pdf');
+const fs = require('fs');
+const path = require('path');
+const { getPdfOptions } = require('../utils/pdfHelper');
 
 // Initialize email service
 let emailTransporter = null;
@@ -76,7 +79,7 @@ const initEmailService = () => {
       initDeliveryConfirmationEmailService();
       return null;
     }
-    
+
     emailTransporter = nodemailer.createTransport(EMAIL_CONFIG);
     console.log('✅ Legacy email service initialized successfully');
     return emailTransporter;
@@ -94,7 +97,7 @@ const formatCurrency = (amount, currency = 'INR') => {
     'EUR': '€',
     'GBP': '£'
   };
-  
+
   return `${symbols[currency] || currency} ${Number(amount).toLocaleString()}`;
 };
 
@@ -111,39 +114,19 @@ const formatDate = (date) => {
 // Format time for display
 const formatTime = (timeSlot) => {
   if (!timeSlot) return 'Standard delivery';
-  
+
   // Handle special cases
   if (timeSlot.toLowerCase().includes('midnight')) {
     return 'Midnight Delivery (12:00 AM - 6:00 AM)';
   }
-  
+
   return timeSlot;
 };
 
 // Generate PDF from HTML
 const generateInvoicePDF = (htmlContent, orderNumber) => {
   return new Promise((resolve, reject) => {
-    const options = {
-      format: 'A4',
-      orientation: 'portrait',
-      border: {
-        top: '0.5in',
-        right: '0.5in',
-        bottom: '0.5in',
-        left: '0.5in'
-      },
-      header: {
-        height: '20mm'
-      },
-      footer: {
-        height: '20mm'
-      },
-      type: 'pdf',
-      quality: '75',
-      httpHeaders: {
-        'Content-Type': 'text/html; charset=utf-8'
-      }
-    };
+    const options = getPdfOptions({ documentTitle: 'Tax Invoice' });
 
     pdf.create(htmlContent, options).toBuffer((err, buffer) => {
       if (err) {
@@ -160,7 +143,7 @@ const generateInvoicePDF = (htmlContent, orderNumber) => {
 // Generate comprehensive email template
 const generateOrderConfirmationEmail = (orderData) => {
   const { order, customer, items } = orderData;
-  
+
   const itemsList = items.map(item => `
     <tr style="border-bottom: 1px solid #e5e7eb;">
       <td style="padding: 12px; text-align: left;">
@@ -177,7 +160,7 @@ const generateOrderConfirmationEmail = (orderData) => {
       </td>
     </tr>
   `).join('');
-  
+
   return `
     <!DOCTYPE html>
     <html lang="en">
@@ -442,7 +425,7 @@ const generateOrderConfirmationEmail = (orderData) => {
 // Generate admin notification email template
 const generateAdminOrderNotificationEmail = (orderData) => {
   const { order, customer, items } = orderData;
-  
+
   const itemsList = items.map(item => `
     <tr style="border-bottom: 1px solid #e5e7eb;">
       <td style="padding: 12px; text-align: left;">
@@ -459,7 +442,7 @@ const generateAdminOrderNotificationEmail = (orderData) => {
       </td>
     </tr>
   `).join('');
-  
+
   return `
     <!DOCTYPE html>
     <html lang="en">
@@ -573,13 +556,214 @@ const generateAdminOrderNotificationEmail = (orderData) => {
   `;
 };
 
+// ============================================================
+// Generate standalone invoice HTML (reusable for PDF + email)
+// This is the SINGLE SOURCE OF TRUTH for the invoice design.
+// Clean, compact, professional, single-page layout for PDF + print.
+// ============================================================
+const generateInvoiceHTML = (orderData) => {
+  const { order, customer } = orderData;
+  const items = order.items || [];
+  const shipping = order.shippingDetails || order.shipping || {};
+
+  // Calculate pricing
+  const itemsSubtotal = order.subtotal || items.reduce((sum, item) => {
+    return sum + ((item.finalPrice || item.price) * item.quantity);
+  }, 0);
+
+  const deliveryFee = order.deliveryFee || order.shippingFee || order.shippingCharges || 0;
+  const promoDiscount = order.promoCode?.discount || order.discountAmount || order.promoDiscount || 0;
+  const hasDeliveryFee = deliveryFee > 0;
+  const hasPromo = promoDiscount > 0;
+  const grandTotal = order.totalAmount || order.total || (itemsSubtotal + deliveryFee - promoDiscount);
+
+  const invoiceNumber = `INV-${order.orderNumber}`;
+  const orderDate = formatDate(order.createdAt);
+  const deliveryDate = formatDate(shipping.deliveryDate || order.deliveredAt || new Date());
+
+  // Load logo
+  let logoBase64 = '';
+  try {
+    const logoPath = path.join(__dirname, '..', 'assets', 'logo.png');
+    if (fs.existsSync(logoPath)) {
+      const logoData = fs.readFileSync(logoPath);
+      logoBase64 = `data:image/png;base64,${logoData.toString('base64')}`;
+    }
+  } catch (err) {
+    console.error('Failed to load invoice logo:', err);
+  }
+
+  // Determine customer/delivery details based on delivery option
+  const isGift = shipping.deliveryOption === 'gift';
+  const recipientName = isGift
+    ? `${shipping.receiverFirstName || ''} ${shipping.receiverLastName || ''}`.trim() || 'N/A'
+    : `${shipping.firstName || ''} ${shipping.lastName || ''}`.trim() || shipping.fullName || customer.name || 'N/A';
+  const recipientPhone = isGift
+    ? (shipping.receiverPhone || 'N/A')
+    : (shipping.phone || customer.phone || 'N/A');
+  const recipientAddress = isGift
+    ? (shipping.receiverAddress || 'N/A')
+    : (shipping.address || 'N/A');
+  const recipientApartment = isGift ? shipping.receiverApartment : shipping.apartment;
+  const recipientCity = isGift ? (shipping.receiverCity || '') : (shipping.city || '');
+  const recipientState = isGift ? (shipping.receiverState || '') : (shipping.state || '');
+  const recipientZip = isGift ? (shipping.receiverZipCode || '') : (shipping.zipCode || '');
+
+  // Payment details (supports both Order and InvoiceOrder interfaces)
+  const paymentMethod = order.payment?.method || order.paymentDetails?.method || 'Online Payment';
+  const paymentStatus = order.payment?.status || order.paymentDetails?.status || 'Completed';
+  const transactionId = order.payment?.transactionId || order.paymentDetails?.transactionId || order.paymentDetails?.razorpayPaymentId || order.paymentDetails?.paymentId || '';
+
+  const itemRows = items.map(item => `
+    <tr>
+      <td style="padding: 5px 8px; border: 1px solid #E2E8F0; color: #2D3748;">${item.product?.name || item.product?.title || item.title || 'Product'}</td>
+      <td style="padding: 5px 8px; border: 1px solid #E2E8F0; text-align: center; color: #2D3748;">${item.quantity}</td>
+      <td style="padding: 5px 8px; border: 1px solid #E2E8F0; text-align: right; color: #2D3748;">${formatCurrency(item.finalPrice || item.price, order.currency)}</td>
+      <td style="padding: 5px 8px; border: 1px solid #E2E8F0; text-align: right; color: #2D3748;">${formatCurrency((item.finalPrice || item.price) * item.quantity, order.currency)}</td>
+    </tr>
+  `).join('');
+
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Invoice ${invoiceNumber}</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+          font-family: Arial, Helvetica, sans-serif;
+          font-size: 13px;
+          color: #2D3748;
+          background: #fff;
+          line-height: 1.5;
+        }
+        .invoice-page {
+          max-width: 750px;
+          margin: 0 auto;
+          padding: 24px 32px;
+        }
+        table { border-collapse: collapse; }
+      </style>
+    </head>
+    <body>
+      <div class="invoice-page">
+
+        <!-- INVOICE DATES & NUMBERS -->
+        <table style="width: 100%; margin-bottom: 15px;">
+          <tr>
+            <td style="vertical-align: top; width: 50%;">
+              <!-- Margin so the dates sit nicely across from customer details below -->
+            </td>
+            <td style="vertical-align: top; text-align: right; width: 50%;">
+              <table style="margin-left: auto; font-size: 13px;">
+                <tr>
+                  <td style="padding: 3px 10px; text-align: right; color: #2D3748;">Invoice #:</td>
+                  <td style="padding: 3px 0; font-weight: bold; color: #1B4D2E;">${invoiceNumber}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 3px 10px; text-align: right; color: #2D3748;">Order Date:</td>
+                  <td style="padding: 3px 0; color: #2D3748;">${orderDate}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 3px 10px; text-align: right; color: #2D3748;">Delivery Date:</td>
+                  <td style="padding: 3px 0; color: #2D3748;">${deliveryDate}</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+
+        <!-- DIVIDER -->
+        <hr style="border: none; border-top: 1px solid #E2E8F0; margin-bottom: 12px;">
+
+        <!-- CUSTOMER / DELIVERY DETAILS -->
+        <div style="border: 1px solid #E2E8F0; padding: 8px 10px; margin-bottom: 12px;">
+          <div style="font-size: 11px; font-weight: bold; color: #2D3748; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 3px;">${isGift ? 'Deliver To (Gift Recipient)' : 'Customer Details'}</div>
+          <div style="font-size: 13px; font-weight: bold; color: #1A202C;">${recipientName}</div>
+          <div style="font-size: 12px; color: #2D3748; line-height: 1.5;">
+            Phone: ${recipientPhone}<br>
+            ${recipientAddress}${recipientApartment ? ', ' + recipientApartment : ''}<br>
+            ${recipientCity}${recipientState ? ', ' + recipientState : ''} ${recipientZip}
+          </div>
+        </div>
+
+        <!-- ITEMS TABLE -->
+        <table style="width: 100%; margin-bottom: 12px; font-size: 12px;">
+          <thead>
+            <tr style="background-color: #FDF8FA;">
+              <th style="padding: 6px 8px; border: 1px solid #E2E8F0; text-align: left; font-weight: bold; color: #1B4D2E;">Item</th>
+              <th style="padding: 6px 8px; border: 1px solid #E2E8F0; text-align: center; font-weight: bold; color: #1B4D2E; width: 50px;">Qty</th>
+              <th style="padding: 6px 8px; border: 1px solid #E2E8F0; text-align: right; font-weight: bold; color: #1B4D2E; width: 95px;">Unit Price</th>
+              <th style="padding: 6px 8px; border: 1px solid #E2E8F0; text-align: right; font-weight: bold; color: #1B4D2E; width: 95px;">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${itemRows}
+          </tbody>
+        </table>
+
+        <!-- TOTALS (right-aligned) -->
+        <table style="width: 240px; margin-left: auto; margin-bottom: 12px; font-size: 12px;">
+          <tr>
+            <td style="padding: 3px 0; color: #2D3748;">Subtotal</td>
+            <td style="padding: 3px 0; text-align: right; color: #2D3748;">${formatCurrency(itemsSubtotal, order.currency)}</td>
+          </tr>
+          <tr>
+            <td style="padding: 3px 0; color: #2D3748;">Delivery Fee</td>
+            <td style="padding: 3px 0; text-align: right; color: #2D3748;">${hasDeliveryFee ? formatCurrency(deliveryFee, order.currency) : 'FREE'}</td>
+          </tr>
+          ${hasPromo ? `
+          <tr>
+            <td style="padding: 3px 0; color: #2D3748;">Promo Discount${order.promoCode?.code ? ' (' + order.promoCode.code + ')' : ''}</td>
+            <td style="padding: 3px 0; text-align: right; color: #D84B79;">-${formatCurrency(promoDiscount, order.currency)}</td>
+          </tr>
+          ` : ''}
+          <tr style="border-top: 2px solid #1B4D2E;">
+            <td style="padding: 5px 0; font-weight: bold; font-size: 13px; color: #D84B79;">Grand Total</td>
+            <td style="padding: 5px 0; text-align: right; font-weight: bold; font-size: 13px; color: #D84B79;">${formatCurrency(grandTotal, order.currency)}</td>
+          </tr>
+        </table>
+
+        <!-- PAYMENT DETAILS -->
+        <div style="border: 1px solid #E2E8F0; padding: 8px 10px; margin-bottom: 10px; font-size: 12px;">
+          <div style="font-size: 11px; font-weight: bold; color: #2D3748; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 3px;">Payment Details</div>
+          <div style="color: #2D3748; line-height: 1.6;">
+            Payment Method: ${paymentMethod}<br>
+            Payment Status: ${paymentStatus}${transactionId ? '<br>Transaction ID: ' + transactionId : ''}
+          </div>
+        </div>
+
+        <!-- DELIVERY INFORMATION -->
+        <div style="border: 1px solid #E2E8F0; padding: 8px 10px; margin-bottom: 14px; font-size: 12px;">
+          <div style="font-size: 11px; font-weight: bold; color: #2D3748; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 3px;">Delivery Information</div>
+          <div style="color: #2D3748; line-height: 1.6;">
+            Delivery Date: ${deliveryDate}<br>
+            Time Slot: ${shipping.timeSlot || 'N/A'}${shipping.giftMessage ? '<br><br><strong>Gift Message:</strong><br>' + shipping.giftMessage : ''}
+          </div>
+        </div>
+
+        <!-- FOOTER -->
+        <div style="text-align: center; font-size: 11px; color: #2D3748; border-top: 1px solid #E2E8F0; padding-top: 10px;">
+          <div>Thank you for choosing Spring Blossoms Florist.</div>
+          <div style="margin-top: 3px; color: #718096;">This is a system-generated invoice.</div>
+        </div>
+
+      </div>
+    </body>
+    </html>
+  `;
+};
+
+
 // Generate delivery confirmation email template with invoice
 const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
   const { order, customer } = orderData;
   const items = order.items || [];
-  
+
   const itemsList = items.map(item => `
-    <tr style="border-bottom: 1px solid #e5e7eb;">
+  < tr style = "border-bottom: 1px solid #e5e7eb;" >
       <td style="padding: 12px; text-align: left;">
         <div style="font-weight: 600; color: #374151;">
           ${item.product.name || item.product.title}
@@ -592,275 +776,275 @@ const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
       <td style="padding: 12px; text-align: right; font-weight: 600; color: #374151;">
         ${formatCurrency(item.finalPrice || item.price, order.currency)}
       </td>
-    </tr>
+    </tr >
   `).join('');
 
   // Calculate proper subtotal from items
   const itemsSubtotal = items.reduce((sum, item) => {
     return sum + ((item.finalPrice || item.price) * item.quantity);
   }, 0);
-  
+
   const shippingCharges = order.shippingFee || order.shippingCharges || 0;
-  
+
   // Only calculate GST if there are shipping charges
   const hasShipping = shippingCharges > 0;
   const cgst = hasShipping ? shippingCharges * 0.025 : 0; // 2.5% CGST only on shipping
   const sgst = hasShipping ? shippingCharges * 0.025 : 0; // 2.5% SGST only on shipping
   const grandTotal = itemsSubtotal + shippingCharges + cgst + sgst;
-  
+
   return `
-    <!DOCTYPE html>
+  < !DOCTYPE html >
     <html lang="en">
-    <head>
-      <meta charset="utf-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Delivery Confirmation & Invoice - Spring Blossoms Florist</title>
-      <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { 
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; 
-          line-height: 1.6; 
-          color: #374151; 
-          background-color: #f9fafb;
+      <head>
+        <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Delivery Confirmation & Invoice - Spring Blossoms Florist</title>
+            <style>
+              * {margin: 0; padding: 0; box-sizing: border-box; }
+              body {
+                font - family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+              line-height: 1.6;
+              color: #374151;
+              background-color: #f9fafb;
         }
-        .container { 
-          max-width: 700px; 
-          margin: 0 auto; 
-          background-color: #ffffff;
-          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+              .container {
+                max - width: 700px;
+              margin: 0 auto;
+              background-color: #ffffff;
+              box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
-        .header { 
-          background: linear-gradient(135deg, #10b981 0%, #059669 100%); 
-          color: white; 
-          padding: 40px 30px; 
-          text-align: center; 
+              .header {
+                background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+              color: white;
+              padding: 40px 30px;
+              text-align: center; 
         }
-        .header h1 { 
-          font-size: 28px; 
-          margin-bottom: 8px; 
-          font-weight: 700;
+              .header h1 {
+                font - size: 28px;
+              margin-bottom: 8px;
+              font-weight: 700;
         }
-        .header p { 
-          font-size: 16px; 
-          opacity: 0.9;
+              .header p {
+                font - size: 16px;
+              opacity: 0.9;
         }
-        .content { 
-          padding: 30px; 
+              .content {
+                padding: 30px; 
         }
-        .delivery-status { 
-          background: #ecfdf5; 
-          border: 2px solid #10b981;
-          padding: 20px; 
-          border-radius: 12px; 
-          margin-bottom: 25px;
-          text-align: center;
+              .delivery-status {
+                background: #ecfdf5;
+              border: 2px solid #10b981;
+              padding: 20px;
+              border-radius: 12px;
+              margin-bottom: 25px;
+              text-align: center;
         }
-        .delivery-status h2 { 
-          color: #065f46; 
-          margin-bottom: 10px; 
-          font-size: 24px;
+              .delivery-status h2 {
+                color: #065f46;
+              margin-bottom: 10px;
+              font-size: 24px;
         }
-        .delivery-status p { 
-          color: #047857; 
-          font-size: 16px;
+              .delivery-status p {
+                color: #047857;
+              font-size: 16px;
         }
-        .invoice-section {
-          background: #f8fafc;
-          border: 1px solid #e2e8f0;
-          border-radius: 12px;
-          padding: 25px;
-          margin: 25px 0;
+              .invoice-section {
+                background: #f8fafc;
+              border: 1px solid #e2e8f0;
+              border-radius: 12px;
+              padding: 25px;
+              margin: 25px 0;
         }
-        .company-header {
-          background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-          color: white;
-          text-align: center;
-          padding: 30px;
-          border-radius: 12px 12px 0 0;
-          margin-bottom: 25px;
+              .company-header {
+                background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+              color: white;
+              text-align: center;
+              padding: 30px;
+              border-radius: 12px 12px 0 0;
+              margin-bottom: 25px;
         }
-        .company-header h1 {
-          color: white;
-          font-size: 32px;
-          margin-bottom: 10px;
-          font-weight: 700;
+              .company-header h1 {
+                color: white;
+              font-size: 32px;
+              margin-bottom: 10px;
+              font-weight: 700;
         }
-        .company-details {
-          color: #d1fae5;
-          font-size: 15px;
-          line-height: 1.8;
+              .company-details {
+                color: #d1fae5;
+              font-size: 15px;
+              line-height: 1.8;
         }
-        .invoice-header {
-          display: flex;
-          justify-content: space-between;
-          margin-bottom: 25px;
-          flex-wrap: wrap;
+              .invoice-header {
+                display: flex;
+              justify-content: space-between;
+              margin-bottom: 25px;
+              flex-wrap: wrap;
         }
-        .invoice-details h3 {
-          color: #1f2937;
-          font-size: 20px;
-          margin-bottom: 10px;
+              .invoice-details h3 {
+                color: #1f2937;
+              font-size: 20px;
+              margin-bottom: 10px;
         }
-        .invoice-details p {
-          margin: 5px 0;
-          color: #6b7280;
+              .invoice-details p {
+                margin: 5px 0;
+              color: #6b7280;
         }
-        .bill-to {
-          background: white;
-          padding: 20px;
-          border-radius: 8px;
-          margin: 20px 0;
-          border-left: 4px solid #3b82f6;
+              .bill-to {
+                background: white;
+              padding: 20px;
+              border-radius: 8px;
+              margin: 20px 0;
+              border-left: 4px solid #3b82f6;
         }
-        .bill-to h4 {
-          color: #1f2937;
-          margin-bottom: 10px;
-          font-size: 16px;
+              .bill-to h4 {
+                color: #1f2937;
+              margin-bottom: 10px;
+              font-size: 16px;
         }
-        .items-table { 
-          width: 100%; 
-          border-collapse: collapse; 
-          background: white;
-          border-radius: 8px;
-          overflow: hidden;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-          margin: 20px 0;
+              .items-table {
+                width: 100%;
+              border-collapse: collapse;
+              background: white;
+              border-radius: 8px;
+              overflow: hidden;
+              box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+              margin: 20px 0;
         }
-        .items-table th { 
-          background: #f1f5f9; 
-          padding: 15px 12px; 
-          text-align: left; 
-          font-weight: 600;
-          color: #374151;
-          font-size: 14px;
-          border-bottom: 2px solid #e2e8f0;
+              .items-table th {
+                background: #f1f5f9;
+              padding: 15px 12px;
+              text-align: left;
+              font-weight: 600;
+              color: #374151;
+              font-size: 14px;
+              border-bottom: 2px solid #e2e8f0;
         }
-        .items-table td {
-          padding: 12px;
-          border-bottom: 1px solid #e5e7eb;
+              .items-table td {
+                padding: 12px;
+              border-bottom: 1px solid #e5e7eb;
         }
-        .total-section {
-          background: white;
-          padding: 20px;
-          border-radius: 8px;
-          margin-top: 20px;
+              .total-section {
+                background: white;
+              padding: 20px;
+              border-radius: 8px;
+              margin-top: 20px;
         }
-        .total-row {
-          display: flex;
-          justify-content: space-between;
-          padding: 8px 0;
-          border-bottom: 1px solid #e5e7eb;
+              .total-row {
+                display: flex;
+              justify-content: space-between;
+              padding: 8px 0;
+              border-bottom: 1px solid #e5e7eb;
         }
-        .grand-total {
-          background: #f0f9ff;
-          padding: 15px;
-          border-radius: 8px;
-          margin-top: 10px;
-          border: 2px solid #0ea5e9;
+              .grand-total {
+                background: #f0f9ff;
+              padding: 15px;
+              border-radius: 8px;
+              margin-top: 10px;
+              border: 2px solid #0ea5e9;
         }
-        .grand-total .total-row {
-          font-weight: 700;
-          font-size: 18px;
-          color: #0369a1;
-          border: none;
+              .grand-total .total-row {
+                font - weight: 700;
+              font-size: 18px;
+              color: #0369a1;
+              border: none;
         }
-        .footer { 
-          background: #f9fafb; 
-          text-align: center; 
-          padding: 30px; 
-          border-top: 1px solid #e5e7eb;
+              .footer {
+                background: #f9fafb;
+              text-align: center;
+              padding: 30px;
+              border-top: 1px solid #e5e7eb;
         }
-        .footer p { 
-          margin: 8px 0; 
-          color: #6b7280;
+              .footer p {
+                margin: 8px 0;
+              color: #6b7280;
         }
-        .thank-you {
-          background: #fef7cd;
-          border: 1px solid #f59e0b;
-          border-radius: 8px;
-          padding: 20px;
-          margin: 25px 0;
-          text-align: center;
+              .thank-you {
+                background: #fef7cd;
+              border: 1px solid #f59e0b;
+              border-radius: 8px;
+              padding: 20px;
+              margin: 25px 0;
+              text-align: center;
         }
-        .thank-you h3 {
-          color: #92400e;
-          margin-bottom: 10px;
+              .thank-you h3 {
+                color: #92400e;
+              margin-bottom: 10px;
         }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <h1>🎉 Order Delivered Successfully!</h1>
-          <p>Thank you for choosing Spring Blossoms Florist</p>
-        </div>
-        
-        <div class="content">
-          <div class="delivery-status">
-            <h2>✅ Delivery Completed</h2>
-            <p>Your order has been successfully delivered on ${formatDate(new Date())}</p>
-          </div>
-
-          <div class="thank-you">
-            <h3>Thank You for Your Order!</h3>
-            <p>We hope you love your beautiful floral arrangement. Please find your invoice below.</p>
-          </div>
-
-          <div class="invoice-section">
-            <div class="company-header">
-              <h1>Spring Blossoms Florist</h1>
-              <div class="company-details">
-                <p><strong>Door No. 12-2-786/A & B, Najam Centre, Pillar No. 32</strong></p>
-                <p>Rethi Bowli, Mehdipatnam, Hyderabad, Telangana 500028</p>
-                <p>📞 9849589710 | ✉️ 2006sbf@gmail.com</p>
-                <p>🌐 www.sbflorist.com | Premium Floral Services</p>
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="header">
+                <h1>🎉 Order Delivered Successfully!</h1>
+                <p>Thank you for choosing Spring Blossoms Florist</p>
               </div>
-            </div>
 
-            <div class="invoice-header">
-              <div class="invoice-details">
-                <h3>INVOICE</h3>
-                <p><strong>Invoice #:</strong> INV-${order.orderNumber}</p>
-                <p><strong>Date:</strong> ${formatDate(new Date())}</p>
-                <p><strong>Order #:</strong> ${order.orderNumber}</p>
-              </div>
-              
-              <div class="invoice-details">
-                <h3>Order Information</h3>
-                <p><strong>Order Date:</strong> ${formatDate(order.createdAt)}</p>
-                <p><strong>Delivery Date:</strong> ${formatDate(order.shippingDetails?.deliveryDate || new Date())}</p>
-                <p><strong>Time Slot:</strong> ${formatTime(order.shippingDetails?.timeSlot)}</p>
-              </div>
-            </div>
+              <div class="content">
+                <div class="delivery-status">
+                  <h2>✅ Delivery Completed</h2>
+                  <p>Your order has been successfully delivered on ${formatDate(new Date())}</p>
+                </div>
 
-            <div class="bill-to">
-              <h4>📍 Delivery Address:</h4>
-              <p><strong>${order.shippingDetails?.fullName || customer.name}</strong></p>
-              <p>${order.shippingDetails?.address}</p>
-              ${order.shippingDetails?.apartment ? `<p>${order.shippingDetails.apartment}</p>` : ''}
-              <p>${order.shippingDetails?.city}, ${order.shippingDetails?.state} ${order.shippingDetails?.zipCode}</p>
-              <p>📞 ${order.shippingDetails?.phone}</p>
-            </div>
+                <div class="thank-you">
+                  <h3>Thank You for Your Order!</h3>
+                  <p>We hope you love your beautiful floral arrangement. Please find your invoice below.</p>
+                </div>
 
-            <div class="bill-to">
-              <h4>👤 Customer Information:</h4>
-              <p><strong>${customer.name}</strong></p>
-              <p>📧 ${customer.email}</p>
-              ${customer.phone ? `<p>📞 ${customer.phone}</p>` : ''}
-            </div>
+                <div class="invoice-section">
+                  <div class="company-header">
+                    <h1>Spring Blossoms Florist</h1>
+                    <div class="company-details">
+                      <p><strong>Door No. 12-2-786/A & B, Najam Centre, Pillar No. 32</strong></p>
+                      <p>Rethi Bowli, Mehdipatnam, Hyderabad, Telangana 500028</p>
+                      <p>📞 9849589710 | ✉️ 2006sbf@gmail.com</p>
+                      <p>🌐 www.sbflorist.com | Premium Floral Services</p>
+                    </div>
+                  </div>
 
-            <h4 style="margin-top: 30px; margin-bottom: 15px;">Order Details</h4>
-            <table class="items-table">
-              <thead>
-                <tr>
-                  <th>Item</th>
-                  <th style="text-align: center;">Quantity</th>
-                  <th style="text-align: right;">Price (₹)</th>
-                  <th style="text-align: right;">Total (₹)</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${items.map(item => `
+                  <div class="invoice-header">
+                    <div class="invoice-details">
+                      <h3>INVOICE</h3>
+                      <p><strong>Invoice #:</strong> INV-${order.orderNumber}</p>
+                      <p><strong>Date:</strong> ${formatDate(new Date())}</p>
+                      <p><strong>Order #:</strong> ${order.orderNumber}</p>
+                    </div>
+
+                    <div class="invoice-details">
+                      <h3>Order Information</h3>
+                      <p><strong>Order Date:</strong> ${formatDate(order.createdAt)}</p>
+                      <p><strong>Delivery Date:</strong> ${formatDate(order.shippingDetails?.deliveryDate || new Date())}</p>
+                      <p><strong>Time Slot:</strong> ${formatTime(order.shippingDetails?.timeSlot)}</p>
+                    </div>
+                  </div>
+
+                  <div class="bill-to">
+                    <h4>📍 Delivery Address:</h4>
+                    <p><strong>${order.shippingDetails?.fullName || customer.name}</strong></p>
+                    <p>${order.shippingDetails?.address}</p>
+                    ${order.shippingDetails?.apartment ? `<p>${order.shippingDetails.apartment}</p>` : ''}
+                    <p>${order.shippingDetails?.city}, ${order.shippingDetails?.state} ${order.shippingDetails?.zipCode}</p>
+                    <p>📞 ${order.shippingDetails?.phone}</p>
+                  </div>
+
+                  <div class="bill-to">
+                    <h4>👤 Customer Information:</h4>
+                    <p><strong>${customer.name}</strong></p>
+                    <p>📧 ${customer.email}</p>
+                    ${customer.phone ? `<p>📞 ${customer.phone}</p>` : ''}
+                  </div>
+
+                  <h4 style="margin-top: 30px; margin-bottom: 15px;">Order Details</h4>
+                  <table class="items-table">
+                    <thead>
+                      <tr>
+                        <th>Item</th>
+                        <th style="text-align: center;">Quantity</th>
+                        <th style="text-align: right;">Price (₹)</th>
+                        <th style="text-align: right;">Total (₹)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${items.map(item => `
                   <tr>
                     <td>
                       <div style="font-weight: 600;">${item.product.name || item.product.title}</div>
@@ -871,15 +1055,15 @@ const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
                     <td style="text-align: right;">₹${((item.finalPrice || item.price) * item.quantity).toFixed(2)}</td>
                   </tr>
                 `).join('')}
-              </tbody>
-            </table>
+                    </tbody>
+                  </table>
 
-            <div class="total-section">
-              <div class="total-row">
-                <span>Subtotal</span>
-                <span>₹${(itemsSubtotal).toFixed(2)}</span>
-              </div>
-              ${hasShipping ? `
+                  <div class="total-section">
+                    <div class="total-row">
+                      <span>Subtotal</span>
+                      <span>₹${(itemsSubtotal).toFixed(2)}</span>
+                    </div>
+                    ${hasShipping ? `
                 <div class="total-row">
                   <span>Delivery Charges</span>
                   <span>₹${shippingCharges.toFixed(2)}</span>
@@ -889,40 +1073,40 @@ const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
                   <span>₹${(cgst + sgst).toFixed(2)}</span>
                 </div>
               ` : ''}
-              
-              <div class="grand-total">
-                <div class="total-row">
-                  <span>GRAND TOTAL</span>
-                  <span>₹${(grandTotal).toFixed(2)}</span>
+
+                    <div class="grand-total">
+                      <div class="total-row">
+                        <span>GRAND TOTAL</span>
+                        <span>₹${(grandTotal).toFixed(2)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style="margin-top: 25px; padding: 15px; background: #f0f9ff; border-radius: 8px;">
+                    <h4 style="color: #1f2937; margin-bottom: 10px;">Payment Information:</h4>
+                    <p><strong>Method:</strong> Razorpay (Online Payment)</p>
+                    <p><strong>Status:</strong> Completed</p>
+                    ${order.paymentDetails?.paymentId ? `<p><strong>Transaction ID:</strong> ${order.paymentDetails.paymentId}</p>` : ''}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div style="margin-top: 25px; padding: 15px; background: #f0f9ff; border-radius: 8px;">
-              <h4 style="color: #1f2937; margin-bottom: 10px;">Payment Information:</h4>
-              <p><strong>Method:</strong> Razorpay (Online Payment)</p>
-              <p><strong>Status:</strong> Completed</p>
-              ${order.paymentDetails?.paymentId ? `<p><strong>Transaction ID:</strong> ${order.paymentDetails.paymentId}</p>` : ''}
+              <div class="footer">
+                <h3 style="color: #1f2937; margin-bottom: 15px;">Thank you for your business!</h3>
+                <p>We appreciate your order and hope you enjoyed our flowers.</p>
+                <p>For any questions regarding your order or our products, please don't hesitate to contact us.</p>
+                <p style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+                  📧 2006sbf@gmail.com | 📞 9849589710<br>
+                    Business Hours: Monday - Saturday, 9 AM - 6 PM IST
+                </p>
+                <p style="margin-top: 15px; font-size: 12px; color: #9ca3af;">
+                  Terms and conditions apply. For our return and refund policy, please visit www.sbflorist.in/returns.
+                </p>
+              </div>
             </div>
-          </div>
-        </div>
-        
-        <div class="footer">
-          <h3 style="color: #1f2937; margin-bottom: 15px;">Thank you for your business!</h3>
-          <p>We appreciate your order and hope you enjoyed our flowers.</p>
-          <p>For any questions regarding your order or our products, please don't hesitate to contact us.</p>
-          <p style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
-            📧 2006sbf@gmail.com | 📞 9849589710<br>
-            Business Hours: Monday - Saturday, 9 AM - 6 PM IST
-          </p>
-          <p style="margin-top: 15px; font-size: 12px; color: #9ca3af;">
-            Terms and conditions apply. For our return and refund policy, please visit www.sbflorist.in/returns.
-          </p>
-        </div>
-      </div>
-    </body>
-    </html>
-  `;
+          </body>
+        </html>
+        `;
 };
 
 // Send delivery confirmation email with invoice
@@ -931,26 +1115,29 @@ const sendDeliveryConfirmationWithInvoice = async (orderData) => {
     // Use delivery confirmation transporter, fallback to legacy transporter
     const activeTransporter = deliveryConfirmationTransporter || emailTransporter;
     const senderEmail = deliveryConfirmationTransporter ? 'sbfdeliveryconfirmation@gmail.com' : '2006sbf@gmail.com';
-    
+
     if (!activeTransporter) {
       console.log('⚠️  Email service not available, skipping delivery confirmation email');
       return { success: false, error: 'Email service not configured' };
     }
 
     const { customer, order } = orderData;
-    
+
     if (!customer.email) {
       return { success: false, error: 'No customer email address provided' };
     }
 
     console.log('📄 Generating PDF invoice...');
-    
-    // Generate HTML content for the invoice
+
+    // Generate HTML for email body (delivery confirmation wrapper + invoice)
     const htmlContent = generateDeliveryConfirmationWithInvoiceEmail(orderData);
-    
-    // Generate PDF
-    const pdfBuffer = await generateInvoicePDF(htmlContent, order.orderNumber);
-    
+
+    // Generate standalone invoice HTML for the PDF attachment (uses the new unified template)
+    const invoiceHTML = generateInvoiceHTML(orderData);
+
+    // Generate PDF from the standalone invoice template
+    const pdfBuffer = await generateInvoicePDF(invoiceHTML, order.orderNumber);
+
     console.log('✅ PDF invoice generated successfully');
 
     const mailOptions = {
@@ -971,34 +1158,34 @@ const sendDeliveryConfirmationWithInvoice = async (orderData) => {
       ],
       text: `Delivery Confirmation & Invoice - Spring Blossoms Florist
 
-Dear ${customer.name},
+        Dear ${customer.name},
 
-Great news! Your order #${order.orderNumber} has been delivered successfully!
+        Great news! Your order #${order.orderNumber} has been delivered successfully!
 
-Order Details:
-- Order Number: ${order.orderNumber}
-- Invoice Number: INV-${order.orderNumber}
-- Total Amount: ${formatCurrency(order.totalAmount, order.currency)}
-- Delivered On: ${formatDate(new Date())}
+        Order Details:
+        - Order Number: ${order.orderNumber}
+        - Invoice Number: INV-${order.orderNumber}
+        - Total Amount: ${formatCurrency(order.totalAmount, order.currency)}
+        - Delivered On: ${formatDate(new Date())}
 
-Delivery Address:
-${order.shippingDetails?.fullName || customer.name}
-${order.shippingDetails?.address}
-${order.shippingDetails?.city}, ${order.shippingDetails?.state} ${order.shippingDetails?.zipCode}
+        Delivery Address:
+        ${order.shippingDetails?.fullName || customer.name}
+        ${order.shippingDetails?.address}
+        ${order.shippingDetails?.city}, ${order.shippingDetails?.state} ${order.shippingDetails?.zipCode}
 
-Thank you for choosing Spring Blossoms Florist! We hope you love your beautiful arrangement.
+        Thank you for choosing Spring Blossoms Florist! We hope you love your beautiful arrangement.
 
-Please find your detailed invoice attached as a PDF.
+        Please find your detailed invoice attached as a PDF.
 
-For any questions, please contact us at 2006sbf@gmail.com or call 9849589710.
+        For any questions, please contact us at 2006sbf@gmail.com or call 9849589710.
 
-Best regards,
-Spring Blossoms Florist Team`
+        Best regards,
+        Spring Blossoms Florist Team`
     };
 
     const result = await activeTransporter.sendMail(mailOptions);
     console.log('✅ Delivery confirmation email with PDF invoice sent successfully:', result.messageId);
-    
+
     return { success: true, messageId: result.messageId };
   } catch (error) {
     console.error('❌ Failed to send delivery confirmation email:', error);
@@ -1009,59 +1196,59 @@ Spring Blossoms Florist Team`
 // Send email notification to both customer and admin
 const sendEmailNotification = async (orderData) => {
   const results = [];
-  
+
   try {
     // Use order confirmation transporter for customer emails, fallback to legacy transporter
     const activeTransporter = orderConfirmationTransporter || emailTransporter;
     const senderEmail = orderConfirmationTransporter ? 'sbforderconfirmation@gmail.com' : '2006sbf@gmail.com';
-    
+
     if (!activeTransporter) {
       console.log('⚠️  Email service not available, skipping email notification');
       return { success: false, error: 'Email service not configured' };
     }
 
     const { customer, order } = orderData;
-    
+
     // Send email to customer
     if (customer.email) {
       try {
         const customerMailOptions = {
-      from: {
-        name: 'Spring Blossoms Florist',
-        address: senderEmail
-      },
-      to: customer.email,
-              subject: `🎉 Order Confirmed #${order.orderNumber} - Spring Blossoms Florist`,
-      html: generateOrderConfirmationEmail(orderData),
-              text: `Order Confirmation - Spring Blossoms Florist
+          from: {
+            name: 'Spring Blossoms Florist',
+            address: senderEmail
+          },
+          to: customer.email,
+          subject: `🎉 Order Confirmed #${order.orderNumber} - Spring Blossoms Florist`,
+          html: generateOrderConfirmationEmail(orderData),
+          text: `Order Confirmation - Spring Blossoms Florist
 
-Hi ${customer.name},
+        Hi ${customer.name},
 
-Your order #${order.orderNumber} has been confirmed!
+        Your order #${order.orderNumber} has been confirmed!
 
-Order Details:
-- Order Number: ${order.orderNumber}
-- Total Amount: ${formatCurrency(order.totalAmount, order.currency)}
-- Delivery Date: ${formatDate(order.shippingDetails.deliveryDate)}
-- Time Slot: ${formatTime(order.shippingDetails.timeSlot)}
+        Order Details:
+        - Order Number: ${order.orderNumber}
+        - Total Amount: ${formatCurrency(order.totalAmount, order.currency)}
+        - Delivery Date: ${formatDate(order.shippingDetails.deliveryDate)}
+        - Time Slot: ${formatTime(order.shippingDetails.timeSlot)}
 
-Delivery Address:
-${order.shippingDetails.fullName}
-${order.shippingDetails.address}
-${order.shippingDetails.apartment ? order.shippingDetails.apartment : ''}
-${order.shippingDetails.city}, ${order.shippingDetails.state} ${order.shippingDetails.zipCode}
-Phone: ${order.shippingDetails.phone}
+        Delivery Address:
+        ${order.shippingDetails.fullName}
+        ${order.shippingDetails.address}
+        ${order.shippingDetails.apartment ? order.shippingDetails.apartment : ''}
+        ${order.shippingDetails.city}, ${order.shippingDetails.state} ${order.shippingDetails.zipCode}
+        Phone: ${order.shippingDetails.phone}
 
-Thank you for choosing Spring Blossoms Florist! We'll keep you updated on your order status.
+        Thank you for choosing Spring Blossoms Florist! We'll keep you updated on your order status.
 
-Best regards,
-Spring Blossoms Florist Team`
-    };
+        Best regards,
+        Spring Blossoms Florist Team`
+        };
 
         const customerResult = await activeTransporter.sendMail(customerMailOptions);
         console.log('✅ Customer email sent successfully to:', customer.email);
         console.log('📧 Customer email Message ID:', customerResult.messageId);
-        
+
         results.push({
           type: 'customer',
           success: true,
@@ -1100,30 +1287,30 @@ Spring Blossoms Florist Team`
         html: generateAdminOrderNotificationEmail(orderData),
         text: `New Order Alert - Spring Blossoms Florist Admin
 
-Order #${order.orderNumber} has been placed!
+        Order #${order.orderNumber} has been placed!
 
-Customer: ${customer.name}
-Email: ${customer.email}
-Phone: ${customer.phone}
-Total Amount: ${formatCurrency(order.totalAmount, order.currency)}
-Delivery Date: ${formatDate(order.shippingDetails.deliveryDate)}
-Time Slot: ${formatTime(order.shippingDetails.timeSlot)}
+        Customer: ${customer.name}
+        Email: ${customer.email}
+        Phone: ${customer.phone}
+        Total Amount: ${formatCurrency(order.totalAmount, order.currency)}
+        Delivery Date: ${formatDate(order.shippingDetails.deliveryDate)}
+        Time Slot: ${formatTime(order.shippingDetails.timeSlot)}
 
-Delivery Address:
-${order.shippingDetails.fullName}
-${order.shippingDetails.address}
-${order.shippingDetails.apartment ? order.shippingDetails.apartment : ''}
-${order.shippingDetails.city}, ${order.shippingDetails.state} ${order.shippingDetails.zipCode}
+        Delivery Address:
+        ${order.shippingDetails.fullName}
+        ${order.shippingDetails.address}
+        ${order.shippingDetails.apartment ? order.shippingDetails.apartment : ''}
+        ${order.shippingDetails.city}, ${order.shippingDetails.state} ${order.shippingDetails.zipCode}
 
-Please process this order promptly.
+        Please process this order promptly.
 
-Spring Blossoms Florist Order Management System`
+        Spring Blossoms Florist Order Management System`
       };
 
       const adminResult = await activeTransporter.sendMail(adminMailOptions);
       console.log('✅ Admin email sent successfully to:', adminEmail);
       console.log('📧 Admin email Message ID:', adminResult.messageId);
-      
+
       results.push({
         type: 'admin',
         success: true,
@@ -1143,18 +1330,18 @@ Spring Blossoms Florist Order Management System`
     // Return overall result
     const allSuccessful = results.every(result => result.success);
     const someSuccessful = results.some(result => result.success);
-    
-    return { 
+
+    return {
       success: allSuccessful,
       partialSuccess: someSuccessful && !allSuccessful,
       results: results,
       summary: `${results.filter(r => r.success).length}/${results.length} emails sent successfully`
     };
-    
+
   } catch (error) {
     console.error('❌ Failed to send email notifications:', error);
-    return { 
-      success: false, 
+    return {
+      success: false,
       error: error.message,
       results: results
     };
@@ -1164,13 +1351,13 @@ Spring Blossoms Florist Order Management System`
 // Test email service
 const testEmailService = async () => {
   console.log('🧪 Testing email services...');
-  
+
   const testResults = {
     legacy: { success: false },
     orderConfirmation: { success: false },
     deliveryConfirmation: { success: false }
   };
-  
+
   // Test legacy email service
   try {
     if (emailTransporter) {
@@ -1185,7 +1372,7 @@ const testEmailService = async () => {
     console.log('❌ Legacy email service test failed:', error.message);
     testResults.legacy = { success: false, error: error.message };
   }
-  
+
   // Test order confirmation email service
   try {
     if (orderConfirmationTransporter) {
@@ -1200,7 +1387,7 @@ const testEmailService = async () => {
     console.log('❌ Order confirmation email service test failed:', error.message);
     testResults.orderConfirmation = { success: false, error: error.message };
   }
-  
+
   // Test delivery confirmation email service
   try {
     if (deliveryConfirmationTransporter) {
@@ -1215,11 +1402,11 @@ const testEmailService = async () => {
     console.log('❌ Delivery confirmation email service test failed:', error.message);
     testResults.deliveryConfirmation = { success: false, error: error.message };
   }
-  
+
   const overallSuccess = testResults.orderConfirmation.success && testResults.deliveryConfirmation.success;
-  
-  return { 
-    success: overallSuccess, 
+
+  return {
+    success: overallSuccess,
     details: testResults,
     message: overallSuccess ? 'All email services are working' : 'Some email services have issues'
   };
@@ -1288,8 +1475,8 @@ const getEmailConfig = () => {
       configured: !!(EMAIL_CONFIG.auth.user && EMAIL_CONFIG.auth.pass),
       host: EMAIL_CONFIG.host,
       port: EMAIL_CONFIG.port,
-      user: EMAIL_CONFIG.auth.user ? 
-        EMAIL_CONFIG.auth.user.replace(/(.{3}).*@/, '$1***@') : 
+      user: EMAIL_CONFIG.auth.user ?
+        EMAIL_CONFIG.auth.user.replace(/(.{3}).*@/, '$1***@') :
         'Not configured',
       status: emailTransporter ? 'Ready' : 'Not configured'
     },
@@ -1326,5 +1513,7 @@ module.exports = {
   formatCurrency,
   formatDate,
   formatTime,
-  sendDeliveryConfirmationWithInvoice
+  sendDeliveryConfirmationWithInvoice,
+  generateInvoiceHTML,
+  generateInvoicePDF
 };

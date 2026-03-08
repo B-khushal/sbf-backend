@@ -3,9 +3,12 @@ const mongoose = require('mongoose');
 const vendorSchema = new mongoose.Schema({
     user: {
         type: mongoose.Schema.Types.ObjectId,
-        required: true,
-        ref: 'User',
-        unique: true
+        required: false,
+        ref: 'User'
+    },
+    ownerName: {
+        type: String,
+        required: true
     },
     storeName: {
         type: String,
@@ -59,6 +62,27 @@ const vendorSchema = new mongoose.Schema({
         type: String,
         enum: ['pending', 'approved', 'suspended', 'rejected'],
         default: 'pending'
+    },
+    signatureImage: {
+        type: String // Base64 or path for vendor signature
+    },
+    adminSignature: {
+        type: String // Base64 or path for admin approval signature
+    },
+    consentPdf: {
+        type: String // Path to initial consent PDF (URL)
+    },
+    consentPdfData: {
+        type: String // Base64 PDF data
+    },
+    approvalPdf: {
+        type: String // Path to finalized approval PDF (URL)
+    },
+    approvalPdfData: {
+        type: String // Base64 PDF data
+    },
+    approvedAt: {
+        type: Date
     },
     verification: {
         isVerified: { type: Boolean, default: false },
@@ -141,20 +165,20 @@ const vendorSchema = new mongoose.Schema({
     timestamps: true
 });
 
-// Index for efficient queries
-vendorSchema.index({ user: 1 });
+// Index for efficient queries - partial index only enforces uniqueness when user is an actual ObjectId
+vendorSchema.index({ user: 1 }, { unique: true, partialFilterExpression: { user: { $type: 'objectId' } } });
 vendorSchema.index({ status: 1 });
 vendorSchema.index({ storeName: 1 });
 vendorSchema.index({ 'verification.isVerified': 1 });
 
 // Virtual for full address
-vendorSchema.virtual('fullAddress').get(function() {
+vendorSchema.virtual('fullAddress').get(function () {
     const { street, city, state, zipCode, country } = this.storeAddress;
     return `${street}, ${city}, ${state} ${zipCode}, ${country}`;
 });
 
 // Method to calculate earnings
-vendorSchema.methods.calculateEarnings = function(totalSales) {
+vendorSchema.methods.calculateEarnings = function (totalSales) {
     if (this.commission.type === 'percentage') {
         const vendorEarnings = totalSales * (1 - this.commission.rate / 100);
         const platformCommission = totalSales * (this.commission.rate / 100);
@@ -167,7 +191,7 @@ vendorSchema.methods.calculateEarnings = function(totalSales) {
 };
 
 // Method to update analytics
-vendorSchema.methods.updateAnalytics = async function(updateData) {
+vendorSchema.methods.updateAnalytics = async function (updateData) {
     Object.keys(updateData).forEach(key => {
         if (this.analytics[key] !== undefined) {
             this.analytics[key] = updateData[key];

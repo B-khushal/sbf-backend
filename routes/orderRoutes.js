@@ -6,6 +6,7 @@ const {
   getOrders,
   getUserOrders,
   getOrderById,
+  getOrderInvoice,
   updateOrderToPaid,
   updateOrderToDelivered,
   updateOrderStatus,
@@ -27,6 +28,9 @@ router.get('/delivery-calendar', protect, admin, getDeliveryCalendar);
 
 // Test delivery email route
 router.post('/test-delivery-email', protect, admin, testDeliveryEmail);
+
+// Invoice download route (must be before /:id catch-all)
+router.get('/:id/invoice', protect, getOrderInvoice);
 
 router.route('/:id')
   .get(protect, getOrderById);

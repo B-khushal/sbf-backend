@@ -23,7 +23,7 @@ const flattenToStrings = (value) => {
     }
     return [value];
   }
-  
+
   if (Array.isArray(value)) {
     const result = [];
     for (const item of value) {
@@ -31,7 +31,7 @@ const flattenToStrings = (value) => {
     }
     return result;
   }
-  
+
   // For any other type, convert to string
   return [String(value)];
 };
@@ -144,7 +144,7 @@ const createOrder = async (req, res) => {
     const year = date.getFullYear().toString().slice(-2);
     const month = (date.getMonth() + 1).toString().padStart(2, '0');
     const day = date.getDate().toString().padStart(2, '0');
-    
+
     // Find the last order for the current year and month
     const lastOrder = await Order.findOne({
       orderNumber: new RegExp(`^${year}${month}`)
@@ -212,7 +212,7 @@ const createOrder = async (req, res) => {
     try {
       // Get customer details
       const customer = await User.findById(req.user._id);
-      
+
       // Populate product details for notifications
       const populatedOrder = await Order.findById(savedOrder._id)
         .populate({
@@ -234,7 +234,7 @@ const createOrder = async (req, res) => {
       // Send email notification (includes both customer and admin emails)
       const emailResult = await sendEmailNotification(notificationData);
       console.log('Email notification result:', emailResult);
-      
+
       // Create admin notification for real-time updates
       try {
         const adminNotification = await createOrderNotification({
@@ -245,7 +245,7 @@ const createOrder = async (req, res) => {
           currency: savedOrder.currency || 'INR'
         });
         console.log('✅ Admin notification created successfully for order:', savedOrder.orderNumber);
-        
+
         // Store in a global variable for real-time polling (optional backup)
         global.latestNotifications = global.latestNotifications || [];
         global.latestNotifications.unshift({
@@ -258,18 +258,18 @@ const createOrder = async (req, res) => {
           orderId: savedOrder._id,
           orderNumber: savedOrder.orderNumber
         });
-        
+
         // Keep only last 50 notifications in memory
         if (global.latestNotifications.length > 50) {
           global.latestNotifications = global.latestNotifications.slice(0, 50);
         }
-        
+
         console.log('📨 Notification added to global notifications for real-time polling');
-        
+
       } catch (adminNotificationError) {
         console.error('❌ Error creating admin notification:', adminNotificationError);
       }
-      
+
       // Send FCM push notification to ALL admin devices immediately when order is placed
       try {
         console.log('🔔 Sending push notification to all admin devices...');
@@ -282,7 +282,7 @@ const createOrder = async (req, res) => {
           amount: savedOrder.totalAmount.toString(),
           type: 'NEW_ORDER'  // MUST be "NEW_ORDER" for 3x ring + vibration
         });
-        
+
         if (fcmResult.success) {
           console.log(`✅ Push notification sent to ${fcmResult.sent}/${fcmResult.total} admin devices`);
           if (fcmResult.failed > 0) {
@@ -295,10 +295,10 @@ const createOrder = async (req, res) => {
         console.error('❌ Error sending FCM push notification:', fcmError.message);
         // Don't fail order creation if FCM fails
       }
-      
+
       // Add notification status to response
       savedOrder.emailNotificationStatus = emailResult;
-      
+
     } catch (notificationError) {
       console.error('❌ Error sending order notifications:', notificationError);
       // Don't fail the order creation if notifications fail
@@ -337,7 +337,7 @@ const getNextOrderNumber = async (req, res) => {
     const year = date.getFullYear().toString().slice(-2);
     const month = (date.getMonth() + 1).toString().padStart(2, '0');
     const day = date.getDate().toString().padStart(2, '0');
-    
+
     const lastOrder = await Order.findOne({
       orderNumber: new RegExp(`^${year}${month}`)
     }, {}, { sort: { 'orderNumber': -1 } });
@@ -349,7 +349,7 @@ const getNextOrderNumber = async (req, res) => {
     }
 
     const nextOrderNumber = `${year}${month}${sequence}${day}`;
-    
+
     res.json({
       success: true,
       nextOrderNumber
@@ -423,7 +423,7 @@ const updateOrderToPaid = async (req, res) => {
 const updateOrderToDelivered = async (req, res) => {
   try {
     console.log('🚚 updateOrderToDelivered called for order ID:', req.params.id);
-    
+
     const order = await Order.findById(req.params.id).populate({
       path: 'items.product',
       select: 'title price images sku discount'
@@ -436,7 +436,7 @@ const updateOrderToDelivered = async (req, res) => {
 
     console.log('📋 Order found:', order.orderNumber, 'Current status:', order.status);
     const previousStatus = order.status;
-    
+
     // Update order status
     order.isDelivered = true;
     order.deliveredAt = Date.now();
@@ -447,14 +447,14 @@ const updateOrderToDelivered = async (req, res) => {
     // Update stock when order is delivered
     if (!['being_made', 'delivered'].includes(previousStatus) && !order.stockUpdated) {
       console.log('📦 Updating stock for order:', order.orderNumber);
-      
+
       for (const item of order.items) {
         const product = await Product.findById(item.product._id);
         if (product) {
           // Check if we have enough stock
           if (product.countInStock >= item.quantity) {
             product.countInStock -= item.quantity;
-            
+
             try {
               // Clean product data before saving to prevent casting errors
               cleanProductData(product);
@@ -462,7 +462,7 @@ const updateOrderToDelivered = async (req, res) => {
               console.log(`✅ Updated stock for product ${product.title}: ${product.countInStock + item.quantity} -> ${product.countInStock}`);
             } catch (productSaveError) {
               console.error(`❌ Error saving product ${product.title}:`, productSaveError);
-              
+
               // Try to save without cleaning if the cleaning failed
               try {
                 // Reset any changes and just update the stock
@@ -483,8 +483,8 @@ const updateOrderToDelivered = async (req, res) => {
             }
           } else {
             console.log(`Warning: Insufficient stock for product ${product.title}. Available: ${product.countInStock}, Required: ${item.quantity}`);
-            return res.status(400).json({ 
-              message: `Insufficient stock for product ${product.title}. Available: ${product.countInStock}, Required: ${item.quantity}` 
+            return res.status(400).json({
+              message: `Insufficient stock for product ${product.title}. Available: ${product.countInStock}, Required: ${item.quantity}`
             });
           }
         }
@@ -503,7 +503,7 @@ const updateOrderToDelivered = async (req, res) => {
     if (previousStatus !== 'delivered') {
       console.log('🚚 Order delivered, sending delivery confirmation email with invoice...');
       console.log('📧 Previous status:', previousStatus, 'New status:', order.status);
-      
+
       // Create delivery notification for admin
       try {
         const { createAdminNotification } = require('./notificationController');
@@ -522,15 +522,15 @@ const updateOrderToDelivered = async (req, res) => {
       } catch (notificationError) {
         console.error('❌ Error creating delivery notification:', notificationError);
       }
-      
+
       try {
         // Get customer details
         const User = require('../models/User');
         const customer = await User.findById(order.user);
-        
+
         console.log('👤 Customer lookup result:', customer ? 'Found' : 'Not found');
         console.log('📧 Customer email:', customer?.email);
-        
+
         if (customer && customer.email) {
           // Populate product details for delivery email
           const populatedOrder = await Order.findById(order._id)
@@ -538,7 +538,7 @@ const updateOrderToDelivered = async (req, res) => {
               path: 'items.product',
               select: 'name title price images sku discount'
             });
-          
+
           // Prepare delivery notification data
           const deliveryNotificationData = {
             order: populatedOrder,
@@ -555,9 +555,9 @@ const updateOrderToDelivered = async (req, res) => {
           // Send delivery confirmation email with invoice
           const { sendDeliveryConfirmationWithInvoice } = require('../services/emailNotificationService');
           const emailResult = await sendDeliveryConfirmationWithInvoice(deliveryNotificationData);
-          
+
           console.log('📧 Email sending result:', emailResult);
-          
+
           if (emailResult.success) {
             console.log('✅ Delivery confirmation email with invoice sent successfully to:', customer.email);
           } else {
@@ -614,12 +614,12 @@ const getUserOrders = async (req, res) => {
 // @access  Private/Admin
 const getOrders = async (req, res) => {
   try {
-    const { 
-      page = 1, 
+    const {
+      page = 1,
       limit = 20, // Increased default from 10 to 20
-      status, 
-      dateFrom, 
-      dateTo, 
+      status,
+      dateFrom,
+      dateTo,
       search,
       deliveryDateFrom,
       deliveryDateTo,
@@ -715,12 +715,12 @@ const getOrders = async (req, res) => {
       processedOrders = orders.map(order => {
         const deliveryDate = order.shippingDetails?.deliveryDate;
         let highlight = null;
-        
+
         if (deliveryDate) {
           const deliveryDateTime = new Date(deliveryDate);
           const now = new Date();
           const diffInDays = Math.ceil((deliveryDateTime - now) / (1000 * 60 * 60 * 24));
-          
+
           if (diffInDays <= 3 && diffInDays >= 0) {
             if (diffInDays === 0) {
               highlight = { type: 'today', urgency: 'critical', message: 'Delivery today!' };
@@ -791,7 +791,7 @@ const updateOrderStatus = async (req, res) => {
     const { status } = req.body;
     console.log('🔄 updateOrderStatus called for order ID:', req.params.id, 'New status:', status);
     console.log('📝 Request body:', req.body);
-    
+
     const order = await Order.findById(req.params.id).populate({
       path: 'items.product',
       select: 'title price images sku discount'
@@ -806,7 +806,7 @@ const updateOrderStatus = async (req, res) => {
     console.log('👤 Order user ID:', order.user);
     console.log('📧 Shipping details email:', order.shippingDetails?.email);
     console.log('📧 Shipping details name:', order.shippingDetails?.fullName);
-    
+
     const previousStatus = order.status;
     order.status = status;
 
@@ -823,7 +823,7 @@ const updateOrderStatus = async (req, res) => {
           amount: order.totalAmount.toString(),
           type: 'NEW_ORDER'  // MUST be "NEW_ORDER" for 3x ring + vibration
         });
-        
+
         if (notificationResult.success) {
           console.log(`✅ Push notification sent to ${notificationResult.sent}/${notificationResult.total} devices`);
           if (notificationResult.failed > 0) {
@@ -837,7 +837,7 @@ const updateOrderStatus = async (req, res) => {
         // Don\'t fail the order status update if FCM fails
       }
     }
-    
+
     if (status === 'delivered') {
       order.isDelivered = true;
       order.deliveredAt = Date.now();
@@ -849,14 +849,14 @@ const updateOrderStatus = async (req, res) => {
     // Update stock when order is confirmed (being_made or delivered)
     if ((status === 'being_made' || status === 'delivered') && !['being_made', 'delivered'].includes(previousStatus) && !order.stockUpdated) {
       console.log('📦 Updating stock for order:', order.orderNumber);
-      
+
       for (const item of order.items) {
         const product = await Product.findById(item.product._id);
         if (product) {
           // Check if we have enough stock
           if (product.countInStock >= item.quantity) {
             product.countInStock -= item.quantity;
-            
+
             try {
               // Clean product data before saving to prevent casting errors
               cleanProductData(product);
@@ -864,7 +864,7 @@ const updateOrderStatus = async (req, res) => {
               console.log(`✅ Updated stock for product ${product.title}: ${product.countInStock + item.quantity} -> ${product.countInStock}`);
             } catch (productSaveError) {
               console.error(`❌ Error saving product ${product.title}:`, productSaveError);
-              
+
               // Try to save without cleaning if the cleaning failed
               try {
                 // Reset any changes and just update the stock
@@ -885,8 +885,8 @@ const updateOrderStatus = async (req, res) => {
             }
           } else {
             console.log(`Warning: Insufficient stock for product ${product.title}. Available: ${product.countInStock}, Required: ${item.quantity}`);
-            return res.status(400).json({ 
-              message: `Insufficient stock for product ${product.title}. Available: ${product.countInStock}, Required: ${item.quantity}` 
+            return res.status(400).json({
+              message: `Insufficient stock for product ${product.title}. Available: ${product.countInStock}, Required: ${item.quantity}`
             });
           }
         }
@@ -899,7 +899,7 @@ const updateOrderStatus = async (req, res) => {
       try {
         const { createAdminNotification } = require('./notificationController');
         let statusTitle, statusMessage;
-        
+
         if (status === 'being_made') {
           statusTitle = '👨‍🍳 Order In Production!';
           statusMessage = `Order ${order.orderNumber} is now being prepared for ${order.shippingDetails?.fullName || 'customer'}.`;
@@ -907,7 +907,7 @@ const updateOrderStatus = async (req, res) => {
           statusTitle = '✅ Order Ready for Delivery!';
           statusMessage = `Order ${order.orderNumber} is ready for delivery to ${order.shippingDetails?.fullName || 'customer'}.`;
         }
-        
+
         if (statusTitle && statusMessage) {
           await createAdminNotification({
             type: 'info',
@@ -952,11 +952,11 @@ const updateOrderStatus = async (req, res) => {
     console.log('  previousStatus !== "delivered":', previousStatus !== 'delivered');
     console.log('  previousStatus value:', previousStatus);
     console.log('  Overall condition result:', status === 'delivered' && previousStatus !== 'delivered');
-    
+
     if (status === 'delivered' && previousStatus !== 'delivered') {
       console.log('🚚 Order delivered, sending delivery confirmation email with invoice...');
       console.log('📧 Previous status:', previousStatus, 'New status:', order.status);
-      
+
       // Create delivery notification for admin
       try {
         const { createAdminNotification } = require('./notificationController');
@@ -975,33 +975,33 @@ const updateOrderStatus = async (req, res) => {
       } catch (notificationError) {
         console.error('Error creating delivery notification:', notificationError);
       }
-      
+
       try {
         // Get customer details - try User model first, then fallback to shipping details
         const User = require('../models/User');
         let customer = null;
         let customerEmail = null;
         let customerName = null;
-        
+
         // Try to get customer from User model
         if (order.user) {
           customer = await User.findById(order.user);
           console.log('👤 Customer lookup result:', customer ? 'Found' : 'Not found');
           console.log('📧 Customer email from User model:', customer?.email);
-          
+
           if (customer && customer.email) {
             customerEmail = customer.email;
             customerName = customer.name;
           }
         }
-        
+
         // Fallback to shipping details email if User model email not found
         if (!customerEmail && order.shippingDetails && order.shippingDetails.email) {
           customerEmail = order.shippingDetails.email;
           customerName = order.shippingDetails.fullName;
           console.log('📧 Using email from shipping details:', customerEmail);
         }
-        
+
         if (customerEmail) {
           // Populate product details for delivery email
           const populatedOrder = await Order.findById(order._id)
@@ -1009,7 +1009,7 @@ const updateOrderStatus = async (req, res) => {
               path: 'items.product',
               select: 'name title price images sku discount'
             });
-          
+
           // Prepare delivery notification data
           const deliveryNotificationData = {
             order: populatedOrder,
@@ -1026,9 +1026,9 @@ const updateOrderStatus = async (req, res) => {
           // Send delivery confirmation email with invoice
           const { sendDeliveryConfirmationWithInvoice } = require('../services/emailNotificationService');
           const emailResult = await sendDeliveryConfirmationWithInvoice(deliveryNotificationData);
-          
+
           console.log('📧 Email sending result:', emailResult);
-          
+
           if (emailResult.success) {
             console.log('✅ Delivery confirmation email with invoice sent successfully to:', customerEmail);
           } else {
@@ -1051,12 +1051,12 @@ const updateOrderStatus = async (req, res) => {
     // Restore stock if order is cancelled from being_made or delivered status
     if (status === 'cancelled' && ['being_made', 'delivered'].includes(previousStatus) && order.stockUpdated) {
       console.log('Order cancelled from completed status, restoring stock for items:', order.items);
-      
+
       for (const item of order.items) {
         const product = await Product.findById(item.product._id);
         if (product) {
           product.countInStock += item.quantity;
-          
+
           try {
             // Clean product data before saving to prevent casting errors
             cleanProductData(product);
@@ -1064,7 +1064,7 @@ const updateOrderStatus = async (req, res) => {
             console.log(`✅ Restored stock for product ${product.title}: ${product.countInStock - item.quantity} -> ${product.countInStock}`);
           } catch (productSaveError) {
             console.error(`❌ Error saving product during stock restoration ${product.title}:`, productSaveError);
-            
+
             // Try to save without cleaning if the cleaning failed
             try {
               // Reset and try force save
@@ -1098,7 +1098,7 @@ const createRazorpayOrderHandler = async (req, res) => {
   try {
     console.log('Received request body:', req.body);
     const { amount, currency } = req.body;
-    
+
     if (!amount) {
       return res.status(400).json({
         success: false,
@@ -1112,7 +1112,7 @@ const createRazorpayOrderHandler = async (req, res) => {
     console.log('Creating Razorpay order with:', { amount: amountInPaise, currency });
     const order = await createRazorpayOrder(amountInPaise, currency);
     console.log('Razorpay order created:', order);
-    
+
     // Send back the response in the format Razorpay expects
     res.json({
       success: true,
@@ -1123,25 +1123,25 @@ const createRazorpayOrderHandler = async (req, res) => {
     });
   } catch (error) {
     console.error('Detailed error creating Razorpay order:', error);
-    
+
     // Check for specific Razorpay errors
     if (error.error) {
       const errorCode = error.error.code;
       const errorDescription = error.error.description || error.error.message;
-      
+
       console.error('Razorpay API Error:', {
         code: errorCode,
         description: errorDescription,
         details: error.error
       });
-      
+
       return res.status(400).json({
         success: false,
         message: `Razorpay Error: ${errorDescription}`,
         code: errorCode
       });
     }
-    
+
     // Generic error handling
     res.status(500).json({
       success: false,
@@ -1206,7 +1206,7 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
       const year = date.getFullYear().toString().slice(-2);
       const month = (date.getMonth() + 1).toString().padStart(2, '0');
       const day = date.getDate().toString().padStart(2, '0');
-      
+
       // Find the last order for the current year and month
       const lastOrder = await Order.findOne({
         orderNumber: new RegExp(`^${year}${month}`)
@@ -1274,7 +1274,7 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
       try {
         // Get customer details
         const customer = await User.findById(req.user._id);
-        
+
         // Populate product details for notifications
         const populatedOrder = await Order.findById(savedOrder._id)
           .populate({
@@ -1296,7 +1296,7 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
         // Send email notification (includes both customer and admin emails)
         const emailResult = await sendEmailNotification(notificationData);
         console.log('Email notification result:', emailResult);
-        
+
         // Create admin notification for real-time updates
         try {
           const adminNotification = await createOrderNotification({
@@ -1307,7 +1307,7 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
             currency: savedOrder.currency || 'INR'
           });
           console.log('✅ Admin notification created successfully for order:', savedOrder.orderNumber);
-          
+
           // Store in a global variable for real-time polling (optional backup)
           global.latestNotifications = global.latestNotifications || [];
           global.latestNotifications.unshift({
@@ -1320,14 +1320,14 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
             orderId: savedOrder._id,
             orderNumber: savedOrder.orderNumber
           });
-          
+
           // Keep only last 50 notifications in memory
           if (global.latestNotifications.length > 50) {
             global.latestNotifications = global.latestNotifications.slice(0, 50);
           }
-          
+
           console.log('📨 Notification added to global notifications for real-time polling');
-          
+
           // Send FCM push notification to all admin devices
           try {
             console.log('🔔 Sending push notification to all admin devices...');
@@ -1344,14 +1344,14 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
           } catch (fcmError) {
             console.error('❌ Error sending FCM push notification:', fcmError.message);
           }
-          
+
         } catch (adminNotificationError) {
           console.error('❌ Error creating admin notification:', adminNotificationError);
         }
-        
+
         // Add notification status to response
         savedOrder.emailNotificationStatus = emailResult;
-        
+
       } catch (notificationError) {
         console.error('❌ Error sending order notifications:', notificationError);
         // Don't fail the order creation if notifications fail
@@ -1391,11 +1391,11 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
 const getUpcomingDeliveries = async (req, res) => {
   try {
     const { days = 7 } = req.query; // Default to 7 days ahead
-    
+
     const now = new Date();
     const futureDate = new Date();
     futureDate.setDate(now.getDate() + parseInt(days));
-    
+
     // Find orders with delivery dates within the specified range
     const orders = await Order.find({
       'shippingDetails.deliveryDate': {
@@ -1404,24 +1404,24 @@ const getUpcomingDeliveries = async (req, res) => {
       },
       status: { $in: ['order_placed', 'received', 'being_made', 'out_for_delivery'] } // Exclude cancelled and delivered
     })
-    .populate('user', 'name email')
-    .populate('items.product', 'title images price')
-    .sort({ 'shippingDetails.deliveryDate': 1 }); // Sort by delivery date ascending
+      .populate('user', 'name email')
+      .populate('items.product', 'title images price')
+      .sort({ 'shippingDetails.deliveryDate': 1 }); // Sort by delivery date ascending
 
     // Add highlighting information
     const ordersWithHighlight = orders.map(order => {
       const deliveryDate = order.shippingDetails?.deliveryDate;
       let highlight = null;
       let priority = 'low';
-      
+
       if (deliveryDate) {
         const deliveryDateTime = new Date(deliveryDate);
         const diffInDays = Math.ceil((deliveryDateTime - now) / (1000 * 60 * 60 * 24));
-        
+
         if (diffInDays === 0) {
-          highlight = { 
-            type: 'today', 
-            urgency: 'critical', 
+          highlight = {
+            type: 'today',
+            urgency: 'critical',
             message: 'Delivery today!',
             color: 'red',
             bgColor: 'bg-red-50 border-red-200',
@@ -1429,9 +1429,9 @@ const getUpcomingDeliveries = async (req, res) => {
           };
           priority = 'critical';
         } else if (diffInDays === 1) {
-          highlight = { 
-            type: 'tomorrow', 
-            urgency: 'high', 
+          highlight = {
+            type: 'tomorrow',
+            urgency: 'high',
             message: 'Delivery tomorrow',
             color: 'orange',
             bgColor: 'bg-orange-50 border-orange-200',
@@ -1439,9 +1439,9 @@ const getUpcomingDeliveries = async (req, res) => {
           };
           priority = 'high';
         } else if (diffInDays <= 3) {
-          highlight = { 
-            type: 'soon', 
-            urgency: 'medium', 
+          highlight = {
+            type: 'soon',
+            urgency: 'medium',
             message: `Delivery in ${diffInDays} days`,
             color: 'yellow',
             bgColor: 'bg-yellow-50 border-yellow-200',
@@ -1449,9 +1449,9 @@ const getUpcomingDeliveries = async (req, res) => {
           };
           priority = 'medium';
         } else {
-          highlight = { 
-            type: 'upcoming', 
-            urgency: 'low', 
+          highlight = {
+            type: 'upcoming',
+            urgency: 'low',
             message: `Delivery in ${diffInDays} days`,
             color: 'blue',
             bgColor: 'bg-blue-50 border-blue-200',
@@ -1511,12 +1511,12 @@ const getUpcomingDeliveries = async (req, res) => {
 const getDeliveryCalendar = async (req, res) => {
   try {
     const { month, year } = req.query;
-    
+
     // Default to current month if not specified
     const targetDate = new Date();
     if (month) targetDate.setMonth(parseInt(month) - 1);
     if (year) targetDate.setFullYear(parseInt(year));
-    
+
     // Get first and last day of the month
     const firstDay = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1);
     const lastDay = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0);
@@ -1529,18 +1529,18 @@ const getDeliveryCalendar = async (req, res) => {
         $lte: lastDay
       }
     })
-    .populate('user', 'name email')
-    .populate('items.product', 'title')
-    .sort({ 'shippingDetails.deliveryDate': 1 });
+      .populate('user', 'name email')
+      .populate('items.product', 'title')
+      .sort({ 'shippingDetails.deliveryDate': 1 });
 
     // Group orders by date
     const calendarData = {};
-    
+
     orders.forEach(order => {
       const deliveryDate = order.shippingDetails?.deliveryDate;
       if (deliveryDate) {
         const dateKey = new Date(deliveryDate).toISOString().split('T')[0];
-        
+
         if (!calendarData[dateKey]) {
           calendarData[dateKey] = {
             date: dateKey,
@@ -1556,7 +1556,7 @@ const getDeliveryCalendar = async (req, res) => {
             }
           };
         }
-        
+
         calendarData[dateKey].orders.push({
           _id: order._id,
           orderNumber: order.orderNumber,
@@ -1566,7 +1566,7 @@ const getDeliveryCalendar = async (req, res) => {
           timeSlot: order.shippingDetails.timeSlot,
           itemCount: order.items.length
         });
-        
+
         calendarData[dateKey].count++;
         calendarData[dateKey].totalAmount += order.totalAmount;
         calendarData[dateKey].statusCounts[order.status]++;
@@ -1596,7 +1596,7 @@ const getDeliveryCalendar = async (req, res) => {
 const testDeliveryEmail = async (req, res) => {
   try {
     const { orderId } = req.body;
-    
+
     if (!orderId) {
       return res.status(400).json({ message: 'Order ID is required' });
     }
@@ -1605,7 +1605,7 @@ const testDeliveryEmail = async (req, res) => {
       path: 'items.product',
       select: 'title price images sku discount'
     });
-    
+
     if (!order) {
       return res.status(404).json({ message: 'Order not found' });
     }
@@ -1615,28 +1615,28 @@ const testDeliveryEmail = async (req, res) => {
     let customer = null;
     let customerEmail = null;
     let customerName = null;
-    
+
     // Try to get customer from User model
     if (order.user) {
       customer = await User.findById(order.user);
       console.log('👤 Customer lookup result:', customer ? 'Found' : 'Not found');
       console.log('📧 Customer email from User model:', customer?.email);
-      
+
       if (customer && customer.email) {
         customerEmail = customer.email;
         customerName = customer.name;
       }
     }
-    
+
     // Fallback to shipping details email if User model email not found
     if (!customerEmail && order.shippingDetails && order.shippingDetails.email) {
       customerEmail = order.shippingDetails.email;
       customerName = order.shippingDetails.fullName;
       console.log('📧 Using email from shipping details:', customerEmail);
     }
-    
+
     if (!customerEmail) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         message: 'Customer email not found in User model or shipping details',
         orderUser: order.user,
         shippingEmail: order.shippingDetails?.email
@@ -1645,7 +1645,7 @@ const testDeliveryEmail = async (req, res) => {
 
     console.log('🧪 Testing delivery email for order:', order.orderNumber);
     console.log('📧 Customer email:', customerEmail);
-    
+
     // Prepare delivery notification data
     const deliveryNotificationData = {
       order: order,
@@ -1660,22 +1660,22 @@ const testDeliveryEmail = async (req, res) => {
     // Send delivery confirmation email with invoice
     const { sendDeliveryConfirmationWithInvoice } = require('../services/emailNotificationService');
     const emailResult = await sendDeliveryConfirmationWithInvoice(deliveryNotificationData);
-    
+
     console.log('🧪 Test email result:', emailResult);
-    
+
     if (emailResult.success) {
-      res.json({ 
-        success: true, 
+      res.json({
+        success: true,
         message: 'Test delivery email sent successfully',
         orderNumber: order.orderNumber,
         customerEmail: customerEmail,
         messageId: emailResult.messageId
       });
     } else {
-      res.status(500).json({ 
-        success: false, 
+      res.status(500).json({
+        success: false,
         message: 'Failed to send test delivery email',
-        error: emailResult.error 
+        error: emailResult.error
       });
     }
   } catch (error) {
@@ -1684,10 +1684,70 @@ const testDeliveryEmail = async (req, res) => {
   }
 };
 
+// @desc    Get invoice PDF for an order
+// @route   GET /api/orders/:id/invoice
+// @access  Private
+const getOrderInvoice = async (req, res) => {
+  try {
+    console.log('📄 getOrderInvoice called for order ID:', req.params.id);
+
+    // Fetch the order and populate product details
+    const order = await Order.findById(req.params.id)
+      .populate({
+        path: 'items.product',
+        select: 'name title price images sku discount'
+      })
+      .populate('user', 'name email phone');
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    // Authorization: ensure only order owner or admin can download
+    const isOwner = order.user && order.user._id && order.user._id.toString() === req.user._id.toString();
+    const isAdmin = req.user.role === 'admin';
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({ success: false, message: 'Not authorized to access this invoice' });
+    }
+
+    // Build customer object from order data
+    const customer = {
+      name: order.user?.name || order.shippingDetails?.fullName || 'Customer',
+      email: order.user?.email || order.shippingDetails?.email || '',
+      phone: order.user?.phone || order.shippingDetails?.phone || ''
+    };
+
+    // Prepare data for invoice generation
+    const orderData = { order, customer };
+
+    // Generate the HTML invoice using the shared template
+    const { generateInvoiceHTML, generateInvoicePDF } = require('../services/emailNotificationService');
+    const htmlContent = generateInvoiceHTML(orderData);
+
+    // Convert HTML to PDF
+    const pdfBuffer = await generateInvoicePDF(htmlContent, order.orderNumber);
+
+    console.log('✅ Invoice PDF generated for order:', order.orderNumber);
+
+    // Set response headers and send PDF
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename=Invoice-${order.orderNumber}.pdf`,
+      'Content-Length': pdfBuffer.length
+    });
+
+    res.send(pdfBuffer);
+  } catch (error) {
+    console.error('❌ Error generating invoice:', error);
+    res.status(500).json({ success: false, message: 'Failed to generate invoice', error: error.message });
+  }
+};
+
 module.exports = {
   createOrder,
   getNextOrderNumber,
   getOrderById,
+  getOrderInvoice,
   updateOrderToPaid,
   updateOrderToDelivered,
   getUserOrders,
