@@ -178,6 +178,10 @@ const createOrder = async (req, res) => {
       },
       items: items.map(item => ({
         product: item.product,
+        title: item.title || '',
+        image: item.image || item.images?.[0] || '',
+        images: Array.isArray(item.images) ? item.images : [],
+        selectedVariant: item.selectedVariant || null,
         quantity: item.quantity,
         price: item.price,
         finalPrice: item.finalPrice,
@@ -1240,6 +1244,10 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
         },
         items: orderData.items.map(item => ({
           product: item.product,
+          title: item.title || '',
+          image: item.image || item.images?.[0] || '',
+          images: Array.isArray(item.images) ? item.images : [],
+          selectedVariant: item.selectedVariant || null,
           quantity: item.quantity,
           price: item.price,
           finalPrice: item.finalPrice,

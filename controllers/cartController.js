@@ -1,23 +1,12 @@
 const User = require('../models/User');
 const Product = require('../models/Product');
 
-// @desc    Get user's cart
-// @route   GET /api/cart
-// @access  Private
-const getCart = async (req, res) => {
-  try {
-    const user = await User.findById(req.user._id).populate({
-      path: 'cart.productId',
-      select: 'title price images discount category description careInstructions isNew isNewArrival isFeatured'
-    });
-
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    // Transform cart items to include product details
-    const cartItems = user.cart.map(item => ({
-      _id: item.productId._id,
+const mapCartItems = (userWithCart) =>
+  userWithCart.cart
+    .filter(item => item.productId)
+    .map(item => ({
+      // Use cart line _id (not product _id) so variants/customized lines can be updated independently.
+      _id: item._id,
       productId: item.productId._id,
       title: item.productId.title,
       price: item.customPrice !== undefined ? item.customPrice : item.productId.price,
@@ -37,6 +26,23 @@ const getCart = async (req, res) => {
       quantity: item.quantity,
       addedAt: item.addedAt
     }));
+
+// @desc    Get user's cart
+// @route   GET /api/cart
+// @access  Private
+const getCart = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).populate({
+      path: 'cart.productId',
+      select: 'title price images discount category description careInstructions isNew isNewArrival isFeatured'
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Transform cart items to include product details
+    const cartItems = mapCartItems(user);
 
     res.json({
       success: true,
@@ -105,27 +111,7 @@ const addToCart = async (req, res) => {
       select: 'title price images discount category description careInstructions isNew isNewArrival isFeatured'
     });
 
-    const cartItems = updatedUser.cart.map(item => ({
-      _id: item.productId._id,
-      productId: item.productId._id,
-      title: item.productId.title,
-      price: item.customPrice !== undefined ? item.customPrice : item.productId.price,
-      images: item.productId.images,
-      discount: item.productId.discount,
-      category: item.productId.category,
-      description: item.productId.description,
-      careInstructions: item.productId.careInstructions,
-      isNewArrival: Boolean(
-        typeof item.productId.isNew === 'boolean'
-          ? item.productId.isNew
-          : item.productId.isNewArrival
-      ),
-      isFeatured: item.productId.isFeatured,
-      customizations: item.customizations,
-      selectedVariant: item.selectedVariant,
-      quantity: item.quantity,
-      addedAt: item.addedAt
-    }));
+    const cartItems = mapCartItems(updatedUser);
 
     res.json({
       success: true,
@@ -156,9 +142,12 @@ const updateCartItem = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    const itemIndex = user.cart.findIndex(
-      item => item.productId.toString() === productId
-    );
+    // Prefer cart line item id; fallback to product id for backward compatibility.
+    let itemIndex = user.cart.findIndex(item => item._id.toString() === productId);
+
+    if (itemIndex === -1) {
+      itemIndex = user.cart.findIndex(item => item.productId.toString() === productId);
+    }
 
     if (itemIndex === -1) {
       return res.status(404).json({ message: 'Item not found in cart' });
@@ -173,27 +162,7 @@ const updateCartItem = async (req, res) => {
       select: 'title price images discount category description careInstructions isNew isNewArrival isFeatured'
     });
 
-    const cartItems = updatedUser.cart.map(item => ({
-      _id: item.productId._id,
-      productId: item.productId._id,
-      title: item.productId.title,
-      price: item.customPrice !== undefined ? item.customPrice : item.productId.price,
-      images: item.productId.images,
-      discount: item.productId.discount,
-      category: item.productId.category,
-      description: item.productId.description,
-      careInstructions: item.productId.careInstructions,
-      isNewArrival: Boolean(
-        typeof item.productId.isNew === 'boolean'
-          ? item.productId.isNew
-          : item.productId.isNewArrival
-      ),
-      isFeatured: item.productId.isFeatured,
-      customizations: item.customizations,
-      selectedVariant: item.selectedVariant,
-      quantity: item.quantity,
-      addedAt: item.addedAt
-    }));
+    const cartItems = mapCartItems(updatedUser);
 
     res.json({
       success: true,
@@ -219,9 +188,14 @@ const removeFromCart = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    user.cart = user.cart.filter(
-      item => item.productId.toString() !== productId
-    );
+    // Prefer removing by cart line item id; fallback to removing by product id.
+    const hasLineItemId = user.cart.some(item => item._id.toString() === productId);
+
+    if (hasLineItemId) {
+      user.cart = user.cart.filter(item => item._id.toString() !== productId);
+    } else {
+      user.cart = user.cart.filter(item => item.productId.toString() !== productId);
+    }
 
     await user.save();
 
@@ -231,27 +205,7 @@ const removeFromCart = async (req, res) => {
       select: 'title price images discount category description careInstructions isNew isNewArrival isFeatured'
     });
 
-    const cartItems = updatedUser.cart.map(item => ({
-      _id: item.productId._id,
-      productId: item.productId._id,
-      title: item.productId.title,
-      price: item.customPrice !== undefined ? item.customPrice : item.productId.price,
-      images: item.productId.images,
-      discount: item.productId.discount,
-      category: item.productId.category,
-      description: item.productId.description,
-      careInstructions: item.productId.careInstructions,
-      isNewArrival: Boolean(
-        typeof item.productId.isNew === 'boolean'
-          ? item.productId.isNew
-          : item.productId.isNewArrival
-      ),
-      isFeatured: item.productId.isFeatured,
-      customizations: item.customizations,
-      selectedVariant: item.selectedVariant,
-      quantity: item.quantity,
-      addedAt: item.addedAt
-    }));
+    const cartItems = mapCartItems(updatedUser);
 
     res.json({
       success: true,
