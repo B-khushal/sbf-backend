@@ -123,7 +123,8 @@ const startServer = async () => {
         'https://www.sbflorist.in',
         'http://localhost:8080',
         'http://localhost:3000',
-        'http://localhost:5173'
+        'http://localhost:5173',
+        'http://192.168.1.7:8080'
       ];
 
       res.status(200).json({
@@ -181,7 +182,8 @@ const startServer = async () => {
         'https://www.sbflorist.in',
         'http://localhost:8080',
         'http://localhost:3000',
-        'http://localhost:5173'
+        'http://localhost:5173',
+        'http://192.168.1.7:8080'
       ];
 
       if (origin && (allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production')) {

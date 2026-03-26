@@ -787,6 +787,71 @@ const getOrders = async (req, res) => {
   }
 };
 
+// @desc    Get today's orders for admin workflow
+// @route   GET /api/orders/today
+// @access  Private/Admin
+const getTodayOrders = async (req, res) => {
+  try {
+    const { status = 'all' } = req.query;
+
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const endOfToday = new Date();
+    endOfToday.setHours(23, 59, 59, 999);
+
+    const query = {
+      createdAt: {
+        $gte: startOfToday,
+        $lte: endOfToday
+      }
+    };
+
+    // Worker-friendly grouping for quick filtering in UI
+    if (status === 'pending') {
+      query.status = { $in: ['order_placed', 'received', 'being_made', 'out_for_delivery'] };
+    } else if (status === 'completed') {
+      query.status = 'delivered';
+    } else if (status !== 'all') {
+      query.status = status;
+    }
+
+    const orders = await Order.find(query)
+      .populate([
+        {
+          path: 'user',
+          select: 'name email'
+        },
+        {
+          path: 'items.product',
+          select: 'title images price discount vendor',
+          populate: {
+            path: 'vendor',
+            select: 'storeName'
+          }
+        }
+      ])
+      .sort({ createdAt: 1 });
+
+    res.json({
+      success: true,
+      count: orders.length,
+      dateRange: {
+        from: startOfToday,
+        to: endOfToday
+      },
+      orders
+    });
+  } catch (error) {
+    console.error('Error fetching today\'s orders:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server Error: Failed to fetch today\'s orders',
+      error: error.message
+    });
+  }
+};
+
 // @desc    Update order status
 // @route   PUT /api/orders/:id/status
 // @access  Private/Admin
@@ -1760,6 +1825,7 @@ module.exports = {
   updateOrderToDelivered,
   getUserOrders,
   getOrders,
+  getTodayOrders,
   updateOrderStatus,
   createRazorpayOrder: createRazorpayOrderHandler,
   verifyRazorpayPayment: verifyRazorpayPaymentHandler,

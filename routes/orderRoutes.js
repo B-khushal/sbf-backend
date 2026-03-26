@@ -13,6 +13,7 @@ const {
   getNextOrderNumber,
   createRazorpayOrder,
   verifyRazorpayPayment,
+  getTodayOrders,
   getUpcomingDeliveries,
   getDeliveryCalendar,
   testDeliveryEmail,
@@ -21,6 +22,7 @@ const {
 router.post('/', protect, createOrder);
 router.get('/', protect, admin, getOrders);
 router.get('/myorders', protect, getUserOrders);
+router.get('/today', protect, admin, getTodayOrders);
 
 // New date and delivery focused routes
 router.get('/upcoming-deliveries', protect, admin, getUpcomingDeliveries);

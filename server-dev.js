@@ -10,6 +10,7 @@ const corsOptions = {
     'http://localhost:8080',
     'http://localhost:3000', 
     'http://localhost:5173',
+    'http://192.168.1.7:8080',
     'https://sbflorist.in',
     'https://www.sbflorist.in'
   ],
