@@ -93,7 +93,7 @@ const orderSchema = new mongoose.Schema({
   },
   currency: {
     type: String,
-    enum: ['INR', 'USD', 'EUR', 'GBP'],
+    enum: ['INR', 'USD', 'AED', 'EUR', 'GBP'],
     default: 'INR'
   },
   currencyRate: {
@@ -102,7 +102,7 @@ const orderSchema = new mongoose.Schema({
   },
   originalCurrency: {
     type: String,
-    enum: ['INR', 'USD', 'EUR', 'GBP'],
+    enum: ['INR', 'USD', 'AED', 'EUR', 'GBP'],
     default: 'INR'
   },
   status: {
