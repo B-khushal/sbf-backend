@@ -100,6 +100,11 @@ const startServer = async () => {
     // Root endpoint
     app.get('/', (req, res) => {
       const origin = req.get('Origin');
+      const acceptsHtml = (req.headers.accept || '').includes('text/html');
+
+      if (acceptsHtml) {
+        return res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
+      }
       console.log(`🏠 Root endpoint accessed from origin: ${origin || 'no-origin'}`);
       
       res.status(200).json({
