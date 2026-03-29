@@ -12,7 +12,6 @@ dotenv.config();
 // Initialize email service
 const { initEmailService } = require('./services/emailNotificationService');
 
-const NGROK_HOST_PATTERN = /^https:\/\/[a-z0-9-]+\.ngrok(?:-free)?\.app$/i;
 const STATIC_ALLOWED_ORIGINS = [
   'https://sbflorist.in',
   'https://www.sbflorist.in',
@@ -28,8 +27,7 @@ const STATIC_ALLOWED_ORIGINS = [
 
 const configuredOrigins = [
   process.env.FRONTEND_URL,
-  process.env.FRONTEND_APP_URL,
-  process.env.NGROK_URL
+  process.env.FRONTEND_APP_URL
 ].filter(Boolean);
 
 const allowedOrigins = new Set([...STATIC_ALLOWED_ORIGINS, ...configuredOrigins]);
@@ -40,7 +38,6 @@ const hasFrontendBuild = fs.existsSync(frontendIndexPath);
 const isAllowedOrigin = (origin) => {
   if (!origin) return true;
   if (allowedOrigins.has(origin)) return true;
-  if (NGROK_HOST_PATTERN.test(origin)) return true;
   return process.env.NODE_ENV !== 'production';
 };
 
@@ -66,7 +63,7 @@ const startServer = async () => {
       },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin', 'ngrok-skip-browser-warning'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
       exposedHeaders: ['Content-Range', 'X-Content-Range'],
       preflightContinue: false,
       optionsSuccessStatus: 204,
@@ -141,8 +138,7 @@ const startServer = async () => {
         cors: {
           enabled: true,
           origin: req.get('Origin') || 'No Origin',
-          allowedOrigins: [...allowedOrigins],
-          dynamicOrigins: ['https://*.ngrok-free.app', 'https://*.ngrok.app']
+          allowedOrigins: [...allowedOrigins]
         }
       });
     });
@@ -183,7 +179,7 @@ const startServer = async () => {
         res.header('Access-Control-Allow-Origin', origin);
       }
       res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
-      res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, ngrok-skip-browser-warning');
+      res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
       res.header('Access-Control-Allow-Credentials', 'true');
       res.vary('Origin');
       next();
