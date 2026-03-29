@@ -11,6 +11,35 @@ dotenv.config();
 // Initialize email service
 const { initEmailService, testEmailService } = require('./services/emailNotificationService');
 
+const NGROK_HOST_PATTERN = /^https:\/\/[a-z0-9-]+\.ngrok(?:-free)?\.app$/i;
+const STATIC_ALLOWED_ORIGINS = [
+  'https://sbflorist.in',
+  'https://www.sbflorist.in',
+  'https://sbf-frontend.onrender.com',
+  'https://sbf-backend.onrender.com',
+  'http://localhost:8080',
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'http://192.168.1.7:8080',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:5173'
+];
+
+const configuredOrigins = [
+  process.env.FRONTEND_URL,
+  process.env.FRONTEND_APP_URL,
+  process.env.NGROK_URL
+].filter(Boolean);
+
+const allowedOrigins = new Set([...STATIC_ALLOWED_ORIGINS, ...configuredOrigins]);
+
+const isAllowedOrigin = (origin) => {
+  if (!origin) return true;
+  if (allowedOrigins.has(origin)) return true;
+  if (NGROK_HOST_PATTERN.test(origin)) return true;
+  return process.env.NODE_ENV !== 'production';
+};
+
 const startServer = async () => {
   try {
     // Connect to database first
@@ -25,29 +54,13 @@ const startServer = async () => {
     // --- Comprehensive CORS Configuration ---
     const corsOptions = {
       origin: function(origin, callback) {
-        const allowedOrigins = [
-          // Production domains
-          'https://sbflorist.in',
-          'https://www.sbflorist.in',
-          // Render deployment URLs
-          'https://sbf-frontend.onrender.com',
-          'https://sbf-backend.onrender.com',
-          // Local development
-          'http://localhost:8080',
-          'http://localhost:3000',
-          'http://localhost:5173',
-          'http://192.168.1.7:8080',
-          'http://127.0.0.1:3000',
-          'http://127.0.0.1:5173'
-        ];
-        
         // Allow requests with no origin (like mobile apps or curl requests)
         if (!origin) return callback(null, true);
-        
-        if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV !== 'production') {
+
+        if (isAllowedOrigin(origin)) {
           callback(null, true);
         } else {
-          console.warn(`⚠️ Blocked request from unauthorized origin: ${origin}`);
+          console.warn(`Blocked request from unauthorized origin: ${origin}`);
           callback(new Error('Not allowed by CORS'));
         }
       },
@@ -123,15 +136,6 @@ const startServer = async () => {
 
     // Health check endpoint
     app.get('/health', (req, res) => {
-      const allowedOrigins = [
-        'https://sbflorist.in',
-        'https://www.sbflorist.in',
-        'http://localhost:8080',
-        'http://localhost:3000',
-        'http://localhost:5173',
-        'http://192.168.1.7:8080'
-      ];
-
       res.status(200).json({
         status: 'OK',
         message: 'Server is healthy',
@@ -142,7 +146,8 @@ const startServer = async () => {
         cors: {
           enabled: true,
           origin: req.get('Origin') || 'No Origin',
-          allowedOrigins: allowedOrigins
+          allowedOrigins: [...allowedOrigins],
+          dynamicOrigins: ['https://*.ngrok-free.app', 'https://*.ngrok.app']
         }
       });
     });
@@ -182,16 +187,8 @@ const startServer = async () => {
     // Serve uploaded files with proper CORS headers
     app.use('/uploads', (req, res, next) => {
       const origin = req.get('Origin');
-      const allowedOrigins = [
-        'https://sbflorist.in',
-        'https://www.sbflorist.in',
-        'http://localhost:8080',
-        'http://localhost:3000',
-        'http://localhost:5173',
-        'http://192.168.1.7:8080'
-      ];
 
-      if (origin && (allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production')) {
+      if (origin && isAllowedOrigin(origin)) {
         res.header('Access-Control-Allow-Origin', origin);
       }
       res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
