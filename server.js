@@ -207,7 +207,7 @@ const startServer = async () => {
       }
       
       console.log(`🌐 Serving React app for route: ${req.path}`);
-      res.sendFile(path.join(__dirname, 'dist', 'index.html')); // or 'build'
+      res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
     });
 
     // Error handler middleware
