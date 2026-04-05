@@ -5,6 +5,8 @@ const morgan = require('morgan');
 const connectDB = require('./config/db');
 const path = require('path');
 const fs = require('fs');
+const http = require('http');
+const https = require('https');
 
 // Load environment variables
 dotenv.config();
@@ -228,6 +230,30 @@ const startServer = async () => {
       console.log('CORS enabled for configured domains');
       console.log('Database: Connected to MongoDB Atlas');
       console.log(`Access the server from other devices using: http://YOUR_IP:${PORT}`);
+
+      // Keep-alive ping to reduce Render free instance spin-down.
+      const RENDER_URL = process.env.RENDER_EXTERNAL_URL || process.env.APP_URL;
+      if (RENDER_URL) {
+        console.log(`Keep-alive service initialized for: ${RENDER_URL}`);
+
+        const pingClient = RENDER_URL.startsWith('https://') ? https : http;
+        setInterval(() => {
+          pingClient.get(`${RENDER_URL}/health`, (res) => {
+            if (res.statusCode === 200) {
+              console.log(`[KEEP_ALIVE] Successful ping to ${RENDER_URL}`);
+            } else {
+              console.warn(`[KEEP_ALIVE] Ping to ${RENDER_URL} returned status: ${res.statusCode}`);
+            }
+
+            // Drain response data so sockets can be reused/closed cleanly.
+            res.resume();
+          }).on('error', (err) => {
+            console.error(`[KEEP_ALIVE_ERROR] Ping failed for ${RENDER_URL}: ${err.message}`);
+          });
+        }, 9 * 60 * 1000); // Ping every 9 minutes
+      } else {
+        console.log('Keep-alive service skipped (no RENDER_EXTERNAL_URL or APP_URL found)');
+      }
     }).on('error', (err) => {
       console.error('Server failed to start:', err);
       process.exit(1);
