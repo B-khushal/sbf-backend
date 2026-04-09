@@ -47,6 +47,42 @@ const userSchema = new mongoose.Schema({
         zipCode: String,
         country: String,
     },
+    addresses: [{
+        _id: false,
+        id: {
+            type: String,
+            required: true
+        },
+        firstName: String,
+        lastName: String,
+        address: String,
+        apartment: String,
+        city: String,
+        state: String,
+        zipCode: String,
+        phone: String,
+        email: String,
+        notes: String,
+        deliveryOption: {
+            type: String,
+            enum: ['self', 'gift'],
+            default: 'self'
+        },
+        isDefault: {
+            type: Boolean,
+            default: false
+        },
+        giftMessage: String,
+        receiverFirstName: String,
+        receiverLastName: String,
+        receiverEmail: String,
+        receiverPhone: String,
+        receiverAddress: String,
+        receiverApartment: String,
+        receiverCity: String,
+        receiverState: String,
+        receiverZipCode: String,
+    }],
     // Google OAuth fields
     googleId: {
         type: String,

@@ -5,6 +5,40 @@ const { OAuth2Client } = require('google-auth-library');
 // Initialize Google OAuth client
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
+const normalizeAddresses = (addresses = []) => {
+  if (!Array.isArray(addresses)) {
+    return [];
+  }
+
+  return addresses
+    .filter((address) => address && typeof address === 'object')
+    .map((address, index) => ({
+      id: String(address.id || `${Date.now()}-${index}`),
+      firstName: address.firstName || '',
+      lastName: address.lastName || '',
+      address: address.address || '',
+      apartment: address.apartment || '',
+      city: address.city || '',
+      state: address.state || '',
+      zipCode: address.zipCode || '',
+      phone: address.phone || '',
+      email: address.email || '',
+      notes: address.notes || '',
+      deliveryOption: address.deliveryOption === 'gift' ? 'gift' : 'self',
+      isDefault: !!address.isDefault,
+      giftMessage: address.giftMessage || '',
+      receiverFirstName: address.receiverFirstName || '',
+      receiverLastName: address.receiverLastName || '',
+      receiverEmail: address.receiverEmail || '',
+      receiverPhone: address.receiverPhone || '',
+      receiverAddress: address.receiverAddress || '',
+      receiverApartment: address.receiverApartment || '',
+      receiverCity: address.receiverCity || '',
+      receiverState: address.receiverState || '',
+      receiverZipCode: address.receiverZipCode || '',
+    }));
+};
+
 // @desc    Auth user & get token
 // @route   POST /api/auth/login
 // @access  Public
@@ -152,6 +186,7 @@ const getUserProfile = async (req, res) => {
         vendorStatus: user.vendorStatus,
         phone: user.phone,
         address: user.address,
+        addresses: user.addresses || [],
         lastActive: user.lastActive,
         lastLogin: user.lastLogin
       });
@@ -181,6 +216,10 @@ const updateUserProfile = async (req, res) => {
           ...req.body.address,
         };
       }
+
+      if (req.body.addresses !== undefined) {
+        user.addresses = normalizeAddresses(req.body.addresses);
+      }
       
       if (req.body.password) {
         user.password = req.body.password;
@@ -197,6 +236,7 @@ const updateUserProfile = async (req, res) => {
         status: updatedUser.status,
         phone: updatedUser.phone,
         address: updatedUser.address,
+        addresses: updatedUser.addresses || [],
         lastActive: updatedUser.lastActive,
         lastLogin: updatedUser.lastLogin,
         token
