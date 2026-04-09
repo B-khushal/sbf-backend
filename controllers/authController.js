@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const generateToken = require('../utils/generateToken');
 const { OAuth2Client } = require('google-auth-library');
+const { logActivity } = require('../utils/activityLogger');
 
 // Initialize Google OAuth client
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -48,6 +49,13 @@ const loginUser = async (req, res) => {
 
     // ✅ Ensure email and password are provided
     if (!email || !password) {
+      await logActivity({
+        req,
+        actionType: 'Login',
+        method: 'POST',
+        status: 'Failed',
+        metadata: { reason: 'Missing credentials', email },
+      });
       return res.status(400).json({ message: "Email and password are required" });
     }
 
@@ -55,12 +63,29 @@ const loginUser = async (req, res) => {
 
     // ✅ Check if user exists and password matches
     if (!user) {
+      await logActivity({
+        req,
+        actionType: 'Login',
+        method: 'POST',
+        status: 'Failed',
+        metadata: { reason: 'User not found', email },
+      });
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
     const isPasswordMatch = await user.matchPassword(password);
 
     if (!isPasswordMatch) {
+      await logActivity({
+        req,
+        actionType: 'Login',
+        method: 'POST',
+        status: 'Failed',
+        userId: user._id,
+        userName: user.name,
+        email: user.email,
+        metadata: { reason: 'Password mismatch' },
+      });
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
@@ -71,6 +96,17 @@ const loginUser = async (req, res) => {
 
     // Generate token
     const token = generateToken(user);
+
+    await logActivity({
+      req,
+      actionType: 'Login',
+      method: 'POST',
+      status: 'Success',
+      userId: user._id,
+      userName: user.name,
+      email: user.email,
+      metadata: { role: user.role },
+    });
 
     // ✅ Return user details with a token
     res.json({
@@ -256,6 +292,16 @@ const logoutUser = async (req, res) => {
       const user = await User.findById(req.user._id);
       if (user) {
         await user.updateLastActive();
+
+        await logActivity({
+          req,
+          actionType: 'Logout',
+          method: 'POST',
+          status: 'Success',
+          userId: user._id,
+          userName: user.name,
+          email: user.email,
+        });
       }
     }
     res.json({ message: "User logged out successfully" });

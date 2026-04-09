@@ -53,4 +53,27 @@ const adminOrVendor = (req, res, next) => {
   }
 };
 
-module.exports = { protect, admin, adminOrVendor };
+// Optional authentication middleware - attaches user if token is valid but never blocks request.
+const optionalProtect = async (req, res, next) => {
+  try {
+    if (
+      req.headers.authorization &&
+      req.headers.authorization.startsWith('Bearer')
+    ) {
+      const token = req.headers.authorization.split(' ')[1];
+      if (token) {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const user = await User.findById(decoded.id).select('-password');
+        if (user) {
+          req.user = user;
+        }
+      }
+    }
+  } catch (error) {
+    // Intentionally ignore invalid token for optional auth routes.
+  }
+
+  next();
+};
+
+module.exports = { protect, admin, adminOrVendor, optionalProtect };

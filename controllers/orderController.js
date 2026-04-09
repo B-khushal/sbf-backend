@@ -8,6 +8,7 @@ const { admin } = require('../middleware/authMiddleware');
 const { createOrderNotification } = require('./notificationController');
 const { sendEmailNotification, sendDeliveryConfirmationWithInvoice } = require('../services/emailNotificationService');
 const { sendOrderNotificationToAdmins, sendToAllAdmins } = require('../services/fcmService');
+const { logActivity } = require('../utils/activityLogger');
 
 // Helper function to recursively flatten arrays and extract strings
 const flattenToStrings = (value) => {
@@ -209,6 +210,20 @@ const createOrder = async (req, res) => {
 
     const order = new Order(orderData);
     const savedOrder = await order.save();
+
+    await logActivity({
+      req,
+      actionType: 'Checkout',
+      method: 'POST',
+      status: 'Success',
+      userId: req.user._id,
+      metadata: {
+        orderId: savedOrder._id,
+        orderNumber: savedOrder.orderNumber,
+        totalAmount: savedOrder.totalAmount,
+        itemCount: items.length,
+      },
+    });
 
     console.log('Order saved successfully:', JSON.stringify(savedOrder, null, 2));
 

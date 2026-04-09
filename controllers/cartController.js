@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const Product = require('../models/Product');
+const { logActivity } = require('../utils/activityLogger');
 
 const mapCartItems = (userWithCart) =>
   userWithCart.cart
@@ -119,6 +120,17 @@ const addToCart = async (req, res) => {
       cart: cartItems,
       itemCount: cartItems.length
     });
+
+    await logActivity({
+      req,
+      actionType: 'Add to Cart',
+      method: 'POST',
+      status: 'Success',
+      metadata: {
+        productId,
+        quantity,
+      },
+    });
   } catch (error) {
     console.error('Error adding to cart:', error);
     res.status(500).json({ message: 'Server error' });
@@ -170,6 +182,18 @@ const updateCartItem = async (req, res) => {
       cart: cartItems,
       itemCount: cartItems.length
     });
+
+    await logActivity({
+      req,
+      actionType: 'Add to Cart',
+      method: 'PUT',
+      status: 'Success',
+      metadata: {
+        target: 'cart-item',
+        itemId: productId,
+        quantity,
+      },
+    });
   } catch (error) {
     console.error('Error updating cart item:', error);
     res.status(500).json({ message: 'Server error' });
@@ -213,6 +237,16 @@ const removeFromCart = async (req, res) => {
       cart: cartItems,
       itemCount: cartItems.length
     });
+
+    await logActivity({
+      req,
+      actionType: 'Remove from Cart',
+      method: 'DELETE',
+      status: 'Success',
+      metadata: {
+        itemId: productId,
+      },
+    });
   } catch (error) {
     console.error('Error removing from cart:', error);
     res.status(500).json({ message: 'Server error' });
@@ -237,6 +271,16 @@ const clearCart = async (req, res) => {
       message: 'Cart cleared successfully',
       cart: [],
       itemCount: 0
+    });
+
+    await logActivity({
+      req,
+      actionType: 'Remove from Cart',
+      method: 'DELETE',
+      status: 'Success',
+      metadata: {
+        clearedAll: true,
+      },
     });
   } catch (error) {
     console.error('Error clearing cart:', error);

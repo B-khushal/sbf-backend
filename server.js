@@ -100,6 +100,8 @@ const startServer = async () => {
     app.use('/api/reviews', require('./routes/reviewRoutes'));
     app.use('/api/holidays', require('./routes/holidayRoutes'));
     app.use('/api/device-tokens', require('./routes/deviceTokenRoutes'));
+    app.use('/api/activity', require('./routes/activityRoutes'));
+    app.use('/api/admin', require('./routes/adminRoutes'));
     app.use('/wake-up', require('./routes/wakeUpRoutes'));
     app.use('/api/settings', settingsRoutes);
     app.use('/api/newsletter', newsletterRoutes);
