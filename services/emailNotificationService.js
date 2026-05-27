@@ -762,23 +762,6 @@ const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
   const { order, customer } = orderData;
   const items = order.items || [];
 
-  const itemsList = items.map(item => `
-  < tr style = "border-bottom: 1px solid #e5e7eb;" >
-      <td style="padding: 12px; text-align: left;">
-        <div style="font-weight: 600; color: #374151;">
-          ${item.product.name || item.product.title}
-        </div>
-        ${item.product.sku ? `<div style="font-size: 12px; color: #6b7280;">SKU: ${item.product.sku}</div>` : ''}
-      </td>
-      <td style="padding: 12px; text-align: center; font-weight: 500;">
-        ${item.quantity}
-      </td>
-      <td style="padding: 12px; text-align: right; font-weight: 600; color: #374151;">
-        ${formatCurrency(item.finalPrice || item.price, order.currency)}
-      </td>
-    </tr >
-  `).join('');
-
   // Calculate proper subtotal from items
   const itemsSubtotal = items.reduce((sum, item) => {
     return sum + ((item.finalPrice || item.price) * item.quantity);
@@ -792,321 +775,447 @@ const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
   const sgst = hasShipping ? shippingCharges * 0.025 : 0; // 2.5% SGST only on shipping
   const grandTotal = itemsSubtotal + shippingCharges + cgst + sgst;
 
+  const invoiceNumber = `INV-${order.orderNumber}`;
+  const orderDate = formatDate(order.createdAt);
+  const deliveryDate = formatDate(order.shippingDetails?.deliveryDate || new Date());
+  const deliveryTimeSlot = formatTime(order.shippingDetails?.timeSlot);
+
+  const paymentMethod = order.paymentDetails?.method || 'Online Payment';
+  const paymentStatus = order.paymentDetails?.status || 'Completed';
+  const paymentId = order.paymentDetails?.paymentId || order.paymentDetails?.razorpayPaymentId;
+
+  const deliveryName = order.shippingDetails?.fullName || customer.name || 'Customer';
+  const deliveryPhone = order.shippingDetails?.phone || customer.phone || 'N/A';
+  const deliveryAddress = order.shippingDetails?.address || '';
+  const deliveryApartment = order.shippingDetails?.apartment || '';
+  const deliveryCity = order.shippingDetails?.city || '';
+  const deliveryState = order.shippingDetails?.state || '';
+  const deliveryZip = order.shippingDetails?.zipCode || '';
+
+  const itemRows = items.map((item) => {
+    const productName = item.product?.name || item.product?.title || item.title || 'Product';
+    const unitPrice = item.finalPrice || item.price || 0;
+    const lineTotal = unitPrice * item.quantity;
+
+    return `
+      <tr>
+        <td class="cell cell-item">
+          <div class="item-title">${productName}</div>
+          ${item.product?.sku ? `<div class="item-sub">SKU: ${item.product.sku}</div>` : ''}
+        </td>
+        <td class="cell cell-center">${item.quantity}</td>
+        <td class="cell cell-right">${formatCurrency(unitPrice, order.currency)}</td>
+        <td class="cell cell-right">${formatCurrency(lineTotal, order.currency)}</td>
+      </tr>
+    `;
+  }).join('');
+
   return `
-  < !DOCTYPE html >
+    <!DOCTYPE html>
     <html lang="en">
       <head>
         <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Delivery Confirmation & Invoice - Spring Blossoms Florist</title>
-            <style>
-              * {margin: 0; padding: 0; box-sizing: border-box; }
-              body {
-                font - family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-              line-height: 1.6;
-              color: #374151;
-              background-color: #f9fafb;
-        }
-              .container {
-                max - width: 700px;
-              margin: 0 auto;
-              background-color: #ffffff;
-              box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        }
-              .header {
-                background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-              color: white;
-              padding: 40px 30px;
-              text-align: center; 
-        }
-              .header h1 {
-                font - size: 28px;
-              margin-bottom: 8px;
-              font-weight: 700;
-        }
-              .header p {
-                font - size: 16px;
-              opacity: 0.9;
-        }
-              .content {
-                padding: 30px; 
-        }
-              .delivery-status {
-                background: #ecfdf5;
-              border: 2px solid #10b981;
-              padding: 20px;
-              border-radius: 12px;
-              margin-bottom: 25px;
-              text-align: center;
-        }
-              .delivery-status h2 {
-                color: #065f46;
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="x-apple-disable-message-reformatting">
+        <title>Delivery Confirmation & Invoice - Spring Blossoms Florist</title>
+        <style>
+          body {
+            margin: 0;
+            padding: 0;
+            background: #f6f8fb;
+            font-family: Arial, Helvetica, sans-serif;
+            color: #223046;
+          }
+          table {
+            border-spacing: 0;
+            border-collapse: collapse;
+          }
+          .wrapper {
+            width: 100%;
+            background: radial-gradient(circle at top left, #ecfdf5 0%, #f6f8fb 38%, #f6f8fb 100%);
+            padding: 26px 12px;
+          }
+          .container {
+            width: 100%;
+            max-width: 720px;
+            margin: 0 auto;
+            background: #ffffff;
+            border: 1px solid #e7edf3;
+            border-radius: 18px;
+            overflow: hidden;
+          }
+          .hero {
+            background: linear-gradient(136deg, #0f8b69 0%, #13795f 50%, #145f4d 100%);
+            color: #ffffff;
+            padding: 34px 30px 26px;
+          }
+          .hero h1 {
+            margin: 0 0 8px;
+            font-size: 30px;
+            line-height: 1.2;
+            font-weight: 700;
+          }
+          .hero p {
+            margin: 0;
+            font-size: 15px;
+            line-height: 1.5;
+            color: #d9f9ee;
+          }
+          .section {
+            padding: 0 30px;
+          }
+          .status-card {
+            margin: 24px 30px 0;
+            background: linear-gradient(180deg, #f0fdf7 0%, #ebfaf3 100%);
+            border: 1px solid #b9ebd5;
+            border-radius: 14px;
+            padding: 18px;
+          }
+          .status-title {
+            margin: 0;
+            color: #0f6e53;
+            font-size: 20px;
+            font-weight: 700;
+          }
+          .status-sub {
+            margin: 8px 0 0;
+            color: #32715d;
+            font-size: 14px;
+          }
+          .meta-grid {
+            margin-top: 16px;
+            width: 100%;
+          }
+          .meta-box {
+            background: #f8fbff;
+            border: 1px solid #e4ebf3;
+            border-radius: 12px;
+            padding: 14px;
+            width: 48.6%;
+            vertical-align: top;
+          }
+          .meta-label {
+            display: block;
+            color: #5d728d;
+            font-size: 11px;
+            letter-spacing: 0.4px;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+            font-weight: 700;
+          }
+          .meta-value {
+            color: #1f2f45;
+            font-size: 14px;
+            line-height: 1.45;
+            font-weight: 600;
+          }
+          .divider {
+            height: 1px;
+            background: #e8edf4;
+            margin: 24px 0;
+          }
+          .invoice-head {
+            margin: 22px 30px 8px;
+            background: #f8fafc;
+            border: 1px solid #e8edf3;
+            border-radius: 14px;
+            padding: 16px;
+          }
+          .invoice-title {
+            margin: 0;
+            font-size: 21px;
+            color: #12273f;
+            font-weight: 700;
+          }
+          .invoice-sub {
+            margin: 6px 0 0;
+            font-size: 13px;
+            color: #5e7088;
+          }
+          .table-wrap {
+            margin: 16px 30px 0;
+            border: 1px solid #e5ebf2;
+            border-radius: 12px;
+            overflow: hidden;
+          }
+          .items-table {
+            width: 100%;
+            table-layout: fixed;
+          }
+          .items-table th {
+            background: #eef4fa;
+            color: #2c425c;
+            font-size: 12px;
+            letter-spacing: 0.3px;
+            font-weight: 700;
+            text-transform: uppercase;
+            padding: 12px 10px;
+            border-bottom: 1px solid #e1e8f0;
+          }
+          .cell {
+            padding: 12px 10px;
+            border-bottom: 1px solid #ebf0f6;
+            color: #24344b;
+            font-size: 14px;
+            vertical-align: top;
+          }
+          .cell-item {
+            width: 50%;
+          }
+          .cell-center {
+            text-align: center;
+          }
+          .cell-right {
+            text-align: right;
+            white-space: nowrap;
+          }
+          .item-title {
+            font-weight: 700;
+            color: #1e314a;
+            line-height: 1.3;
+          }
+          .item-sub {
+            margin-top: 4px;
+            font-size: 11px;
+            color: #6f7f93;
+          }
+          .summary {
+            margin: 16px 30px 0;
+            border: 1px solid #e5ebf2;
+            border-radius: 12px;
+            padding: 14px 16px;
+            background: #ffffff;
+          }
+          .sum-row {
+            width: 100%;
+            font-size: 14px;
+            color: #2b4059;
+            margin-bottom: 7px;
+          }
+          .sum-row td {
+            padding: 5px 0;
+          }
+          .sum-label {
+            color: #60758f;
+          }
+          .sum-value {
+            text-align: right;
+            font-weight: 600;
+            white-space: nowrap;
+          }
+          .grand {
+            margin-top: 8px;
+            border-top: 1px dashed #d3dde9;
+            padding-top: 10px;
+          }
+          .grand td {
+            font-size: 17px;
+            font-weight: 700;
+            color: #0f6e53;
+          }
+          .pay-card {
+            margin: 16px 30px 0;
+            border: 1px solid #d9eaf9;
+            border-radius: 12px;
+            background: #f4faff;
+            padding: 14px 16px;
+          }
+          .pay-card h4 {
+            margin: 0 0 8px;
+            font-size: 15px;
+            color: #1e3d5f;
+          }
+          .pay-card p {
+            margin: 5px 0;
+            font-size: 13px;
+            color: #375778;
+          }
+          .footer {
+            margin-top: 24px;
+            background: #f8fafc;
+            border-top: 1px solid #e7edf3;
+            padding: 24px 30px 28px;
+            text-align: center;
+          }
+          .footer h3 {
+            margin: 0;
+            font-size: 19px;
+            color: #1a324d;
+          }
+          .footer p {
+            margin: 8px 0 0;
+            color: #60758f;
+            font-size: 13px;
+            line-height: 1.6;
+          }
+          .footer .contact {
+            margin-top: 14px;
+            padding-top: 14px;
+            border-top: 1px solid #e3eaf2;
+            color: #3f5f7e;
+            font-weight: 600;
+          }
+          .footer .small {
+            margin-top: 10px;
+            font-size: 11px;
+            color: #8b9db2;
+          }
+          @media only screen and (max-width: 640px) {
+            .wrapper { padding: 10px; }
+            .hero { padding: 24px 18px; }
+            .hero h1 { font-size: 24px; }
+            .section { padding: 0 18px; }
+            .status-card,
+            .invoice-head,
+            .table-wrap,
+            .summary,
+            .pay-card,
+            .footer { margin-left: 18px; margin-right: 18px; }
+            .status-card,
+            .invoice-head,
+            .summary,
+            .pay-card,
+            .footer { padding-left: 14px; padding-right: 14px; }
+            .meta-box {
+              width: 100% !important;
+              display: block;
               margin-bottom: 10px;
-              font-size: 24px;
-        }
-              .delivery-status p {
-                color: #047857;
-              font-size: 16px;
-        }
-              .invoice-section {
-                background: #f8fafc;
-              border: 1px solid #e2e8f0;
-              border-radius: 12px;
-              padding: 25px;
-              margin: 25px 0;
-        }
-              .company-header {
-                background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-              color: white;
-              text-align: center;
-              padding: 30px;
-              border-radius: 12px 12px 0 0;
-              margin-bottom: 25px;
-        }
-              .company-header h1 {
-                color: white;
-              font-size: 32px;
-              margin-bottom: 10px;
-              font-weight: 700;
-        }
-              .company-details {
-                color: #d1fae5;
-              font-size: 15px;
-              line-height: 1.8;
-        }
-              .invoice-header {
-                display: flex;
-              justify-content: space-between;
-              margin-bottom: 25px;
-              flex-wrap: wrap;
-        }
-              .invoice-details h3 {
-                color: #1f2937;
-              font-size: 20px;
-              margin-bottom: 10px;
-        }
-              .invoice-details p {
-                margin: 5px 0;
-              color: #6b7280;
-        }
-              .bill-to {
-                background: white;
-              padding: 20px;
-              border-radius: 8px;
-              margin: 20px 0;
-              border-left: 4px solid #3b82f6;
-        }
-              .bill-to h4 {
-                color: #1f2937;
-              margin-bottom: 10px;
-              font-size: 16px;
-        }
-              .items-table {
-                width: 100%;
-              border-collapse: collapse;
-              background: white;
-              border-radius: 8px;
-              overflow: hidden;
-              box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-              margin: 20px 0;
-        }
-              .items-table th {
-                background: #f1f5f9;
-              padding: 15px 12px;
-              text-align: left;
-              font-weight: 600;
-              color: #374151;
-              font-size: 14px;
-              border-bottom: 2px solid #e2e8f0;
-        }
-              .items-table td {
-                padding: 12px;
-              border-bottom: 1px solid #e5e7eb;
-        }
-              .total-section {
-                background: white;
-              padding: 20px;
-              border-radius: 8px;
-              margin-top: 20px;
-        }
-              .total-row {
-                display: flex;
-              justify-content: space-between;
-              padding: 8px 0;
-              border-bottom: 1px solid #e5e7eb;
-        }
-              .grand-total {
-                background: #f0f9ff;
-              padding: 15px;
-              border-radius: 8px;
-              margin-top: 10px;
-              border: 2px solid #0ea5e9;
-        }
-              .grand-total .total-row {
-                font - weight: 700;
-              font-size: 18px;
-              color: #0369a1;
-              border: none;
-        }
-              .footer {
-                background: #f9fafb;
-              text-align: center;
-              padding: 30px;
-              border-top: 1px solid #e5e7eb;
-        }
-              .footer p {
-                margin: 8px 0;
-              color: #6b7280;
-        }
-              .thank-you {
-                background: #fef7cd;
-              border: 1px solid #f59e0b;
-              border-radius: 8px;
-              padding: 20px;
-              margin: 25px 0;
-              text-align: center;
-        }
-              .thank-you h3 {
-                color: #92400e;
-              margin-bottom: 10px;
-        }
-            </style>
-          </head>
-          <body>
-            <div class="container">
-              <div class="header">
-                <h1>🎉 Order Delivered Successfully!</h1>
-                <p>Thank you for choosing Spring Blossoms Florist</p>
-              </div>
-
-              <div class="content">
-                <div class="delivery-status">
-                  <h2>✅ Delivery Completed</h2>
-                  <p>Your order has been successfully delivered on ${formatDate(new Date())}</p>
-                </div>
-
-                <div class="thank-you">
-                  <h3>Thank You for Your Order!</h3>
-                  <p>We hope you love your beautiful floral arrangement. Please find your invoice below.</p>
-                </div>
-
-                <div class="invoice-section">
-                  <div class="company-header">
-                    <h1>Spring Blossoms Florist</h1>
-                    <div class="company-details">
-                      <p><strong>Door No. 12-2-786/A & B, Najam Centre, Pillar No. 32</strong></p>
-                      <p>Rethi Bowli, Mehdipatnam, Hyderabad, Telangana 500028</p>
-                      <p>📞 9849589710 | ✉️ 2006sbf@gmail.com</p>
-                      <p>🌐 www.sbflorist.com | Premium Floral Services</p>
-                    </div>
-                  </div>
-
-                  <div class="invoice-header">
-                    <div class="invoice-details">
-                      <h3>INVOICE</h3>
-                      <p><strong>Invoice #:</strong> INV-${order.orderNumber}</p>
-                      <p><strong>Date:</strong> ${formatDate(new Date())}</p>
-                      <p><strong>Order #:</strong> ${order.orderNumber}</p>
-                    </div>
-
-                    <div class="invoice-details">
-                      <h3>Order Information</h3>
-                      <p><strong>Order Date:</strong> ${formatDate(order.createdAt)}</p>
-                      <p><strong>Delivery Date:</strong> ${formatDate(order.shippingDetails?.deliveryDate || new Date())}</p>
-                      <p><strong>Time Slot:</strong> ${formatTime(order.shippingDetails?.timeSlot)}</p>
-                    </div>
-                  </div>
-
-                  <div class="bill-to">
-                    <h4>📍 Delivery Address:</h4>
-                    <p><strong>${order.shippingDetails?.fullName || customer.name}</strong></p>
-                    <p>${order.shippingDetails?.address}</p>
-                    ${order.shippingDetails?.apartment ? `<p>${order.shippingDetails.apartment}</p>` : ''}
-                    <p>${order.shippingDetails?.city}, ${order.shippingDetails?.state} ${order.shippingDetails?.zipCode}</p>
-                    <p>📞 ${order.shippingDetails?.phone}</p>
-                  </div>
-
-                  <div class="bill-to">
-                    <h4>👤 Customer Information:</h4>
-                    <p><strong>${customer.name}</strong></p>
-                    <p>📧 ${customer.email}</p>
-                    ${customer.phone ? `<p>📞 ${customer.phone}</p>` : ''}
-                  </div>
-
-                  <h4 style="margin-top: 30px; margin-bottom: 15px;">Order Details</h4>
-                  <table class="items-table">
-                    <thead>
-                      <tr>
-                        <th>Item</th>
-                        <th style="text-align: center;">Quantity</th>
-                        <th style="text-align: right;">Price (₹)</th>
-                        <th style="text-align: right;">Total (₹)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      ${items.map(item => `
-                  <tr>
-                    <td>
-                      <div style="font-weight: 600;">${item.product.name || item.product.title}</div>
-                      <div style="font-size: 12px; color: #6b7280;">A beautiful arrangement of premium flowers</div>
-                    </td>
-                    <td style="text-align: center;">${item.quantity}</td>
-                    <td style="text-align: right;">₹${(item.finalPrice || item.price).toFixed(2)}</td>
-                    <td style="text-align: right;">₹${((item.finalPrice || item.price) * item.quantity).toFixed(2)}</td>
-                  </tr>
-                `).join('')}
-                    </tbody>
-                  </table>
-
-                  <div class="total-section">
-                    <div class="total-row">
-                      <span>Subtotal</span>
-                      <span>₹${(itemsSubtotal).toFixed(2)}</span>
-                    </div>
-                    ${hasShipping ? `
-                <div class="total-row">
-                  <span>Delivery Charges</span>
-                  <span>₹${shippingCharges.toFixed(2)}</span>
-                </div>
-                <div class="total-row">
-                  <span>Tax (5%)</span>
-                  <span>₹${(cgst + sgst).toFixed(2)}</span>
-                </div>
-              ` : ''}
-
-                    <div class="grand-total">
-                      <div class="total-row">
-                        <span>GRAND TOTAL</span>
-                        <span>₹${(grandTotal).toFixed(2)}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div style="margin-top: 25px; padding: 15px; background: #f0f9ff; border-radius: 8px;">
-                    <h4 style="color: #1f2937; margin-bottom: 10px;">Payment Information:</h4>
-                    <p><strong>Method:</strong> Razorpay (Online Payment)</p>
-                    <p><strong>Status:</strong> Completed</p>
-                    ${order.paymentDetails?.paymentId ? `<p><strong>Transaction ID:</strong> ${order.paymentDetails.paymentId}</p>` : ''}
-                  </div>
-                </div>
-              </div>
-
-              <div class="footer">
-                <h3 style="color: #1f2937; margin-bottom: 15px;">Thank you for your business!</h3>
-                <p>We appreciate your order and hope you enjoyed our flowers.</p>
-                <p>For any questions regarding your order or our products, please don't hesitate to contact us.</p>
-                <p style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
-                  📧 2006sbf@gmail.com | 📞 9849589710<br>
-                    Business Hours: Monday - Saturday, 9 AM - 6 PM IST
-                </p>
-                <p style="margin-top: 15px; font-size: 12px; color: #9ca3af;">
-                  Terms and conditions apply. For our return and refund policy, please visit www.sbflorist.in/returns.
-                </p>
-              </div>
+            }
+            .items-table th,
+            .cell {
+              font-size: 12px;
+              padding: 10px 7px;
+            }
+            .cell-item { width: 42%; }
+            .sum-row,
+            .sum-row td { font-size: 13px; }
+            .grand td { font-size: 15px; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="wrapper">
+          <div class="container">
+            <div class="hero">
+              <h1>Order Delivered Successfully</h1>
+              <p>Thank you for choosing Spring Blossoms Florist. Your delivery has been completed and your invoice is attached for easy reference.</p>
             </div>
-          </body>
-        </html>
-        `;
+
+            <div class="status-card">
+              <p class="status-title">Delivery Completed</p>
+              <p class="status-sub">Your order was delivered on ${formatDate(new Date())}. We hope your flowers brought joy.</p>
+            </div>
+
+            <table class="meta-grid section" role="presentation">
+              <tr>
+                <td class="meta-box">
+                  <span class="meta-label">Invoice</span>
+                  <span class="meta-value">${invoiceNumber}</span>
+                </td>
+                <td style="width:2.8%"></td>
+                <td class="meta-box">
+                  <span class="meta-label">Order Number</span>
+                  <span class="meta-value">${order.orderNumber}</span>
+                </td>
+              </tr>
+              <tr>
+                <td class="meta-box">
+                  <span class="meta-label">Order Date</span>
+                  <span class="meta-value">${orderDate}</span>
+                </td>
+                <td style="width:2.8%"></td>
+                <td class="meta-box">
+                  <span class="meta-label">Delivery Slot</span>
+                  <span class="meta-value">${deliveryDate} • ${deliveryTimeSlot}</span>
+                </td>
+              </tr>
+            </table>
+
+            <div class="invoice-head">
+              <p class="invoice-title">Invoice</p>
+              <p class="invoice-sub">Spring Blossoms Florist • Door No. 12-2-786/A & B, Najam Centre, Pillar No. 32, Rethi Bowli, Mehdipatnam, Hyderabad, Telangana 500028</p>
+              <p class="invoice-sub">Phone: 9849589710 • Email: 2006sbf@gmail.com • www.sbflorist.com</p>
+            </div>
+
+            <table class="meta-grid section" role="presentation">
+              <tr>
+                <td class="meta-box">
+                  <span class="meta-label">Delivery Address</span>
+                  <span class="meta-value">
+                    ${deliveryName}<br>
+                    ${deliveryAddress}${deliveryApartment ? `<br>${deliveryApartment}` : ''}<br>
+                    ${deliveryCity}, ${deliveryState} ${deliveryZip}<br>
+                    ${deliveryPhone}
+                  </span>
+                </td>
+                <td style="width:2.8%"></td>
+                <td class="meta-box">
+                  <span class="meta-label">Customer</span>
+                  <span class="meta-value">
+                    ${customer.name || deliveryName}<br>
+                    ${customer.email || 'N/A'}${customer.phone ? `<br>${customer.phone}` : ''}
+                  </span>
+                </td>
+              </tr>
+            </table>
+
+            <div class="table-wrap">
+              <table class="items-table" role="presentation">
+                <thead>
+                  <tr>
+                    <th style="text-align:left; width:50%;">Item</th>
+                    <th style="text-align:center; width:14%;">Qty</th>
+                    <th style="text-align:right; width:18%;">Unit Price</th>
+                    <th style="text-align:right; width:18%;">Line Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${itemRows}
+                </tbody>
+              </table>
+            </div>
+
+            <div class="summary">
+              <table class="sum-row" role="presentation">
+                <tr>
+                  <td class="sum-label">Subtotal</td>
+                  <td class="sum-value">${formatCurrency(itemsSubtotal, order.currency)}</td>
+                </tr>
+                ${hasShipping ? `
+                  <tr>
+                    <td class="sum-label">Delivery Charges</td>
+                    <td class="sum-value">${formatCurrency(shippingCharges, order.currency)}</td>
+                  </tr>
+                  <tr>
+                    <td class="sum-label">Tax (CGST + SGST)</td>
+                    <td class="sum-value">${formatCurrency(cgst + sgst, order.currency)}</td>
+                  </tr>
+                ` : ''}
+                <tr class="grand">
+                  <td>Grand Total</td>
+                  <td class="sum-value">${formatCurrency(grandTotal, order.currency)}</td>
+                </tr>
+              </table>
+            </div>
+
+            <div class="pay-card">
+              <h4>Payment Information</h4>
+              <p><strong>Method:</strong> ${paymentMethod}</p>
+              <p><strong>Status:</strong> ${paymentStatus}</p>
+              ${paymentId ? `<p><strong>Transaction ID:</strong> ${paymentId}</p>` : ''}
+            </div>
+
+            <div class="footer">
+              <h3>Thank you for your order</h3>
+              <p>We appreciate your trust in Spring Blossoms Florist and hope your arrangement made the moment special.</p>
+              <p class="contact">2006sbf@gmail.com • 9849589710 • Monday - Saturday, 9 AM - 6 PM IST</p>
+              <p class="small">Terms and conditions apply. Return and refund policy: www.sbflorist.in/returns</p>
+            </div>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
 };
 
 // Send delivery confirmation email with invoice

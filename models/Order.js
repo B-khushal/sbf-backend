@@ -134,6 +134,11 @@ const orderSchema = new mongoose.Schema({
   timestamps: true
 });
 
+orderSchema.index({ status: 1, createdAt: -1 });
+orderSchema.index({ createdAt: -1 });
+orderSchema.index({ 'shippingDetails.phone': 1 });
+orderSchema.index({ 'shippingDetails.fullName': 1 });
+
 // Add pre-save hook for order number generation
 orderSchema.pre('save', async function(next) {
   if (!this.orderNumber) {

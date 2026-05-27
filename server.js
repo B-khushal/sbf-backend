@@ -37,6 +37,21 @@ const frontendDistPath = path.join(__dirname, 'dist');
 const frontendIndexPath = path.join(frontendDistPath, 'index.html');
 const hasFrontendBuild = fs.existsSync(frontendIndexPath);
 
+const parseAbsoluteUrl = (value) => {
+  if (!value) return null;
+
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return null;
+    }
+
+    return parsed;
+  } catch (error) {
+    return null;
+  }
+};
+
 const isAllowedOrigin = (origin) => {
   if (!origin) return true;
   if (allowedOrigins.has(origin)) return true;
@@ -84,6 +99,7 @@ const startServer = async () => {
     app.use('/api/products', require('./routes/productRoutes'));
     app.use('/api/users', require('./routes/userRoutes'));
     app.use('/api/orders', require('./routes/orderRoutes'));
+    app.use('/api/external', require('./routes/externalOrderRoutes'));
     app.use('/api/auth', require('./routes/authRoutes'));
     app.use('/api/uploads', require('./routes/uploadRoutes'));
     app.use('/api/notifications', require('./routes/notificationRoutes'));
@@ -234,25 +250,30 @@ const startServer = async () => {
       console.log(`Access the server from other devices using: http://YOUR_IP:${PORT}`);
 
       // Keep-alive ping to reduce Render free instance spin-down.
-      const RENDER_URL = process.env.RENDER_EXTERNAL_URL || process.env.APP_URL;
-      if (RENDER_URL) {
-        console.log(`Keep-alive service initialized for: ${RENDER_URL}`);
+      const rawKeepAliveUrl = process.env.RENDER_EXTERNAL_URL || process.env.APP_URL;
+      const keepAliveBaseUrl = parseAbsoluteUrl(rawKeepAliveUrl);
 
-        const pingClient = RENDER_URL.startsWith('https://') ? https : http;
+      if (keepAliveBaseUrl) {
+        const pingUrl = new URL('/health', keepAliveBaseUrl);
+        console.log(`Keep-alive service initialized for: ${keepAliveBaseUrl.origin}`);
+
+        const pingClient = keepAliveBaseUrl.protocol === 'https:' ? https : http;
         setInterval(() => {
-          pingClient.get(`${RENDER_URL}/health`, (res) => {
+          pingClient.get(pingUrl, (res) => {
             if (res.statusCode === 200) {
-              console.log(`[KEEP_ALIVE] Successful ping to ${RENDER_URL}`);
+              console.log(`[KEEP_ALIVE] Successful ping to ${pingUrl}`);
             } else {
-              console.warn(`[KEEP_ALIVE] Ping to ${RENDER_URL} returned status: ${res.statusCode}`);
+              console.warn(`[KEEP_ALIVE] Ping to ${pingUrl} returned status: ${res.statusCode}`);
             }
 
             // Drain response data so sockets can be reused/closed cleanly.
             res.resume();
           }).on('error', (err) => {
-            console.error(`[KEEP_ALIVE_ERROR] Ping failed for ${RENDER_URL}: ${err.message}`);
+            console.error(`[KEEP_ALIVE_ERROR] Ping failed for ${pingUrl}: ${err.message}`);
           });
         }, 9 * 60 * 1000); // Ping every 9 minutes
+      } else if (rawKeepAliveUrl) {
+        console.warn(`Keep-alive service skipped due to invalid URL: ${rawKeepAliveUrl}`);
       } else {
         console.log('Keep-alive service skipped (no RENDER_EXTERNAL_URL or APP_URL found)');
       }

@@ -1,0 +1,315 @@
+openapi: 3.0.3
+info:
+  title: SBF External Orders API
+  version: 1.0.0
+  description: External florist order endpoints exposed under /api/external.
+servers:
+  - url: http://localhost:5001/api/external
+    description: Local development
+  - url: https://your-backend-domain.example/api/external
+    description: Production
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Health status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+              examples:
+                healthy:
+                  value:
+                    success: true
+                    data:
+                      status: ok
+                      service: external-orders
+                      timestamp: '2026-04-18T12:00:00.000Z'
+                    message: External orders service is healthy
+  /orders:
+    get:
+      summary: List orders
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [PENDING, PROCESSING, SHIPPED, DELIVERED, CANCELLED]
+        - in: query
+          name: search
+          schema:
+            type: string
+        - in: query
+          name: date
+          schema:
+            type: string
+            format: date
+        - in: query
+          name: sortBy
+          schema:
+            type: string
+            enum: [created_at, total_amount]
+            default: created_at
+        - in: query
+          name: sortOrder
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: Paginated orders
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedOrdersEnvelope'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /orders/{id}:
+    get:
+      summary: Get order details
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Order details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderEnvelope'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /orders/{id}/status:
+    put:
+      summary: Update order status
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderStatusUpdateRequest'
+      responses:
+        '200':
+          description: Updated order
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderEnvelope'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: Invalid transition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+components:
+  schemas:
+    SuccessEnvelope:
+      type: object
+      required: [success, data, message]
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          oneOf:
+            - type: object
+            - type: array
+        message:
+          type: string
+        meta:
+          type: object
+    PaginatedOrdersEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/OrderSummary'
+            meta:
+              type: object
+              properties:
+                page:
+                  type: integer
+                limit:
+                  type: integer
+                total:
+                  type: integer
+                totalPages:
+                  type: integer
+    OrderEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/OrderDetail'
+    ErrorEnvelope:
+      type: object
+      required: [success, error]
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              oneOf:
+                - type: object
+                - type: array
+                - type: string
+    OrderSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        orderNumber:
+          type: string
+        status:
+          type: string
+          enum: [PENDING, PROCESSING, SHIPPED, DELIVERED, CANCELLED]
+        customer:
+          $ref: '#/components/schemas/Customer'
+        totalAmount:
+          type: number
+        currency:
+          type: string
+        itemCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+    OrderDetail:
+      type: object
+      properties:
+        id:
+          type: string
+        orderNumber:
+          type: string
+        status:
+          type: string
+          enum: [PENDING, PROCESSING, SHIPPED, DELIVERED, CANCELLED]
+        customer:
+          $ref: '#/components/schemas/Customer'
+        shippingDetails:
+          $ref: '#/components/schemas/Customer'
+        paymentDetails:
+          type: object
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItem'
+    Customer:
+      type: object
+      properties:
+        fullName:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        address:
+          type: string
+        apartment:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        zipCode:
+          type: string
+        notes:
+          type: string
+        deliveryDate:
+          type: string
+          format: date-time
+        timeSlot:
+          type: string
+    OrderItem:
+      type: object
+      properties:
+        title:
+          type: string
+        image:
+          type: string
+        images:
+          type: array
+          items:
+            type: string
+        quantity:
+          type: number
+        price:
+          type: number
+        finalPrice:
+          type: number
+        customizations:
+          oneOf:
+            - type: object
+            - type: array
+            - type: string
+            - type: 'null'
+    OrderStatusUpdateRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [PENDING, PROCESSING, SHIPPED, DELIVERED, CANCELLED]
