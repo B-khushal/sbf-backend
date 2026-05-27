@@ -171,6 +171,10 @@ const productSchema = mongoose.Schema(
       type: String,
       required: true,
     },
+    subcategory: {
+      type: String,
+      default: '',
+    },
     categories: {
       type: [String],
       default: []

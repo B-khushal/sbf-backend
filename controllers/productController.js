@@ -213,6 +213,7 @@ const createProduct = asyncHandler(async (req, res) => {
     price,
     discount,
     category,
+    subcategory,
     categories,
     countInStock,
     images,
@@ -269,6 +270,7 @@ const createProduct = asyncHandler(async (req, res) => {
     comboName: comboName || '',
     comboDescription: comboDescription || '',
     comboSubcategory: comboSubcategory || '',
+    subcategory: subcategory || '',
   });
 
   console.log('📋 Product object before save:', {
@@ -299,6 +301,7 @@ const updateProduct = asyncHandler(async (req, res) => {
     price,
     discount,
     category,
+    subcategory,
     categories,
     countInStock,
     images,
@@ -353,6 +356,7 @@ const updateProduct = asyncHandler(async (req, res) => {
       comboName: comboName || '',
       comboDescription: comboDescription || '',
       comboSubcategory: comboSubcategory || '',
+      subcategory: subcategory || '',
     };
 
     // If vendor updates product, set to pending approval
@@ -787,6 +791,20 @@ const getCategoriesWithCounts = async (req, res) => {
       { $sort: { count: -1, name: 1 } }
     ]);
 
+    const subcategoryCounts = await Product.aggregate([
+      { $match: { 
+        hidden: { $ne: true },
+        subcategory: { $exists: true, $ne: '' },
+        $or: [
+          { approvalStatus: 'approved' },
+          { approvalStatus: { $exists: false } }
+        ]
+      } },
+      { $group: { _id: "$subcategory", count: { $sum: 1 } } },
+      { $project: { name: "$_id", count: 1, _id: 0 } },
+      { $sort: { count: -1, name: 1 } }
+    ]);
+
     // Combine both results, prioritizing additional categories
     const combinedCounts = new Map();
     
@@ -799,6 +817,14 @@ const getCategoriesWithCounts = async (req, res) => {
     
     // Add or update with additional category counts
     categoriesWithCounts.forEach(item => {
+      if (item.name) {
+        const key = item.name.toLowerCase();
+        const existingCount = combinedCounts.get(key) || 0;
+        combinedCounts.set(key, existingCount + item.count);
+      }
+    });
+
+    subcategoryCounts.forEach(item => {
       if (item.name) {
         const key = item.name.toLowerCase();
         const existingCount = combinedCounts.get(key) || 0;
@@ -834,6 +860,7 @@ const getProductsByCategory = async (req, res) => {
         {
           $or: [
             { category: { $regex: new RegExp(`^${category}$`, 'i') } },
+            { subcategory: { $regex: new RegExp(`^${category}$`, 'i') } },
             { categories: { $regex: new RegExp(`^${category}$`, 'i') } }
           ]
         },
