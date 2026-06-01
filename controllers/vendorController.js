@@ -1460,6 +1460,30 @@ const updateVendorSettings = async (req, res) => {
     }
 };
 
+// @desc    Vendor update order status (only for orders containing vendor's products)
+// @route   PUT /api/vendors/orders/:id/status
+// @access  Private (Vendor)
+const vendorUpdateOrderStatus = async (req, res) => {
+    try {
+        const vendor = await Vendor.findOne({ user: req.user._id });
+        if (!vendor) return res.status(404).json({ message: 'Vendor profile not found' });
+
+        const Order = require('../models/Order');
+        const order = await Order.findById(req.params.id).populate('items.product');
+        if (!order) return res.status(404).json({ message: 'Order not found' });
+
+        const ownsItem = order.items.some(item => item.product && item.product.vendor && item.product.vendor.toString() === vendor._id.toString());
+        if (!ownsItem) return res.status(403).json({ message: 'You are not authorized to update this order' });
+
+        // Delegate to the shared order status updater to keep behaviour consistent
+        const { updateOrderStatus } = require('./orderController');
+        return await updateOrderStatus(req, res);
+    } catch (error) {
+        console.error('Error in vendorUpdateOrderStatus:', error);
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
 module.exports = {
     applyVendor,
     approveVendor,
@@ -1480,4 +1504,6 @@ module.exports = {
     getVendorNotifications,
     getVendorSettings,
     updateVendorSettings
+    ,
+    vendorUpdateOrderStatus
 }; 

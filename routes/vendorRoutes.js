@@ -9,6 +9,7 @@ const {
     getVendorDashboard,
     getVendorProducts,
     getVendorOrders,
+    vendorUpdateOrderStatus,
     getVendorAnalytics,
     getVendorPayouts,
     getAllVendors,
@@ -31,6 +32,8 @@ router.put('/settings', protect, require('../controllers/vendorController').upda
 router.get('/dashboard', protect, getVendorDashboard);
 router.get('/products', protect, getVendorProducts);
 router.get('/orders', protect, getVendorOrders);
+// Allow vendors to update status for orders that include their products
+router.put('/orders/:id/status', protect, require('../controllers/vendorController').vendorUpdateOrderStatus);
 router.get('/analytics', protect, getVendorAnalytics);
 router.get('/payouts', protect, getVendorPayouts);
 router.get('/notifications', protect, require('../controllers/vendorController').getVendorNotifications);

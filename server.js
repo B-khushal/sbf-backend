@@ -80,7 +80,8 @@ const startServer = async () => {
       },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+      // Allow custom headers used by the frontend (e.g. x-session-id)
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin', 'X-Session-Id', 'x-session-id'],
       exposedHeaders: ['Content-Range', 'X-Content-Range'],
       preflightContinue: false,
       optionsSuccessStatus: 204,
@@ -199,7 +200,7 @@ const startServer = async () => {
         res.header('Access-Control-Allow-Origin', origin);
       }
       res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
-      res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Session-Id, x-session-id');
       res.header('Access-Control-Allow-Credentials', 'true');
       res.vary('Origin');
       next();
