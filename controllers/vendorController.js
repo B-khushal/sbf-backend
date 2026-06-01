@@ -427,6 +427,41 @@ const getVendorDashboard = async (req, res) => {
         // Get current month data
         const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
         const endOfMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0);
+        const vendorProductIds = await Product.find({ vendor: vendor._id }).distinct('_id');
+
+        const revenueFromItems = async (dateFilter = {}) => {
+            const pipeline = [
+                {
+                    $match: {
+                        'items.product': { $in: vendorProductIds },
+                        status: { $in: ['delivered', 'completed'] },
+                        ...dateFilter
+                    }
+                },
+                { $unwind: '$items' },
+                {
+                    $match: {
+                        'items.product': { $in: vendorProductIds }
+                    }
+                },
+                {
+                    $group: {
+                        _id: null,
+                        total: {
+                            $sum: {
+                                $multiply: [
+                                    '$items.quantity',
+                                    { $ifNull: ['$items.finalPrice', '$items.price'] }
+                                ]
+                            }
+                        }
+                    }
+                }
+            ];
+
+            const result = await Order.aggregate(pipeline);
+            return result[0]?.total || 0;
+        };
 
         // Aggregate dashboard data
         const [
@@ -442,58 +477,32 @@ const getVendorDashboard = async (req, res) => {
         ] = await Promise.all([
             Product.countDocuments({ vendor: vendor._id }),
             Product.countDocuments({ vendor: vendor._id, hidden: false }),
-            Order.countDocuments({ 'orderItems.product': { $in: await Product.find({ vendor: vendor._id }).distinct('_id') } }),
+            Order.countDocuments({ 'items.product': { $in: vendorProductIds } }),
             Order.countDocuments({
-                'orderItems.product': { $in: await Product.find({ vendor: vendor._id }).distinct('_id') },
+                'items.product': { $in: vendorProductIds },
                 createdAt: { $gte: startOfMonth, $lte: endOfMonth }
             }),
-            Order.aggregate([
-                {
-                    $match: {
-                        'orderItems.vendor': vendor._id,
-                        status: { $in: ['delivered', 'completed'] }
-                    }
-                },
-                {
-                    $group: {
-                        _id: null,
-                        total: { $sum: '$totalPrice' }
-                    }
-                }
-            ]).then(result => result[0]?.total || 0),
-            Order.aggregate([
-                {
-                    $match: {
-                        'orderItems.vendor': vendor._id,
-                        status: { $in: ['delivered', 'completed'] },
-                        createdAt: { $gte: startOfMonth, $lte: endOfMonth }
-                    }
-                },
-                {
-                    $group: {
-                        _id: null,
-                        total: { $sum: '$totalPrice' }
-                    }
-                }
-            ]).then(result => result[0]?.total || 0),
+            revenueFromItems(),
+            revenueFromItems({ createdAt: { $gte: startOfMonth, $lte: endOfMonth } }),
             Order.countDocuments({
-                'orderItems.product': { $in: await Product.find({ vendor: vendor._id }).distinct('_id') },
-                status: 'pending'
+                'items.product': { $in: vendorProductIds },
+                status: { $in: ['order_placed', 'received'] }
             }),
             Product.find({ vendor: vendor._id, quantity: { $lte: 10 } }).limit(5),
             Order.find({
-                'orderItems.product': { $in: await Product.find({ vendor: vendor._id }).distinct('_id') }
+                'items.product': { $in: vendorProductIds }
             })
                 .sort({ createdAt: -1 })
                 .limit(5)
                 .populate('user', 'name email')
-                .populate('orderItems.product', 'name price')
+                .populate('items.product', 'title price vendor')
         ]);
 
         // Calculate vendor earnings (assuming 10% commission)
-        const commissionRate = vendor.commission?.rate || 0.1;
-        const vendorEarnings = totalRevenue * (1 - commissionRate);
-        const monthlyEarnings = monthlyRevenue * (1 - commissionRate);
+        const earningsForPeriod = vendor.calculateEarnings(totalRevenue);
+        const earningsForMonth = vendor.calculateEarnings(monthlyRevenue);
+        const vendorEarnings = earningsForPeriod.vendorEarnings;
+        const monthlyEarnings = earningsForMonth.vendorEarnings;
 
         // Get sales trend data
         const salesTrend = await getSalesTrend(vendor._id);
@@ -1092,12 +1101,18 @@ const getSalesTrend = async (vendorId, startDate = null, endDate = null) => {
 
     const vendorProductIds = await Product.find({ vendor: vendorId }).distinct('_id');
 
-    return await Order.aggregate([
+    const results = await Order.aggregate([
         {
             $match: {
                 'items.product': { $in: vendorProductIds },
                 createdAt: { $gte: start, $lte: end },
                 status: { $in: ['delivered', 'completed'] }
+            }
+        },
+        { $unwind: '$items' },
+        {
+            $match: {
+                'items.product': { $in: vendorProductIds }
             }
         },
         {
@@ -1107,7 +1122,14 @@ const getSalesTrend = async (vendorId, startDate = null, endDate = null) => {
                     month: { $month: '$createdAt' },
                     day: { $dayOfMonth: '$createdAt' }
                 },
-                sales: { $sum: '$totalAmount' },
+                sales: {
+                    $sum: {
+                        $multiply: [
+                            '$items.quantity',
+                            { $ifNull: ['$items.finalPrice', '$items.price'] }
+                        ]
+                    }
+                },
                 orders: { $sum: 1 }
             }
         },
@@ -1115,12 +1137,23 @@ const getSalesTrend = async (vendorId, startDate = null, endDate = null) => {
             $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 }
         }
     ]);
+
+    return results.map(entry => {
+        const date = new Date(entry._id.year, entry._id.month - 1, entry._id.day);
+        const label = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+        return {
+            ...entry,
+            date: label,
+            name: label
+        };
+    });
 };
 
 const getTopProducts = async (vendorId, limit = 5) => {
     const vendorProductIds = await Product.find({ vendor: vendorId }).distinct('_id');
 
-    return await Order.aggregate([
+    const results = await Order.aggregate([
         { $unwind: '$items' },
         {
             $match: {
@@ -1132,7 +1165,14 @@ const getTopProducts = async (vendorId, limit = 5) => {
             $group: {
                 _id: '$items.product',
                 totalSold: { $sum: '$items.quantity' },
-                totalRevenue: { $sum: { $multiply: ['$items.price', '$items.quantity'] } }
+                totalRevenue: {
+                    $sum: {
+                        $multiply: [
+                            '$items.quantity',
+                            { $ifNull: ['$items.finalPrice', '$items.price'] }
+                        ]
+                    }
+                }
             }
         },
         {
@@ -1147,6 +1187,7 @@ const getTopProducts = async (vendorId, limit = 5) => {
         {
             $project: {
                 title: '$product.title',
+                name: '$product.title',
                 images: '$product.images',
                 totalSold: 1,
                 totalRevenue: 1
@@ -1155,6 +1196,8 @@ const getTopProducts = async (vendorId, limit = 5) => {
         { $sort: { totalSold: -1 } },
         { $limit: limit }
     ]);
+
+    return results;
 };
 
 const getOrderStatusDistribution = async (vendorId) => {
@@ -1176,41 +1219,54 @@ const getOrderStatusDistribution = async (vendorId) => {
 };
 
 const getRevenueByCategory = async (vendorId) => {
-    return await Product.aggregate([
-        { $match: { vendor: vendorId } },
+    const vendorProductIds = await Product.find({ vendor: vendorId }).distinct('_id');
+
+    const results = await Order.aggregate([
         {
-            $lookup: {
-                from: 'orders',
-                let: { productId: '$_id' },
-                pipeline: [
-                    { $unwind: '$items' },
-                    {
-                        $match: {
-                            $expr: { $eq: ['$items.product', '$$productId'] },
-                            status: { $in: ['delivered', 'completed'] }
-                        }
-                    }
-                ],
-                as: 'orders'
+            $match: {
+                'items.product': { $in: vendorProductIds },
+                status: { $in: ['delivered', 'completed'] }
+            }
+        },
+        { $unwind: '$items' },
+        {
+            $match: {
+                'items.product': { $in: vendorProductIds }
             }
         },
         {
+            $lookup: {
+                from: 'products',
+                localField: 'items.product',
+                foreignField: '_id',
+                as: 'product'
+            }
+        },
+        { $unwind: '$product' },
+        {
             $group: {
-                _id: '$category',
-                revenue: {
+                _id: { $ifNull: ['$product.category', 'Uncategorized'] },
+                sales: {
                     $sum: {
-                        $sum: {
-                            $map: {
-                                input: '$orders',
-                                as: 'order',
-                                in: { $multiply: ['$$order.items.price', '$$order.items.quantity'] }
-                            }
-                        }
+                        $multiply: [
+                            '$items.quantity',
+                            { $ifNull: ['$items.finalPrice', '$items.price'] }
+                        ]
                     }
                 }
             }
-        }
+        },
+        {
+            $project: {
+                _id: 0,
+                name: '$_id',
+                sales: 1
+            }
+        },
+        { $sort: { sales: -1 } }
     ]);
+
+    return results;
 };
 
 const getCustomerInsights = async (vendorId) => {
@@ -1237,7 +1293,7 @@ const getPerformanceMetrics = async (vendorId, startDate, endDate) => {
     const vendorProductIds = await Product.find({ vendor: vendorId }).distinct('_id');
 
     const [
-        averageOrderValue,
+        salesSummary,
         conversionRate,
         averageProcessingTime
     ] = await Promise.all([
@@ -1249,13 +1305,32 @@ const getPerformanceMetrics = async (vendorId, startDate, endDate) => {
                     status: { $in: ['delivered', 'completed'] }
                 }
             },
+            { $unwind: '$items' },
+            {
+                $match: {
+                    'items.product': { $in: vendorProductIds }
+                }
+            },
             {
                 $group: {
                     _id: null,
-                    averageValue: { $avg: '$totalAmount' }
+                    totalRevenue: {
+                        $sum: {
+                            $multiply: [
+                                '$items.quantity',
+                                { $ifNull: ['$items.finalPrice', '$items.price'] }
+                            ]
+                        }
+                    },
+                    totalOrders: { $addToSet: '$_id' },
+                    totalProductsSold: { $sum: '$items.quantity' }
                 }
             }
-        ]).then(result => result[0]?.averageValue || 0),
+        ]).then(result => ({
+            totalRevenue: result[0]?.totalRevenue || 0,
+            totalOrders: result[0]?.totalOrders?.length || 0,
+            totalProductsSold: result[0]?.totalProductsSold || 0
+        })),
         // Note: Conversion rate would need additional tracking of page views/sessions
         0, // Placeholder for conversion rate
         Order.aggregate([
@@ -1285,8 +1360,16 @@ const getPerformanceMetrics = async (vendorId, startDate, endDate) => {
         ]).then(result => result[0]?.averageProcessingTime || 0)
     ]);
 
+    const totalRevenue = salesSummary.totalRevenue || 0;
+    const totalOrders = salesSummary.totalOrders || 0;
+    const totalProductsSold = salesSummary.totalProductsSold || 0;
+    const safeTotalOrders = totalOrders || 0;
+
     return {
-        averageOrderValue: averageOrderValue.toFixed(2),
+        totalRevenue,
+        totalOrders,
+        totalProductsSold,
+        averageOrderValue: safeTotalOrders > 0 ? (totalRevenue / safeTotalOrders) : 0,
         conversionRate: conversionRate.toFixed(2),
         averageProcessingTime: averageProcessingTime.toFixed(1)
     };
