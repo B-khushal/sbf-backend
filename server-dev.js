@@ -16,7 +16,7 @@ const corsOptions = {
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin', 'X-Session-Id', 'x-session-id'],
 };
 
 app.use(cors(corsOptions));
@@ -43,6 +43,52 @@ app.get('/health', (req, res) => {
     environment: 'development',
   });
 });
+
+const PROXY_TARGET = process.env.REMOTE_API_PROXY_URL || 'https://sbf-backend.onrender.com';
+
+const proxyToBackend = async (req, res) => {
+  try {
+    const targetUrl = new URL(req.originalUrl, PROXY_TARGET);
+
+    const headers = {
+      'Content-Type': req.headers['content-type'] || 'application/json'
+    };
+
+    if (req.headers.authorization) {
+      headers.Authorization = req.headers.authorization;
+    }
+
+    if (req.headers['x-session-id']) {
+      headers['x-session-id'] = req.headers['x-session-id'];
+    }
+
+    const response = await fetch(targetUrl, {
+      method: req.method,
+      headers,
+      body: ['GET', 'HEAD'].includes(req.method) ? undefined : JSON.stringify(req.body || {})
+    });
+
+    const contentType = response.headers.get('content-type') || '';
+    const responseText = await response.text();
+
+    if (contentType.includes('application/json')) {
+      res.status(response.status).json(JSON.parse(responseText || '{}'));
+      return;
+    }
+
+    res.status(response.status).send(responseText);
+  } catch (error) {
+    console.error('🔁 Proxy error:', error.message);
+    res.status(502).json({
+      message: 'Failed to proxy request to backend',
+      error: error.message,
+      target: PROXY_TARGET
+    });
+  }
+};
+
+app.use('/api/activity', proxyToBackend);
+app.use('/api/vendors', proxyToBackend);
 
 // Mock review submission endpoint
 app.post('/api/products/:id/reviews', mockAuth, (req, res) => {
