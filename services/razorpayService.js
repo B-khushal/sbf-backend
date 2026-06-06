@@ -7,8 +7,8 @@ if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
 }
 
 // Get Razorpay credentials with detailed logging - Updated for live credentials
-const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || 'rzp_test_Rmp68AvXeC3M3w';
-const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || 'h5W7qTqP2dXq28Zj9ZaEtLrG';
+const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || 'rzp_live_SyHCsl7NYNB7JB';
+const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || 'VjvZiPMWe979GtEGwoIVXuLP';
 
 // Debug logging for production
 console.log('🔍 Environment Variables Check:');

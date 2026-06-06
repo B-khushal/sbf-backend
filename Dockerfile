@@ -1,27 +1,70 @@
-# Use Node.js 18 Alpine image for smaller size
-FROM node:18-alpine
+# ============================================
+# SBF Florist Backend — Production Dockerfile
+# ============================================
+# Multi-stage build for optimized image size
+# Node.js 20 Alpine | Express + MongoDB
+# ============================================
 
-# Set working directory
+# ── Stage 1: Dependencies ────────────────────
+FROM node:20-alpine AS deps
+
 WORKDIR /app
 
-# Copy package files first (for better caching)
-COPY package*.json ./
+# Copy only package files for optimal Docker layer caching
+COPY package.json package-lock.json ./
 
-# Install dependencies
-RUN npm install --production
+# Install production dependencies only (ci ensures lockfile integrity)
+RUN npm ci --omit=dev
 
-# Copy application code
-COPY . .
+# ── Stage 2: Production ─────────────────────
+FROM node:20-alpine AS production
 
-# Create uploads directory
-RUN mkdir -p uploads
+# Add labels for image metadata
+LABEL maintainer="B-khushal"
+LABEL description="SBF Florist Backend API"
+LABEL version="1.0.2"
 
-# Expose the port the app runs on
+# Install curl for healthcheck and dumb-init for proper signal handling
+RUN apk add --no-cache curl dumb-init
+
+# Set production environment
+ENV NODE_ENV=production
+
+WORKDIR /app
+
+# Copy production dependencies from deps stage
+COPY --from=deps /app/node_modules ./node_modules
+
+# Copy application source code
+COPY package.json ./
+COPY server.js ./
+COPY healthcheck.js ./
+COPY config/ ./config/
+COPY controllers/ ./controllers/
+COPY middleware/ ./middleware/
+COPY models/ ./models/
+COPY modules/ ./modules/
+COPY routes/ ./routes/
+COPY scripts/ ./scripts/
+COPY services/ ./services/
+COPY utils/ ./utils/
+COPY assets/ ./assets/
+
+# Create uploads directory with correct permissions
+RUN mkdir -p uploads && chown -R node:node /app
+
+# Switch to non-root user for security
+USER node
+
+# Expose the API port
 EXPOSE 5000
 
-# Add health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+# Healthcheck — hits the /health endpoint every 30s
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD node healthcheck.js
 
+# Use dumb-init to handle PID 1 and signal forwarding properly
+ENTRYPOINT ["dumb-init", "--"]
+
 # Start the application
-CMD ["npm", "start"] 
+CMD ["node", "server.js"]

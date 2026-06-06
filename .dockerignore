@@ -1,0 +1,57 @@
+# Dependencies (re-installed in Docker)
+node_modules/
+npm-debug.log*
+
+# Environment files (injected at runtime)
+.env
+.env.*
+!.env.example
+
+# Git
+.git/
+.gitignore
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Docker (prevent recursive copy)
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Build artifacts
+dist/
+build/
+
+# Test & debug scripts
+tests/
+debug-*.js
+test-*.js
+simple-email-test.js
+fix-existing-products.js
+generate-sample-pdf.js
+get-device-tokens.js
+get-latest-token.js
+
+# Documentation
+docs/
+README.md
+*.md
+
+# Uploads (mounted as volume in production)
+uploads/
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Logs
+logs/
+*.log
