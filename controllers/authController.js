@@ -134,6 +134,7 @@ const registerUser = async (req, res) => {
 
     // Validation
     if (!name || !email || !password || !confirmPassword) {
+      console.warn("Registration failed: Missing required fields", { name: !!name, email: !!email, password: !!password, confirmPassword: !!confirmPassword });
       return res.status(400).json({ 
         message: "All fields are required",
         fields: {
@@ -148,22 +149,26 @@ const registerUser = async (req, res) => {
     // Email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
+      console.warn(`Registration failed: Invalid email format: ${email}`);
       return res.status(400).json({ message: "Invalid email format" });
     }
 
     // Password validation
     if (password.length < 6) {
+      console.warn("Registration failed: Password too short");
       return res.status(400).json({ message: "Password must be at least 6 characters long" });
     }
 
     // Password confirmation
     if (password !== confirmPassword) {
+      console.warn("Registration failed: Password mismatch");
       return res.status(400).json({ message: "Passwords do not match" });
     }
 
     // Check if user exists
     const userExists = await User.findOne({ email });
     if (userExists) {
+      console.warn(`Registration failed: User with email ${email} already exists`);
       return res.status(400).json({ message: "User with this email already exists" });
     }
 
@@ -180,6 +185,7 @@ const registerUser = async (req, res) => {
 
     if (user) {
       const token = generateToken(user);
+      console.log(`User registered successfully: ${email} (${user._id})`);
       res.status(201).json({
         _id: user._id,
         name: user.name,
@@ -191,6 +197,7 @@ const registerUser = async (req, res) => {
         lastLogin: user.lastLogin
       });
     } else {
+      console.warn("Registration failed: Mongoose user creation failed");
       res.status(400).json({ message: "Invalid user data" });
     }
   } catch (error) {
