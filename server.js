@@ -63,6 +63,26 @@ const startServer = async () => {
     await connectDB();
     console.log('Database connected successfully');
 
+    // Update existing settings document with the new phone number if it contains the old one
+    try {
+      const Settings = require('./models/settings');
+      const settingsDoc = await Settings.findOne();
+      if (settingsDoc) {
+        let updated = false;
+        if (settingsDoc.footerSettings && settingsDoc.footerSettings.contactInfo && settingsDoc.footerSettings.contactInfo.phone === '+91 9849589710') {
+          settingsDoc.footerSettings.contactInfo.phone = '+91 9949683222';
+          settingsDoc.markModified('footerSettings.contactInfo');
+          updated = true;
+        }
+        if (updated) {
+          await settingsDoc.save();
+          console.log('⚙️ Database Migration: Updated settings contact phone number to +91 9949683222');
+        }
+      }
+    } catch (migErr) {
+      console.error('⚠️ Database migration failed:', migErr);
+    }
+
     initEmailService();
 
     const app = express();

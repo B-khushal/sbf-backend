@@ -334,7 +334,7 @@ exports.getFooterSettings = async (req, res) => {
         ],
         contactInfo: {
           email: "2006sbf@gmail.com",
-          phone: "+91 9849589710",
+          phone: "+91 9949683222",
           address: "Door No. 12-2-786/A & B, Najam Centre, Pillar No. 32,Rethi Bowli, Mehdipatnam, Hyderabad, Telangana 500028"
         },
         links: [
@@ -440,5 +440,82 @@ exports.updateSectionContent = async (req, res) => {
   } catch (error) {
     console.error('Error updating section content:', error);
     res.status(500).json({ message: 'Error updating section content' });
+  }
+};
+
+// Get sample invoice PDF
+exports.getSamplePdf = async (req, res) => {
+  try {
+    const { generateInvoiceHTML, generateInvoicePDF } = require('../services/emailNotificationService');
+    
+    const sampleOrderData = {
+        order: {
+            _id: 'sample_id_123',
+            orderNumber: 'SBF-SAMPLE-2026',
+            totalAmount: 1449,
+            currency: 'INR',
+            createdAt: new Date(),
+            subtotal: 1299,
+            deliveryFee: 200,
+            promoCode: {
+                code: 'WELCOME50',
+                discount: 50
+            },
+            shippingDetails: {
+                fullName: 'Khushal Prasad',
+                address: 'Door No. 12-2-786/A & B, Najam Centre',
+                apartment: 'Pillar No. 32, Rethi Bowli, Mehdipatnam',
+                city: 'Hyderabad',
+                state: 'Telangana',
+                zipCode: '500028',
+                phone: '+919949683222',
+                deliveryDate: new Date(),
+                timeSlot: '10:00 AM - 2:00 PM',
+                deliveryOption: 'gift',
+                receiverFirstName: 'Jane',
+                receiverLastName: 'Doe',
+                receiverPhone: '+919949683222',
+                receiverAddress: 'Door No. 12-2-786/A & B, Najam Centre',
+                receiverCity: 'Hyderabad',
+                receiverState: 'Telangana',
+                receiverZipCode: '500028',
+                giftMessage: 'Hope these beautiful flowers brighten your day!'
+            },
+            items: [
+                {
+                    product: { title: 'Premium Red Roses Bouquet' },
+                    quantity: 1,
+                    price: 799,
+                    finalPrice: 699
+                },
+                {
+                    product: { title: 'Assorted Chocolate Truffles' },
+                    quantity: 1,
+                    price: 600,
+                    finalPrice: 600
+                }
+            ],
+            paymentDetails: {
+                method: 'razorpay',
+                paymentId: 'pay_sample123',
+                status: 'Completed'
+            }
+        },
+        customer: {
+            name: 'Khushal Prasad',
+            email: '2006sbf@gmail.com',
+            phone: '+919949683222'
+        }
+    };
+
+    const html = generateInvoiceHTML(sampleOrderData);
+    const pdfBuffer = await generateInvoicePDF(html, 'SBF-SAMPLE-2026');
+    
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="sample_invoice.pdf"');
+    res.send(pdfBuffer);
+  } catch (error) {
+    console.error('Error generating sample PDF:', error);
+    res.status(500).json({ message: 'Error generating sample PDF', error: error.message });
   }
 }; 

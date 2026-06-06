@@ -157,7 +157,7 @@ const submitContactForm = async (req, res) => {
                 
                 <div class="contact-info">
                   <h3 style="color: #0369a1; margin-top: 0;">Need Immediate Assistance?</h3>
-                  <p><strong>📞 Phone:</strong> +91 9849589710</p>
+                  <p><strong>📞 Phone:</strong> +91 9949683222</p>
                   <p><strong>💬 WhatsApp:</strong> <a href="https://wa.me/9949683222" style="color: #059669;">9949683222</a></p>
                   <p><strong>✉️ Email:</strong> <a href="mailto:2006sbf@gmail.com">2006sbf@gmail.com</a></p>
                   <p><strong>📍 Visit Us:</strong> Door No. 12-2-786/A & B, Najam Centre, Hyderabad</p>
@@ -222,7 +222,7 @@ const getContactInfo = async (req, res) => {
         landmark: 'Near Tolichihocki, HITEC City'
       },
       phone: {
-        primary: '+91 9849589710',
+        primary: '+91 9949683222',
         whatsapp: '9949683222'
       },
       email: '2006sbf@gmail.com',

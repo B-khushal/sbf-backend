@@ -6,6 +6,9 @@ const { protect, admin } = require('../middleware/authMiddleware');
 // Get all settings at once (public)
 router.get('/all', settingsController.getAllSettings);
 
+// Get sample invoice PDF (admin only)
+router.get('/sample-pdf', protect, admin, settingsController.getSamplePdf);
+
 // Update all settings at once (admin only)
 router.put('/all', protect, admin, settingsController.updateAllSettings);
 

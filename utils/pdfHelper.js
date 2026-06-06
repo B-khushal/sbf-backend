@@ -42,7 +42,7 @@ const getPdfHeader = (documentTitle = '') => {
                             <strong style="font-size: 14px; color: #111827;">Spring Blossoms Florist</strong><br>
                             Nizam Building, Rethiboli<br>
                             Hyderabad, Telangana 500028<br>
-                            Phone: +91 9849589710<br>
+                            Phone: +91 9949683222<br>
                             Website: sbflorist.in
                         </div>
                     </td>

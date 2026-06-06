@@ -332,7 +332,7 @@ settingsSchema.statics.initializeDefaultSettings = async function() {
       ],
       contactInfo: {
         email: "2006sbf@gmail.com",
-        phone: "+91 9849589710",
+        phone: "+91 9949683222",
         address: "Door No. 12-2-786/A & B, Najam Centre, Pillar No. 32,Rethi Bowli, Mehdipatnam, Hyderabad, Telangana 500028"
       },
       links: [
