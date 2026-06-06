@@ -66,7 +66,7 @@ async function generateSample() {
     try {
         const html = generateInvoiceHTML(sampleOrderData);
         const pdfBuffer = await generateInvoicePDF(html, 'SBF-2024-001');
-        const outPath = 'C:\\Users\\acer\\.gemini\\antigravity\\brain\\d76235b2-91fa-43c6-83f0-94ddd5960fe5\\sample_invoice.pdf';
+        const outPath = path.join(__dirname, 'sample_invoice.pdf');
         fs.writeFileSync(outPath, pdfBuffer);
         console.log('Sample PDF generated at:', outPath);
     } catch (err) {
