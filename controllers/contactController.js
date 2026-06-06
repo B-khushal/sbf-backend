@@ -236,7 +236,7 @@ const getContactInfo = async (req, res) => {
         sunday: '10:00 AM - 6:00 PM'
       },
       socialMedia: {
-        website: 'www.sbflorist.com',
+        website: 'www.sbflorist.in',
         whatsapp: 'https://wa.me/9949683222'
       }
     };
