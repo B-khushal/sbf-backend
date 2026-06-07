@@ -11,6 +11,8 @@ router.get('/sample-pdf', protect, admin, settingsController.getSamplePdf);
 
 // Update all settings at once (admin only)
 router.put('/all', protect, admin, settingsController.updateAllSettings);
+router.post('/restore', protect, admin, settingsController.restoreSettingsVersion);
+router.post('/discard-draft', protect, admin, settingsController.discardDraft);
 
 // Hero slides routes
 router.get('/hero-slides', settingsController.getHeroSlides);

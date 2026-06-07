@@ -44,6 +44,8 @@ const checkFirstOrderEligibility = async ({ userId, email, phone }) => {
   return !existingOrder;
 };
 
+const Settings = require('../models/settings');
+
 /**
  * Calculates delivery fee based on subtotal, time slot, and customer details.
  * 
@@ -56,17 +58,53 @@ const checkFirstOrderEligibility = async ({ userId, email, phone }) => {
  * @returns {Promise<Object>} The delivery fee details: { deliveryCharge, isFirstOrderFreeDelivery, standardFee }
  */
 const calculateDeliveryFee = async ({ subtotal, timeSlot, userId, email, phone }) => {
-  const isMidnight = timeSlot === 'midnight';
-  const standardFee = isMidnight ? 300 : 150;
+  let settings = await Settings.findOne();
+  if (!settings) {
+    await Settings.initializeDefaultSettings();
+    settings = await Settings.findOne();
+  }
+
+  const deliverySettings = settings.deliverySettings || {};
+  const isFirstOrderFreeEnabled = deliverySettings.firstOrderFree !== false; // default true
   
-  const isEligible = await checkFirstOrderEligibility({ userId, email, phone });
+  // Find appropriate time slot extra charge
+  const timeSlots = deliverySettings.timeSlots || [];
+  const activeSlot = timeSlots.find(s => s.time === timeSlot && s.enabled);
+  const slotExtraCharge = activeSlot ? (activeSlot.extraCharge || 0) : (timeSlot === 'midnight' ? 150 : 0);
+
+  // Find standard shipping charge from rules
+  const rules = deliverySettings.deliveryChargeRules || [
+    { minOrderAmount: 0, charge: 150 },
+    { minOrderAmount: 999, charge: 0 }
+  ];
   
-  const deliveryCharge = isEligible ? 0 : standardFee;
-  
+  // Sort rules descending by minOrderAmount to find the highest matching threshold
+  const sortedRules = [...rules].sort((a, b) => b.minOrderAmount - a.minOrderAmount);
+  const matchingRule = sortedRules.find(r => subtotal >= r.minOrderAmount);
+  let baseCharge = matchingRule ? matchingRule.charge : 150;
+
+  // First order free delivery check
+  let isEligible = false;
+  if (isFirstOrderFreeEnabled) {
+    isEligible = await checkFirstOrderEligibility({ userId, email, phone });
+  }
+
+  let deliveryCharge = 0;
+  if (isEligible) {
+    deliveryCharge = 0;
+  } else {
+    deliveryCharge = baseCharge + slotExtraCharge;
+  }
+
+  // Rush delivery charge support
+  if (deliverySettings.rushDelivery?.enabled) {
+    deliveryCharge += (deliverySettings.rushDelivery.charge || 0);
+  }
+
   return {
     deliveryCharge,
     isFirstOrderFreeDelivery: isEligible,
-    standardFee
+    standardFee: baseCharge + slotExtraCharge
   };
 };
 

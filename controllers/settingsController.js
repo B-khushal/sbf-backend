@@ -122,7 +122,14 @@ exports.getAllSettings = async (req, res) => {
       categories: settings.categories || [],
       shopCategories: settings.shopCategories || [],
       headerSettings: settings.headerSettings || {},
-      footerSettings: settings.footerSettings || {}
+      footerSettings: settings.footerSettings || {},
+      notificationsSettings: settings.notificationsSettings || {},
+      globalSettings: settings.globalSettings || {},
+      deliverySettings: settings.deliverySettings || {},
+      themeSettings: settings.themeSettings || {},
+      productDisplaySettings: settings.productDisplaySettings || {},
+      draftSettings: settings.draftSettings || null,
+      history: settings.history || []
     });
   } catch (error) {
     console.error('Error fetching all settings:', error);
@@ -133,60 +140,102 @@ exports.getAllSettings = async (req, res) => {
 // Update all settings at once
 exports.updateAllSettings = async (req, res) => {
   try {
-    const { heroSlides, homeSections, categories, shopCategories, headerSettings, footerSettings } = req.body;
+    const { 
+      heroSlides, 
+      homeSections, 
+      categories, 
+      shopCategories, 
+      headerSettings, 
+      footerSettings,
+      notificationsSettings,
+      globalSettings,
+      deliverySettings,
+      themeSettings,
+      productDisplaySettings,
+      isDraft = false
+    } = req.body;
 
     let settings = await Settings.findOne();
     if (!settings) {
       settings = new Settings();
     }
 
-    // Validate hero slides before updating
-    if (heroSlides) {
-      const validSlides = heroSlides.every(slide => 
-        slide.id && 
-        slide.title && 
-        slide.subtitle && 
-        slide.image && 
-        slide.ctaText && 
-        slide.ctaLink && 
-        typeof slide.enabled === 'boolean' && 
-        typeof slide.order === 'number'
-      );
-      
-      if (!validSlides) {
-        return res.status(400).json({ 
-          message: 'Invalid hero slides data. All required fields must be provided.',
-          requiredFields: ['id', 'title', 'subtitle', 'image', 'ctaText', 'ctaLink', 'enabled', 'order']
-        });
-      }
-      settings.heroSlides = heroSlides;
-    }
+    // Capture the payload for updating
+    const updateData = {};
+    if (heroSlides) updateData.heroSlides = heroSlides;
+    if (homeSections) updateData.homeSections = homeSections;
+    if (categories) updateData.categories = categories;
+    if (shopCategories) updateData.shopCategories = shopCategories;
+    if (headerSettings) updateData.headerSettings = headerSettings;
+    if (footerSettings) updateData.footerSettings = footerSettings;
+    if (notificationsSettings) updateData.notificationsSettings = notificationsSettings;
+    if (globalSettings) updateData.globalSettings = globalSettings;
+    if (deliverySettings) updateData.deliverySettings = deliverySettings;
+    if (themeSettings) updateData.themeSettings = themeSettings;
+    if (productDisplaySettings) updateData.productDisplaySettings = productDisplaySettings;
 
-    if (homeSections) settings.homeSections = homeSections;
-    if (categories) settings.categories = categories;
-    if (shopCategories) settings.shopCategories = shopCategories;
-    if (headerSettings) settings.headerSettings = headerSettings;
-    if (footerSettings) settings.footerSettings = footerSettings;
+    if (isDraft) {
+      // Save draft settings
+      settings.draftSettings = {
+        ...(settings.draftSettings || {}),
+        ...updateData,
+        updatedAt: new Date()
+      };
+    } else {
+      // Publish settings: save history first
+      const previousState = {
+        heroSlides: settings.heroSlides || [],
+        homeSections: settings.homeSections || [],
+        categories: settings.categories || [],
+        shopCategories: settings.shopCategories || [],
+        headerSettings: settings.headerSettings || {},
+        footerSettings: settings.footerSettings || {},
+        notificationsSettings: settings.notificationsSettings || {},
+        globalSettings: settings.globalSettings || {},
+        deliverySettings: settings.deliverySettings || {},
+        themeSettings: settings.themeSettings || {},
+        productDisplaySettings: settings.productDisplaySettings || {},
+        publishedAt: settings.updatedAt || new Date()
+      };
+
+      // Limit history to last 15 versions
+      settings.history = [previousState, ...(settings.history || [])].slice(0, 15);
+
+      // Apply changes to live settings
+      if (heroSlides) settings.heroSlides = heroSlides;
+      if (homeSections) settings.homeSections = homeSections;
+      if (categories) settings.categories = categories;
+      if (shopCategories) settings.shopCategories = shopCategories;
+      if (headerSettings) settings.headerSettings = headerSettings;
+      if (footerSettings) settings.footerSettings = footerSettings;
+      if (notificationsSettings) settings.notificationsSettings = notificationsSettings;
+      if (globalSettings) settings.globalSettings = globalSettings;
+      if (deliverySettings) settings.deliverySettings = deliverySettings;
+      if (themeSettings) settings.themeSettings = themeSettings;
+      if (productDisplaySettings) settings.productDisplaySettings = productDisplaySettings;
+
+      // Clear draftSettings since we published it
+      settings.draftSettings = null;
+    }
 
     settings.updatedAt = Date.now();
-    
-    try {
-      await settings.save();
-    } catch (saveError) {
-      console.error('Mongoose validation error:', saveError);
-      return res.status(400).json({ 
-        message: 'Failed to save settings due to validation errors',
-        errors: saveError.errors
-      });
-    }
+    await settings.save();
 
     res.json({
+      success: true,
       heroSlides: settings.heroSlides,
       homeSections: settings.homeSections,
       categories: settings.categories,
       shopCategories: settings.shopCategories,
       headerSettings: settings.headerSettings,
-      footerSettings: settings.footerSettings
+      footerSettings: settings.footerSettings,
+      notificationsSettings: settings.notificationsSettings,
+      globalSettings: settings.globalSettings,
+      deliverySettings: settings.deliverySettings,
+      themeSettings: settings.themeSettings,
+      productDisplaySettings: settings.productDisplaySettings,
+      draftSettings: settings.draftSettings,
+      history: settings.history
     });
   } catch (error) {
     console.error('Error updating all settings:', error);
@@ -517,5 +566,71 @@ exports.getSamplePdf = async (req, res) => {
   } catch (error) {
     console.error('Error generating sample PDF:', error);
     res.status(500).json({ message: 'Error generating sample PDF', error: error.message });
+  }
+};
+
+// Restore settings to a historical version
+exports.restoreSettingsVersion = async (req, res) => {
+  try {
+    const { versionIndex } = req.body;
+
+    let settings = await Settings.findOne();
+    if (!settings || !settings.history || settings.history.length === 0) {
+      return res.status(404).json({ message: 'No history found' });
+    }
+
+    if (versionIndex < 0 || versionIndex >= settings.history.length) {
+      return res.status(400).json({ message: 'Invalid version index' });
+    }
+
+    const targetVersion = settings.history[versionIndex];
+
+    // Restore keys
+    if (targetVersion.heroSlides) settings.heroSlides = targetVersion.heroSlides;
+    if (targetVersion.homeSections) settings.homeSections = targetVersion.homeSections;
+    if (targetVersion.categories) settings.categories = targetVersion.categories;
+    if (targetVersion.shopCategories) settings.shopCategories = targetVersion.shopCategories;
+    if (targetVersion.headerSettings) settings.headerSettings = targetVersion.headerSettings;
+    if (targetVersion.footerSettings) settings.footerSettings = targetVersion.footerSettings;
+    if (targetVersion.notificationsSettings) settings.notificationsSettings = targetVersion.notificationsSettings;
+    if (targetVersion.globalSettings) settings.globalSettings = targetVersion.globalSettings;
+    if (targetVersion.deliverySettings) settings.deliverySettings = targetVersion.deliverySettings;
+    if (targetVersion.themeSettings) settings.themeSettings = targetVersion.themeSettings;
+    if (targetVersion.productDisplaySettings) settings.productDisplaySettings = targetVersion.productDisplaySettings;
+
+    settings.draftSettings = null; // Clear draft
+    settings.updatedAt = Date.now();
+    await settings.save();
+
+    res.json({
+      success: true,
+      message: 'Version restored successfully',
+      settings
+    });
+  } catch (error) {
+    console.error('Error restoring settings version:', error);
+    res.status(500).json({ message: 'Error restoring settings version', error: error.message });
+  }
+};
+
+// Discard draft settings
+exports.discardDraft = async (req, res) => {
+  try {
+    let settings = await Settings.findOne();
+    if (!settings) {
+      return res.status(404).json({ message: 'Settings not found' });
+    }
+
+    settings.draftSettings = null;
+    await settings.save();
+
+    res.json({
+      success: true,
+      message: 'Draft discarded successfully',
+      draftSettings: null
+    });
+  } catch (error) {
+    console.error('Error discarding draft settings:', error);
+    res.status(500).json({ message: 'Error discarding draft settings', error: error.message });
   }
 }; 
