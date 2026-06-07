@@ -20,6 +20,8 @@ const STATIC_ALLOWED_ORIGINS = [
   'https://sbf-frontend.onrender.com',
   'https://sbf-backend.onrender.com',
   'http://localhost:8080',
+  'http://localhost:8081',
+  'http://localhost:8082',
   'http://localhost:3000',
   'http://localhost:5173',
   'http://192.168.1.7:8080',
