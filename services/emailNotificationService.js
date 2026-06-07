@@ -17,7 +17,7 @@ const ORDER_CONFIRMATION_EMAIL_CONFIG = {
   secure: false,
   auth: {
     user: process.env.ORDER_CONFIRMATION_EMAIL_USER || 'sbforderconfirmation@gmail.com',
-    pass: process.env.ORDER_CONFIRMATION_EMAIL_PASS || 'pbxtmsnseknrxrnx'
+    pass: process.env.ORDER_CONFIRMATION_EMAIL_PASS || 'mgcwrebhbyyilstd'
   }
 };
 
@@ -29,7 +29,7 @@ const DELIVERY_CONFIRMATION_EMAIL_CONFIG = {
   secure: false,
   auth: {
     user: process.env.DELIVERY_CONFIRMATION_EMAIL_USER || 'sbfdeliveryconfirmation@gmail.com',
-    pass: process.env.DELIVERY_CONFIRMATION_EMAIL_PASS || 'ywmxpkbqitvrpdqx'
+    pass: process.env.DELIVERY_CONFIRMATION_EMAIL_PASS || 'kfpplcumkbdywbil'
   }
 };
 

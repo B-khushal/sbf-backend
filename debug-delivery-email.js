@@ -1,5 +1,8 @@
 const mongoose = require('mongoose');
+const dotenv = require('dotenv');
+dotenv.config();
 const Order = require('./models/Order');
+const Product = require('./models/Product');
 const User = require('./models/User');
 const { sendDeliveryConfirmationWithInvoice } = require('./services/emailNotificationService');
 

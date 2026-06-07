@@ -1,4 +1,6 @@
 const mongoose = require('mongoose');
+const dotenv = require('dotenv');
+dotenv.config();
 const Order = require('./models/Order');
 const User = require('./models/User');
 const Product = require('./models/Product');
@@ -46,13 +48,13 @@ async function simulateStatusUpdate() {
         select: 'title price images sku discount'
       });
       
-      return simulateStatusChangeLogic(updatedOrder);
+      return await simulateStatusChangeLogic(updatedOrder);
     }
 
     console.log(`🎯 Found order: ${order.orderNumber}`);
     console.log(`📊 Current status: ${order.status}`);
     
-    return simulateStatusChangeLogic(order);
+    return await simulateStatusChangeLogic(order);
 
   } catch (error) {
     console.error('❌ Error in simulation:', error);

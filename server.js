@@ -9,7 +9,7 @@ const http = require('http');
 const https = require('https');
 
 // Load environment variables
-dotenv.config();
+dotenv.config({ path: path.join(__dirname, '.env') });
 
 // Initialize email service
 const { initEmailService } = require('./services/emailNotificationService');
