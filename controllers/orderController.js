@@ -9,6 +9,7 @@ const { createOrderNotification } = require('./notificationController');
 const { sendEmailNotification, sendDeliveryConfirmationWithInvoice } = require('../services/emailNotificationService');
 const { sendOrderNotificationToAdmins, sendToAllAdmins } = require('../services/fcmService');
 const { logActivity } = require('../utils/activityLogger');
+const { calculateDeliveryFee } = require('../services/deliveryService');
 
 // Helper function to recursively flatten arrays and extract strings
 const flattenToStrings = (value) => {
@@ -133,10 +134,11 @@ const createOrder = async (req, res) => {
       });
     }
 
-    if (!req.user || !req.user._id) {
-      return res.status(401).json({
+    const userId = req.user?._id || null;
+    if (!userId && (!shippingDetails?.email || !shippingDetails?.phone)) {
+      return res.status(400).json({
         success: false,
-        message: 'User not authenticated'
+        message: 'Email and phone number are required for guest checkout'
       });
     }
 
@@ -160,10 +162,53 @@ const createOrder = async (req, res) => {
 
     const orderNumber = `${year}${month}${sequence}${day}`;
 
+    // Server-side calculation and validation
+    const subtotalCalculated = items.reduce((sum, item) => sum + (item.finalPrice || item.price) * item.quantity, 0);
+
+    const deliveryChargeResult = await calculateDeliveryFee({
+      subtotal: subtotalCalculated,
+      timeSlot: shippingDetails.timeSlot,
+      userId,
+      email: shippingDetails.email,
+      phone: shippingDetails.phone
+    });
+    const deliveryChargeCalculated = deliveryChargeResult.deliveryCharge;
+    const isFirstOrderFreeDelivery = deliveryChargeResult.isFirstOrderFreeDelivery;
+
+    // Validate subtotal if sent
+    if (req.body.subtotal !== undefined && Math.abs(req.body.subtotal - subtotalCalculated) > 1) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid subtotal. Expected ${subtotalCalculated}, got ${req.body.subtotal}`
+      });
+    }
+
+    // Validate delivery charge if sent
+    if (req.body.deliveryCharge !== undefined && Math.abs(req.body.deliveryCharge - deliveryChargeCalculated) > 1) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid delivery charge. Expected ${deliveryChargeCalculated}, got ${req.body.deliveryCharge}`
+      });
+    }
+
+    // Discount from request or derived from totalAmount formula
+    const discount = req.body.discount !== undefined
+      ? req.body.discount
+      : Math.max(0, subtotalCalculated + deliveryChargeCalculated - totalAmount);
+
+    const finalTotal = subtotalCalculated + deliveryChargeCalculated - discount;
+
+    if (Math.abs(totalAmount - finalTotal) > 1) {
+      return res.status(400).json({
+        success: false,
+        message: `Total amount mismatch. Calculated ${finalTotal}, got ${totalAmount}`
+      });
+    }
+
     // Create the order object with all required fields
     const orderData = {
       orderNumber,
-      user: req.user._id,
+      user: userId,
       shippingDetails: {
         fullName: shippingDetails.fullName,
         email: shippingDetails.email,
@@ -194,7 +239,12 @@ const createOrder = async (req, res) => {
         razorpayPaymentId: paymentDetails.razorpayPaymentId,
         razorpaySignature: paymentDetails.razorpaySignature
       },
-      totalAmount,
+      totalAmount: finalTotal,
+      subtotal: subtotalCalculated,
+      deliveryCharge: deliveryChargeCalculated,
+      discount,
+      finalTotal,
+      isFirstOrderFreeDelivery,
       currency: currency || 'INR',
       currencyRate: currencyRate || 1,
       originalCurrency: originalCurrency || currency || 'INR',
@@ -216,7 +266,7 @@ const createOrder = async (req, res) => {
       actionType: 'Checkout',
       method: 'POST',
       status: 'Success',
-      userId: req.user._id,
+      userId: userId,
       metadata: {
         orderId: savedOrder._id,
         orderNumber: savedOrder.orderNumber,
@@ -229,8 +279,14 @@ const createOrder = async (req, res) => {
 
     // Send notifications after order is successfully created
     try {
-      // Get customer details
-      const customer = await User.findById(req.user._id);
+      // Get customer details (for logged in, fetch from User, for guest, use shippingDetails)
+      const customer = userId 
+        ? await User.findById(userId)
+        : {
+            name: savedOrder.shippingDetails.fullName,
+            email: savedOrder.shippingDetails.email,
+            phone: savedOrder.shippingDetails.phone
+          };
 
       // Populate product details for notifications
       const populatedOrder = await Order.findById(savedOrder._id)
@@ -642,7 +698,8 @@ const getOrders = async (req, res) => {
       search,
       deliveryDateFrom,
       deliveryDateTo,
-      highlight3Days
+      highlight3Days,
+      firstOrderFreeDelivery
     } = req.query;
 
     // Validate and set limits
@@ -655,6 +712,13 @@ const getOrders = async (req, res) => {
     // Filter by status
     if (status && status !== 'all') {
       query.status = status;
+    }
+
+    // Filter by first-order free delivery
+    if (firstOrderFreeDelivery === 'true') {
+      query.isFirstOrderFreeDelivery = true;
+    } else if (firstOrderFreeDelivery === 'false') {
+      query.isFirstOrderFreeDelivery = false;
     }
 
     // Filter by order creation date range
@@ -1278,10 +1342,11 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
         });
       }
 
-      if (!req.user || !req.user._id) {
-        return res.status(401).json({
+      const userId = req.user?._id || null;
+      if (!userId && (!orderData.shippingDetails?.email || !orderData.shippingDetails?.phone)) {
+        return res.status(400).json({
           success: false,
-          message: 'User not authenticated'
+          message: 'Email and phone number are required for guest checkout'
         });
       }
 
@@ -1305,10 +1370,52 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
 
       const orderNumber = `${year}${month}${sequence}${day}`;
 
+      // Server-side calculation and validation
+      const subtotalCalculated = orderData.items.reduce((sum, item) => sum + (item.finalPrice || item.price) * item.quantity, 0);
+
+      const deliveryChargeResult = await calculateDeliveryFee({
+        subtotal: subtotalCalculated,
+        timeSlot: orderData.shippingDetails.timeSlot,
+        userId,
+        email: orderData.shippingDetails.email,
+        phone: orderData.shippingDetails.phone
+      });
+      const deliveryChargeCalculated = deliveryChargeResult.deliveryCharge;
+      const isFirstOrderFreeDelivery = deliveryChargeResult.isFirstOrderFreeDelivery;
+
+      // Validate subtotal if sent
+      if (orderData.subtotal !== undefined && Math.abs(orderData.subtotal - subtotalCalculated) > 1) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid subtotal. Expected ${subtotalCalculated}, got ${orderData.subtotal}`
+        });
+      }
+
+      // Validate delivery charge if sent
+      if (orderData.deliveryCharge !== undefined && Math.abs(orderData.deliveryCharge - deliveryChargeCalculated) > 1) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid delivery charge. Expected ${deliveryChargeCalculated}, got ${orderData.deliveryCharge}`
+        });
+      }
+
+      const discount = orderData.discount !== undefined
+        ? orderData.discount
+        : Math.max(0, subtotalCalculated + deliveryChargeCalculated - orderData.totalAmount);
+
+      const finalTotal = subtotalCalculated + deliveryChargeCalculated - discount;
+
+      if (Math.abs(orderData.totalAmount - finalTotal) > 1) {
+        return res.status(400).json({
+          success: false,
+          message: `Total amount mismatch. Calculated ${finalTotal}, got ${orderData.totalAmount}`
+        });
+      }
+
       // Create the order object with all required fields
       const orderDbData = {
         orderNumber,
-        user: req.user._id,
+        user: userId,
         shippingDetails: {
           fullName: orderData.shippingDetails.fullName,
           email: orderData.shippingDetails.email,
@@ -1339,7 +1446,12 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
           razorpayPaymentId: razorpay_payment_id,
           razorpaySignature: razorpay_signature
         },
-        totalAmount: orderData.totalAmount,
+        totalAmount: finalTotal,
+        subtotal: subtotalCalculated,
+        deliveryCharge: deliveryChargeCalculated,
+        discount,
+        finalTotal,
+        isFirstOrderFreeDelivery,
         currency: orderData.currency || 'INR',
         currencyRate: orderData.currencyRate || 1,
         originalCurrency: orderData.originalCurrency || orderData.currency || 'INR',
@@ -1360,8 +1472,14 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
 
       // Send notifications after order is successfully created
       try {
-        // Get customer details
-        const customer = await User.findById(req.user._id);
+        // Get customer details (for logged in, fetch from User, for guest, use shippingDetails)
+        const customer = userId 
+          ? await User.findById(userId)
+          : {
+              name: savedOrder.shippingDetails.fullName,
+              email: savedOrder.shippingDetails.email,
+              phone: savedOrder.shippingDetails.phone
+            };
 
         // Populate product details for notifications
         const populatedOrder = await Order.findById(savedOrder._id)
@@ -1791,10 +1909,45 @@ const getOrderInvoice = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
 
-    // Authorization: ensure only order owner or admin can download
-    const isOwner = order.user && order.user._id && order.user._id.toString() === req.user._id.toString();
-    const isAdmin = req.user.role === 'admin';
-    if (!isOwner && !isAdmin) {
+    // Authorization: ensure order owner, admin, or verified guest can download
+    let authorized = false;
+
+    // Check if user is logged in
+    if (req.user) {
+      const isOwner = order.user && order.user._id && order.user._id.toString() === req.user._id.toString();
+      const isAdmin = req.user.role === 'admin';
+      if (isOwner || isAdmin) {
+        authorized = true;
+      }
+    }
+
+    // If not authorized by login, check guest query parameters
+    if (!authorized) {
+      const { email, phone } = req.query;
+      const shippingEmail = order.shippingDetails?.email;
+      const shippingPhone = order.shippingDetails?.phone;
+
+      const emailMatches = email && shippingEmail && email.trim().toLowerCase() === shippingEmail.trim().toLowerCase();
+      
+      let phoneMatches = false;
+      if (phone && shippingPhone) {
+        const cleanPhoneInput = phone.trim().replace(/[\s-+]/g, '');
+        const cleanPhoneShipping = shippingPhone.trim().replace(/[\s-+]/g, '');
+        const inputLast10 = cleanPhoneInput.slice(-10);
+        const shippingLast10 = cleanPhoneShipping.slice(-10);
+        if (inputLast10.length >= 10 && shippingLast10.length >= 10) {
+          phoneMatches = inputLast10 === shippingLast10;
+        } else {
+          phoneMatches = cleanPhoneInput === cleanPhoneShipping;
+        }
+      }
+
+      if (emailMatches || phoneMatches) {
+        authorized = true;
+      }
+    }
+
+    if (!authorized) {
       return res.status(403).json({ success: false, message: 'Not authorized to access this invoice' });
     }
 
@@ -1831,6 +1984,43 @@ const getOrderInvoice = async (req, res) => {
   }
 };
 
+// @desc    Calculate delivery fee dynamically
+// @route   POST /api/orders/calculate-delivery
+// @access  Public (Optional auth)
+const calculateDelivery = async (req, res) => {
+  try {
+    const { subtotal, timeSlot, email, phone } = req.body;
+    const userId = req.user?._id || null;
+
+    if (subtotal === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: 'Subtotal is required'
+      });
+    }
+
+    const calculation = await calculateDeliveryFee({
+      subtotal: Number(subtotal),
+      timeSlot,
+      userId,
+      email,
+      phone
+    });
+
+    res.json({
+      success: true,
+      ...calculation
+    });
+  } catch (error) {
+    console.error('Error in calculateDelivery:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error calculating delivery fee',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   createOrder,
   getNextOrderNumber,
@@ -1847,4 +2037,5 @@ module.exports = {
   getUpcomingDeliveries,
   getDeliveryCalendar,
   testDeliveryEmail,
+  calculateDelivery,
 };

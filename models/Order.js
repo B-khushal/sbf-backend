@@ -9,7 +9,7 @@ const orderSchema = new mongoose.Schema({
   user: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true
+    required: false
   },
   shippingDetails: {
     fullName: String,
@@ -91,6 +91,27 @@ const orderSchema = new mongoose.Schema({
     type: Number,
     required: true
   },
+  subtotal: {
+    type: Number,
+    required: true
+  },
+  deliveryCharge: {
+    type: Number,
+    required: true,
+    default: 150
+  },
+  discount: {
+    type: Number,
+    default: 0
+  },
+  finalTotal: {
+    type: Number,
+    required: true
+  },
+  isFirstOrderFreeDelivery: {
+    type: Boolean,
+    default: false
+  },
   currency: {
     type: String,
     enum: ['INR', 'USD', 'AED', 'EUR', 'GBP'],
@@ -138,6 +159,7 @@ orderSchema.index({ status: 1, createdAt: -1 });
 orderSchema.index({ createdAt: -1 });
 orderSchema.index({ 'shippingDetails.phone': 1 });
 orderSchema.index({ 'shippingDetails.fullName': 1 });
+orderSchema.index({ 'shippingDetails.email': 1 });
 
 // Add pre-save hook for order number generation
 orderSchema.pre('save', async function(next) {

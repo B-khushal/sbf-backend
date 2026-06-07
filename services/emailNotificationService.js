@@ -833,7 +833,11 @@ const generateInvoiceHTML = (orderData) => {
                 </tr>
                 <tr>
                   <td style="padding: 6px 0; color: #64748b; font-weight: 500;">Delivery Fee:</td>
-                  <td style="padding: 6px 0; text-align: right; color: #1e293b; font-weight: 600;">${hasDeliveryFee ? formatCurrency(deliveryFee, order.currency) : 'FREE'}</td>
+                  <td style="padding: 6px 0; text-align: right; color: #1e293b; font-weight: 600;">
+                    ${order.isFirstOrderFreeDelivery 
+                      ? `FREE (${formatCurrency((order.shippingDetails?.timeSlot === 'midnight' ? 300 : 150) * (order.currencyRate || 1), order.currency)} waived)` 
+                      : (hasDeliveryFee ? formatCurrency(deliveryFee, order.currency) : 'FREE')}
+                  </td>
                 </tr>
                 ${hasPromo ? `
                 <tr>

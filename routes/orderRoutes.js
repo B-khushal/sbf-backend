@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { protect, admin } = require('../middleware/authMiddleware');
+const { protect, admin, optionalProtect } = require('../middleware/authMiddleware');
 const {
   createOrder,
   getOrders,
@@ -17,9 +17,10 @@ const {
   getUpcomingDeliveries,
   getDeliveryCalendar,
   testDeliveryEmail,
+  calculateDelivery,
 } = require('../controllers/orderController');
 
-router.post('/', protect, createOrder);
+router.post('/', optionalProtect, createOrder);
 router.get('/', protect, admin, getOrders);
 router.get('/myorders', protect, getUserOrders);
 router.get('/today', protect, admin, getTodayOrders);
@@ -32,7 +33,7 @@ router.get('/delivery-calendar', protect, admin, getDeliveryCalendar);
 router.post('/test-delivery-email', protect, admin, testDeliveryEmail);
 
 // Invoice download route (must be before /:id catch-all)
-router.get('/:id/invoice', protect, getOrderInvoice);
+router.get('/:id/invoice', optionalProtect, getOrderInvoice);
 
 router.route('/:id')
   .get(protect, getOrderById);
@@ -49,7 +50,10 @@ router.route('/:id/status')
 router.post('/next-number', getNextOrderNumber);
 
 // Razorpay specific routes
-router.post('/create-razorpay-order', protect, createRazorpayOrder);
-router.post('/verify-payment', protect, verifyRazorpayPayment);
+router.post('/create-razorpay-order', optionalProtect, createRazorpayOrder);
+router.post('/verify-payment', optionalProtect, verifyRazorpayPayment);
+
+// Delivery fee calculation route
+router.post('/calculate-delivery', optionalProtect, calculateDelivery);
 
 module.exports = router;
