@@ -105,8 +105,14 @@ const userSchema = new mongoose.Schema({
     cart: [{
         productId: {
             type: mongoose.Schema.Types.ObjectId,
-            ref: 'Product',
+            refPath: 'cart.productModel',
             required: true
+        },
+        productModel: {
+            type: String,
+            required: true,
+            enum: ['Product', 'AddonProduct'],
+            default: 'Product'
         },
         quantity: {
             type: Number,

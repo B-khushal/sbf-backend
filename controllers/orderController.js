@@ -1,5 +1,6 @@
 const Order = require('../models/Order');
 const Product = require('../models/Product');
+const AddonProduct = require('../models/AddonProduct');
 const User = require('../models/User');
 const moment = require('moment'); // Import moment.js for date formatting
 const { createOrder: createRazorpayOrder, verifyPayment, RAZORPAY_KEY_ID } = require('../services/razorpayService');
@@ -223,14 +224,15 @@ const createOrder = async (req, res) => {
         timeSlot: shippingDetails.timeSlot
       },
       items: items.map(item => ({
-        product: item.product,
+        product: item.product || item.productId,
+        productModel: item.productModel || 'Product',
         title: item.title || '',
         image: item.image || item.images?.[0] || '',
         images: Array.isArray(item.images) ? item.images : [],
         selectedVariant: item.selectedVariant || null,
         quantity: item.quantity,
         price: item.price,
-        finalPrice: item.finalPrice,
+        finalPrice: item.finalPrice || item.price,
         customizations: item.customizations || null
       })),
       paymentDetails: {
@@ -524,43 +526,61 @@ const updateOrderToDelivered = async (req, res) => {
       console.log('📦 Updating stock for order:', order.orderNumber);
 
       for (const item of order.items) {
-        const product = await Product.findById(item.product._id);
+        let product;
+        if (item.productModel === 'AddonProduct') {
+          product = await AddonProduct.findById(item.product._id);
+        } else {
+          product = await Product.findById(item.product._id);
+        }
         if (product) {
-          // Check if we have enough stock
-          if (product.countInStock >= item.quantity) {
-            product.countInStock -= item.quantity;
-
-            try {
-              // Clean product data before saving to prevent casting errors
-              cleanProductData(product);
-              await product.save();
-              console.log(`✅ Updated stock for product ${product.title}: ${product.countInStock + item.quantity} -> ${product.countInStock}`);
-            } catch (productSaveError) {
-              console.error(`❌ Error saving product ${product.title}:`, productSaveError);
-
-              // Try to save without cleaning if the cleaning failed
-              try {
-                // Reset any changes and just update the stock
-                const freshProduct = await Product.findById(item.product._id);
-                if (freshProduct && freshProduct.countInStock >= item.quantity) {
-                  freshProduct.countInStock -= item.quantity;
-                  // Force save without validation for malformed data
-                  await freshProduct.save({ validateBeforeSave: false });
-                  console.log(`⚠️  Force-updated stock for product ${freshProduct.title} (bypassed validation)`);
-                } else {
-                  console.error(`❌ Could not force-update stock for product ${product.title}`);
-                  // Log error but don't fail the order status update
-                }
-              } catch (forceSaveError) {
-                console.error(`❌ Force save also failed for product ${product.title}:`, forceSaveError);
-                // Log error but continue with order status update
-              }
+          if (item.productModel === 'AddonProduct') {
+            if (product.stock >= item.quantity) {
+              product.stock -= item.quantity;
+              await product.save({ validateBeforeSave: false });
+              console.log(`✅ Updated stock for addon product ${product.title || product.name}: ${product.stock + item.quantity} -> ${product.stock}`);
+            } else {
+              console.log(`Warning: Insufficient stock for addon product ${product.title || product.name}. Available: ${product.stock}, Required: ${item.quantity}`);
+              return res.status(400).json({
+                message: `Insufficient stock for addon product ${product.title || product.name}. Available: ${product.stock}, Required: ${item.quantity}`
+              });
             }
           } else {
-            console.log(`Warning: Insufficient stock for product ${product.title}. Available: ${product.countInStock}, Required: ${item.quantity}`);
-            return res.status(400).json({
-              message: `Insufficient stock for product ${product.title}. Available: ${product.countInStock}, Required: ${item.quantity}`
-            });
+            // Check if we have enough stock
+            if (product.countInStock >= item.quantity) {
+              product.countInStock -= item.quantity;
+
+              try {
+                // Clean product data before saving to prevent casting errors
+                cleanProductData(product);
+                await product.save();
+                console.log(`✅ Updated stock for product ${product.title}: ${product.countInStock + item.quantity} -> ${product.countInStock}`);
+              } catch (productSaveError) {
+                console.error(`❌ Error saving product ${product.title}:`, productSaveError);
+
+                // Try to save without cleaning if the cleaning failed
+                try {
+                  // Reset any changes and just update the stock
+                  const freshProduct = await Product.findById(item.product._id);
+                  if (freshProduct && freshProduct.countInStock >= item.quantity) {
+                    freshProduct.countInStock -= item.quantity;
+                    // Force save without validation for malformed data
+                    await freshProduct.save({ validateBeforeSave: false });
+                    console.log(`⚠️  Force-updated stock for product ${freshProduct.title} (bypassed validation)`);
+                  } else {
+                    console.error(`❌ Could not force-update stock for product ${product.title}`);
+                    // Log error but don't fail the order status update
+                  }
+                } catch (forceSaveError) {
+                  console.error(`❌ Force save also failed for product ${product.title}:`, forceSaveError);
+                  // Log error but continue with order status update
+                }
+              }
+            } else {
+              console.log(`Warning: Insufficient stock for product ${product.title}. Available: ${product.countInStock}, Required: ${item.quantity}`);
+              return res.status(400).json({
+                message: `Insufficient stock for product ${product.title}. Available: ${product.countInStock}, Required: ${item.quantity}`
+              });
+            }
           }
         }
       }

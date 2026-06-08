@@ -1,32 +1,54 @@
 const User = require('../models/User');
 const Product = require('../models/Product');
+const AddonProduct = require('../models/AddonProduct');
 const { logActivity } = require('../utils/activityLogger');
 
 const mapCartItems = (userWithCart) =>
   userWithCart.cart
     .filter(item => item.productId)
-    .map(item => ({
-      // Use cart line _id (not product _id) so variants/customized lines can be updated independently.
-      _id: item._id,
-      productId: item.productId._id,
-      title: item.productId.title,
-      price: item.customPrice !== undefined ? item.customPrice : item.productId.price,
-      images: item.productId.images,
-      discount: item.productId.discount,
-      category: item.productId.category,
-      description: item.productId.description,
-      careInstructions: item.productId.careInstructions,
-      isNewArrival: Boolean(
-        typeof item.productId.isNew === 'boolean'
-          ? item.productId.isNew
-          : item.productId.isNewArrival
-      ),
-      isFeatured: item.productId.isFeatured,
-      customizations: item.customizations,
-      selectedVariant: item.selectedVariant,
-      quantity: item.quantity,
-      addedAt: item.addedAt
-    }));
+    .map(item => {
+      const isAddon = item.productModel === 'AddonProduct';
+      const prod = item.productId;
+      
+      let price = item.customPrice !== undefined ? item.customPrice : prod.price;
+      let originalPrice = item.customPrice !== undefined ? item.customPrice : prod.price;
+      let discount = prod.discount || 0;
+      
+      if (isAddon) {
+        const hasDiscount = prod.discountedPrice && prod.discountedPrice > 0 && prod.discountedPrice < prod.price;
+        price = hasDiscount ? prod.discountedPrice : prod.price;
+        originalPrice = prod.price;
+        discount = hasDiscount ? Math.round(((prod.price - prod.discountedPrice) / prod.price) * 100) : 0;
+      } else {
+        if (prod.discount > 0) {
+          originalPrice = Math.round(prod.price / (1 - prod.discount / 100));
+        }
+      }
+
+      return {
+        _id: item._id,
+        productId: prod._id,
+        productModel: item.productModel || 'Product',
+        title: prod.title || prod.name,
+        price: price,
+        originalPrice: originalPrice,
+        images: prod.images || (prod.image ? [prod.image] : []),
+        discount: discount,
+        category: prod.category,
+        description: prod.description,
+        careInstructions: prod.careInstructions || [],
+        isNewArrival: Boolean(
+          typeof prod.isNew === 'boolean'
+            ? prod.isNew
+            : prod.isNewArrival
+        ),
+        isFeatured: prod.isFeatured,
+        customizations: item.customizations,
+        selectedVariant: item.selectedVariant,
+        quantity: item.quantity,
+        addedAt: item.addedAt
+      };
+    });
 
 // @desc    Get user's cart
 // @route   GET /api/cart
@@ -35,7 +57,7 @@ const getCart = async (req, res) => {
   try {
     const user = await User.findById(req.user._id).populate({
       path: 'cart.productId',
-      select: 'title price images discount category description careInstructions isNew isNewArrival isFeatured'
+      select: 'title name price discountedPrice images image discount category description careInstructions isNew isNewArrival isFeatured'
     });
 
     if (!user) {
@@ -61,19 +83,25 @@ const getCart = async (req, res) => {
 // @access  Private
 const addToCart = async (req, res) => {
   try {
-    const { productId, quantity = 1, customizations, customPrice, selectedVariant } = req.body;
+    const { productId, quantity = 1, customizations, customPrice, selectedVariant, productModel = 'Product' } = req.body;
 
     if (!productId) {
       return res.status(400).json({ message: 'Product ID is required' });
     }
 
     // Validate product exists and is not hidden
-    const product = await Product.findById(productId);
+    let product;
+    if (productModel === 'AddonProduct') {
+      product = await AddonProduct.findById(productId);
+    } else {
+      product = await Product.findById(productId);
+    }
+
     if (!product) {
       return res.status(404).json({ message: 'Product not found' });
     }
     
-    if (product.hidden) {
+    if (productModel !== 'AddonProduct' && product.hidden) {
       return res.status(404).json({ message: 'Product not found' });
     }
 
@@ -82,9 +110,10 @@ const addToCart = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Check if item already exists in cart (same productId, customizations, and selectedVariant)
+    // Check if item already exists in cart (same productId, productModel, customizations, and selectedVariant)
     const existingItemIndex = user.cart.findIndex(
       item => item.productId.toString() === productId && 
+              (item.productModel || 'Product') === productModel &&
               JSON.stringify(item.customizations) === JSON.stringify(customizations) &&
               JSON.stringify(item.selectedVariant) === JSON.stringify(selectedVariant)
     );
@@ -96,6 +125,7 @@ const addToCart = async (req, res) => {
       // Add new item to cart
       user.cart.push({
         productId,
+        productModel,
         quantity,
         addedAt: new Date(),
         customizations: customizations,
@@ -109,7 +139,7 @@ const addToCart = async (req, res) => {
     // Return updated cart
     const updatedUser = await User.findById(req.user._id).populate({
       path: 'cart.productId',
-      select: 'title price images discount category description careInstructions isNew isNewArrival isFeatured'
+      select: 'title name price discountedPrice images image discount category description careInstructions isNew isNewArrival isFeatured'
     });
 
     const cartItems = mapCartItems(updatedUser);

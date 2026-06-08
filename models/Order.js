@@ -27,8 +27,14 @@ const orderSchema = new mongoose.Schema({
   items: [{
     product: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Product',
+      refPath: 'items.productModel',
       required: true
+    },
+    productModel: {
+      type: String,
+      required: true,
+      enum: ['Product', 'AddonProduct'],
+      default: 'Product'
     },
     title: {
       type: String,

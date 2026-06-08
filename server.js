@@ -120,6 +120,7 @@ const startServer = async () => {
     }));
 
     app.use('/api/products', require('./routes/productRoutes'));
+    app.use('/api/addons', require('./routes/addonRoutes'));
     app.use('/api/users', require('./routes/userRoutes'));
     app.use('/api/orders', require('./routes/orderRoutes'));
     app.use('/api/external', require('./routes/externalOrderRoutes'));
