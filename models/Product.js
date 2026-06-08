@@ -1,4 +1,4 @@
-﻿const mongoose = require("mongoose");
+const mongoose = require("mongoose");
 
 const addonOptionSchema = mongoose.Schema({
   name: {
@@ -13,6 +13,10 @@ const addonOptionSchema = mongoose.Schema({
     type: String,
     enum: ['flower', 'chocolate'],
     required: true,
+  },
+  image: {
+    type: String,
+    default: "",
   }
 });
 
@@ -277,6 +281,22 @@ const productSchema = mongoose.Schema(
         chocolates: [addonOptionSchema],
       },
       previewImage: {
+        type: String,
+        default: "",
+      },
+      useSameFlowerImage: {
+        type: Boolean,
+        default: false,
+      },
+      flowerGroupImage: {
+        type: String,
+        default: "",
+      },
+      useSameChocolateImage: {
+        type: Boolean,
+        default: false,
+      },
+      chocolateGroupImage: {
         type: String,
         default: "",
       },
