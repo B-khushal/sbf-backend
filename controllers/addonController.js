@@ -13,7 +13,9 @@ const getAddons = async (req, res) => {
     
     // Admin filtering vs Public filtering
     if (status) {
-      query.status = status;
+      if (status !== 'all') {
+        query.status = status;
+      }
     } else {
       // By default, public should only see active addons
       query.status = 'active';
