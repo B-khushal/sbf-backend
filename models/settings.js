@@ -26,7 +26,7 @@ const homeSectionSchema = new mongoose.Schema({
     enum: [
       'hero', 'categories', 'featured', 'new', 'philosophy', 'offers', 'custom',
       'bestsellers', 'seasonal', 'testimonials', 'about', 'gallery', 'instagram',
-      'blogs', 'custom_html', 'video_section', 'countdown_banner'
+      'blogs', 'custom_html', 'video_section', 'countdown_banner', 'whychooseus', 'social'
     ]
   },
   enabled: { type: Boolean, default: true },
@@ -390,10 +390,168 @@ settingsSchema.statics.initializeDefaultSettings = async function() {
     const defaultSections = [
       { id: 'hero', type: 'hero', enabled: true, order: 0, title: 'Hero Section', subtitle: 'Main banner area' },
       { id: 'categories', type: 'categories', enabled: true, order: 1, title: 'Categories', subtitle: 'Product categories showcase' },
-      { id: 'featured', type: 'featured', enabled: true, order: 2, title: '✨ Featured Collection', subtitle: 'Explore our most popular floral arrangements' },
-      { id: 'offers', type: 'offers', enabled: true, order: 3, title: 'Special Offers', subtitle: 'Don\'t miss our amazing deals' },
-      { id: 'new', type: 'new', enabled: true, order: 4, title: '🌸 New Arrivals', subtitle: 'Discover our latest seasonal additions' },
-      { id: 'philosophy', type: 'philosophy', enabled: true, order: 5, title: 'Artfully Crafted Botanical Experiences', subtitle: 'Every arrangement we create is a unique work of art, designed to bring beauty and tranquility into your everyday spaces.', content: { image: '/images/d3.jpg' } }
+      {
+        id: 'whychooseus',
+        type: 'whychooseus',
+        enabled: true,
+        order: 2,
+        title: 'Why Discerning Gift-Givers Choose Us',
+        subtitle: 'We elevate floral gifting into memorable luxury experiences, delivering beauty and joy with meticulous attention to detail.',
+        content: {
+          items: [
+            {
+              title: 'Same-Day Hand Delivery',
+              description: 'Freshness delivered directly to Hyderabad homes by our personal couriers.',
+              icon: 'Truck',
+              bg: 'from-sky-50 to-blue-50/30',
+              iconColor: 'text-sky-500 bg-sky-100/50'
+            },
+            {
+              title: '7-Day Freshness Guarantee',
+              description: 'We source directly from premium growers to ensure lasting floral vibrancy.',
+              icon: 'Sparkles',
+              bg: 'from-pink-50 to-rose-50/30',
+              iconColor: 'text-pink-500 bg-pink-100/50'
+            },
+            {
+              title: '100% Safe Payments',
+              description: 'We use enterprise bank-grade security to protect your transactions and details.',
+              icon: 'ShieldCheck',
+              bg: 'from-emerald-50 to-teal-50/30',
+              iconColor: 'text-emerald-500 bg-emerald-100/50'
+            },
+            {
+              title: 'Artisan Floral Designs',
+              description: 'Each arrangement is uniquely crafted with artistic passion and care.',
+              icon: 'Heart',
+              bg: 'from-purple-50 to-indigo-50/30',
+              iconColor: 'text-purple-500 bg-purple-100/50'
+            }
+          ]
+        }
+      },
+      { id: 'featured', type: 'featured', enabled: true, order: 3, title: '✨ Featured Collection', subtitle: 'Explore our most popular floral arrangements' },
+      {
+        id: 'offers',
+        type: 'offers',
+        enabled: true,
+        order: 4,
+        title: 'Perfect Gifts for Cherished Moments',
+        subtitle: 'Discover handpicked floral collections designed to convey every shade of sentiment.',
+        content: {
+          items: [
+            {
+              id: 'birthday',
+              title: 'The Birthday Collection',
+              subtitle: 'Make their day unforgettable with vibrant colors and sweet combos.',
+              image: 'https://images.unsplash.com/photo-1530103862676-de8c9debad1d?auto=format&fit=crop&q=80&w=800',
+              link: '/shop?category=birthday',
+              gridClass: 'md:col-span-2 md:row-span-1',
+              badge: '🎉 Festive',
+              icon: 'Sparkles'
+            },
+            {
+              id: 'anniversary',
+              title: 'Romantic Anniversary Gifts',
+              subtitle: 'Express everlasting love with classic roses and luxury hampers.',
+              image: 'https://images.unsplash.com/photo-1518199266791-5375a83190b7?auto=format&fit=crop&q=80&w=800',
+              link: '/shop?category=anniversary',
+              gridClass: 'md:col-span-1 md:row-span-2',
+              badge: '💖 Best Seller',
+              icon: 'Heart'
+            },
+            {
+              id: 'midnight',
+              title: 'Midnight Delivery Specials',
+              subtitle: 'Surprise them right at 12:00 AM with fresh bouquets.',
+              image: 'https://images.unsplash.com/photo-1526047932273-341f2a7631f9?auto=format&fit=crop&q=80&w=800',
+              link: '/shop?category=roses',
+              gridClass: 'md:col-span-1 md:row-span-1',
+              badge: '🌙 Midnight',
+              icon: 'Clock'
+            },
+            {
+              id: 'luxury',
+              title: 'Luxury Floral Masterpieces',
+              subtitle: 'Elite arrangements curated by master designers using exotic blossoms.',
+              image: 'https://images.unsplash.com/photo-1561181286-d3fee7d55364?auto=format&fit=crop&q=80&w=800',
+              link: '/shop?category=premium-collections',
+              gridClass: 'md:col-span-2 md:row-span-1',
+              badge: '✨ Luxury',
+              icon: 'Star'
+            },
+            {
+              id: 'personalized',
+              title: 'Personalized Custom Gifts',
+              subtitle: 'Custom photo cards, printed cushions, and floral gift sets.',
+              image: 'https://images.unsplash.com/photo-1549465220-1a8b9238cd48?auto=format&fit=crop&q=80&w=800',
+              link: '/shop?category=hampers',
+              gridClass: 'md:col-span-1 md:row-span-1',
+              badge: '🎁 Custom',
+              icon: 'Gift'
+            }
+          ]
+        }
+      },
+      { id: 'new', type: 'new', enabled: true, order: 5, title: '🌸 New Arrivals', subtitle: 'Discover our latest seasonal additions' },
+      { id: 'philosophy', type: 'philosophy', enabled: true, order: 6, title: 'Artfully Crafted Botanical Experiences', subtitle: 'Every arrangement we create is a unique work of art, designed to bring beauty and tranquility into your everyday spaces.', content: { image: '/images/d3.jpg' } },
+      {
+        id: 'social',
+        type: 'social',
+        enabled: true,
+        order: 7,
+        title: 'Share Your Joy #SBFlorist',
+        subtitle: 'See how our customers celebrate life\'s moments. Follow us on Instagram for daily bouquet inspiration.',
+        content: {
+          instagramUrl: 'https://www.instagram.com/sbf_india',
+          items: [
+            {
+              id: 1,
+              type: 'post',
+              image: 'https://images.unsplash.com/photo-1596436889106-be35e843f974?auto=format&fit=crop&q=80&w=600',
+              likes: '412',
+              comments: '28'
+            },
+            {
+              id: 2,
+              type: 'reel',
+              image: 'https://images.unsplash.com/photo-1520763185298-1b434c919102?auto=format&fit=crop&q=80&w=600',
+              likes: '1.2k',
+              comments: '64',
+              views: '8.4k'
+            },
+            {
+              id: 3,
+              type: 'post',
+              image: 'https://images.unsplash.com/photo-1490750967868-88aa4486c946?auto=format&fit=crop&q=80&w=600',
+              likes: '350',
+              comments: '12'
+            },
+            {
+              id: 4,
+              type: 'reel',
+              image: 'https://images.unsplash.com/photo-1508784411316-02b8cd4d3a3a?auto=format&fit=crop&q=80&w=600',
+              likes: '890',
+              comments: '36',
+              views: '5.2k'
+            },
+            {
+              id: 5,
+              type: 'post',
+              image: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&q=80&w=600',
+              likes: '512',
+              comments: '40'
+            },
+            {
+              id: 6,
+              type: 'post',
+              image: 'https://images.unsplash.com/photo-1582794543139-8ac9cb0f7b11?auto=format&fit=crop&q=80&w=600',
+              likes: '298',
+              comments: '18'
+            }
+          ]
+        }
+      }
     ];
 
     const defaultCategories = [
