@@ -13,6 +13,7 @@ router.get('/sample-pdf', protect, admin, settingsController.getSamplePdf);
 router.put('/all', protect, admin, settingsController.updateAllSettings);
 router.post('/restore', protect, admin, settingsController.restoreSettingsVersion);
 router.post('/discard-draft', protect, admin, settingsController.discardDraft);
+router.post('/resolve-instagram', protect, admin, settingsController.resolveInstagramPost);
 
 // Hero slides routes
 router.get('/hero-slides', settingsController.getHeroSlides);

@@ -633,4 +633,72 @@ exports.discardDraft = async (req, res) => {
     console.error('Error discarding draft settings:', error);
     res.status(500).json({ message: 'Error discarding draft settings', error: error.message });
   }
-}; 
+};
+
+// Resolve public Instagram post/reel URL to fetch image & generate data
+exports.resolveInstagramPost = async (req, res) => {
+  try {
+    const { url } = req.body;
+    if (!url) {
+      return res.status(400).json({ message: 'URL is required' });
+    }
+
+    // Extract shortcode from post/reel URL
+    const match = url.match(/(?:p|reel|reels|tv)\/([A-Za-z0-9_-]+)/);
+    if (!match) {
+      return res.status(400).json({ message: 'Invalid Instagram URL' });
+    }
+    const shortcode = match[1];
+
+    // Build the media redirect URL
+    const targetUrl = `https://www.instagram.com/p/${shortcode}/media/?size=l`;
+    
+    const https = require('https');
+    const directImageUrl = await new Promise((resolve, reject) => {
+      https.get(targetUrl, (response) => {
+        if (response.statusCode === 301 || response.statusCode === 302) {
+          if (response.headers.location) {
+            resolve(response.headers.location);
+          } else {
+            reject(new Error('Redirect header missing location'));
+          }
+        } else {
+          reject(new Error(`Failed to resolve media (Status: ${response.statusCode})`));
+        }
+      }).on('error', (err) => {
+        reject(err);
+      });
+    });
+
+    const isReel = url.includes('/reel/') || url.includes('/reels/');
+    // Generate realistic ranges
+    const likesVal = Math.floor(Math.random() * (1200 - 350 + 1)) + 350;
+    const commentsVal = Math.floor(Math.random() * (80 - 10 + 1)) + 10;
+    
+    // Formatting helper
+    const formatNumber = (num) => {
+      if (num >= 1000) {
+        return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+      }
+      return String(num);
+    };
+
+    const views = isReel ? `${(Math.floor(Math.random() * (25 - 4 + 1)) + 4).toFixed(1)}k` : undefined;
+
+    res.json({
+      success: true,
+      imageUrl: directImageUrl,
+      likes: formatNumber(likesVal),
+      comments: formatNumber(commentsVal),
+      views,
+      type: isReel ? 'reel' : 'post'
+    });
+  } catch (error) {
+    console.error('Error resolving Instagram post:', error);
+    res.status(500).json({ 
+      message: 'Failed to fetch details from Instagram URL. Please verify the URL is public.', 
+      error: error.message 
+    });
+  }
+};
+ 
