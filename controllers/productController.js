@@ -231,6 +231,7 @@ const createProduct = asyncHandler(async (req, res) => {
     comboName,
     comboDescription,
     comboSubcategory,
+    sameDay,
   } = req.body;
 
   // If user is a vendor, find their vendor profile and set it
@@ -262,6 +263,7 @@ const createProduct = asyncHandler(async (req, res) => {
     isNew: typeof isNew === 'boolean' ? isNew : Boolean(isNewArrival),
       isFeatured: isFeatured || false,
     hidden: hidden || false,
+    sameDay: sameDay !== undefined ? Boolean(sameDay) : true,
     isCustomizable: isCustomizable || false,
     customizationOptions: customizationOptions || {},
     hasPriceVariants: hasPriceVariants ?? false,
@@ -319,6 +321,7 @@ const updateProduct = asyncHandler(async (req, res) => {
     comboName,
     comboDescription,
     comboSubcategory,
+    sameDay,
   } = req.body;
 
   const product = await Product.findById(req.params.id);
@@ -348,6 +351,7 @@ const updateProduct = asyncHandler(async (req, res) => {
       isNew: resolvedIsNew,
       isFeatured: Boolean(isFeatured),
       hidden: Boolean(hidden),
+      sameDay: sameDay !== undefined ? Boolean(sameDay) : true,
       isCustomizable: Boolean(isCustomizable),
       customizationOptions: customizationOptions || {},
       hasPriceVariants: hasPriceVariants ?? false,

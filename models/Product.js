@@ -240,6 +240,10 @@ const productSchema = mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    sameDay: {
+      type: Boolean,
+      default: true,
+    },
     // Approval status for vendor products
     approvalStatus: {
       type: String,
