@@ -82,6 +82,7 @@ const headerSettingsSchema = new mongoose.Schema({
   announcementBar: {
     enabled: { type: Boolean, default: true },
     text: { type: String, default: 'Use code SBF10 to get an exclusive discount — only on your first order! 🌸' },
+    texts: { type: [String], default: ['Use code SBF10 to get an exclusive discount — only on your first order! 🌸'] },
     link: { type: String, default: '' },
     bgColor: { type: String, default: 'linear-gradient(to right, #7dd3fc, #f9a8d4, #86efac)' },
     textColor: { type: String, default: '#ffffff' }
@@ -687,6 +688,7 @@ settingsSchema.statics.initializeDefaultSettings = async function() {
       announcementBar: {
         enabled: true,
         text: 'Use code SBF10 to get an exclusive discount — only on your first order! 🌸',
+        texts: ['Use code SBF10 to get an exclusive discount — only on your first order! 🌸'],
         link: '',
         bgColor: 'linear-gradient(to right, #7dd3fc, #f9a8d4, #86efac)',
         textColor: '#ffffff'
