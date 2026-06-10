@@ -1,33 +1,44 @@
 const mongoose = require("mongoose");
 
-const reviewSchema = mongoose.Schema(
+const reviewSchema = new mongoose.Schema(
   {
     user: {
       type: mongoose.Schema.Types.ObjectId,
       required: true,
       ref: "User",
+      index: true,
     },
     product: {
       type: mongoose.Schema.Types.ObjectId,
       required: true,
       ref: "Product",
+      index: true,
+    },
+    orderId: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: true,
+      ref: "Order",
+      index: true,
     },
     name: {
       type: String,
       required: true,
       trim: true,
+      maxLength: 120,
     },
     email: {
       type: String,
       required: true,
       trim: true,
       lowercase: true,
+      maxLength: 160,
     },
     rating: {
       type: Number,
       required: true,
       min: 1,
       max: 5,
+      index: true,
     },
     title: {
       type: String,
@@ -39,62 +50,80 @@ const reviewSchema = mongoose.Schema(
       type: String,
       required: true,
       trim: true,
-      maxLength: 1000,
+      maxLength: 1500,
     },
-    // Enhanced features
     isVerifiedPurchase: {
       type: Boolean,
-      default: false,
+      default: true,
+      index: true,
     },
-    orderId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Order",
-      default: null,
-    },
-    images: [{
-      type: String,
-    }],
-    pros: [{
-      type: String,
-      trim: true,
-      maxLength: 200,
-    }],
-    cons: [{
-      type: String,
-      trim: true,
-      maxLength: 200,
-    }],
-    // Review quality metrics
-    helpfulVotes: {
-      type: Number,
-      default: 0,
-    },
-    totalVotes: {
-      type: Number,
-      default: 0,
-    },
-    // Users who voted on this review
-    votedUsers: [{
-      user: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-      },
-      vote: {
-        type: String,
-        enum: ['helpful', 'not_helpful'],
-      }
-    }],
-    // Review status and moderation
     status: {
       type: String,
-      enum: ['pending', 'approved', 'rejected', 'flagged'],
-      default: 'approved', // Auto-approve for now
+      enum: ["pending", "approved", "rejected", "spam"],
+      default: "pending",
+      index: true,
     },
     moderatorNotes: {
       type: String,
       default: "",
+      maxLength: 800,
     },
-    // Additional product-specific ratings
+    moderationReason: {
+      type: String,
+      default: "",
+      maxLength: 240,
+    },
+    featured: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    featuredAt: {
+      type: Date,
+      default: null,
+    },
+    pinned: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    pinnedAt: {
+      type: Date,
+      default: null,
+    },
+    images: {
+      type: [String],
+      default: [],
+    },
+    imageCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    pros: {
+      type: [String],
+      default: [],
+    },
+    cons: {
+      type: [String],
+      default: [],
+    },
+    helpfulVotes: {
+      type: Number,
+      default: 0,
+      min: 0,
+      index: true,
+    },
+    totalVotes: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    replyCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
     qualityRating: {
       type: Number,
       min: 1,
@@ -113,16 +142,29 @@ const reviewSchema = mongoose.Schema(
       max: 5,
       default: null,
     },
-    // Review metadata
     deviceInfo: {
       type: String,
       default: "",
+      maxLength: 500,
     },
     ipAddress: {
       type: String,
       default: "",
+      maxLength: 120,
     },
-    // Response from vendor/admin
+    source: {
+      type: String,
+      enum: ["product_page", "product_reviews_page", "order_history", "review_email"],
+      default: "product_page",
+    },
+    editedAt: {
+      type: Date,
+      default: null,
+    },
+    lastActivityAt: {
+      type: Date,
+      default: Date.now,
+    },
     response: {
       text: {
         type: String,
@@ -134,6 +176,7 @@ const reviewSchema = mongoose.Schema(
       },
       respondedAt: {
         type: Date,
+        default: null,
       },
     },
   },
@@ -142,109 +185,157 @@ const reviewSchema = mongoose.Schema(
   }
 );
 
-// Indexes for better performance
-reviewSchema.index({ product: 1, createdAt: -1 });
-reviewSchema.index({ user: 1 });
-reviewSchema.index({ rating: -1 });
-reviewSchema.index({ status: 1 });
-reviewSchema.index({ isVerifiedPurchase: 1 });
-reviewSchema.index({ helpfulVotes: -1 });
+reviewSchema.index({ product: 1, status: 1, pinned: -1, featured: -1, createdAt: -1 });
+reviewSchema.index({ user: 1, createdAt: -1 });
+reviewSchema.index({ orderId: 1, product: 1, user: 1 });
+reviewSchema.index({ status: 1, createdAt: -1 });
+reviewSchema.index({ helpfulVotes: -1, createdAt: -1 });
 
-// Virtual for helpfulness percentage
-reviewSchema.virtual('helpfulnessPercentage').get(function() {
-  if (this.totalVotes === 0) return 0;
+reviewSchema.virtual("helpfulnessPercentage").get(function helpfulnessPercentage() {
+  if (!this.totalVotes) {
+    return 0;
+  }
+
   return Math.round((this.helpfulVotes / this.totalVotes) * 100);
 });
 
-// Virtual for average additional ratings
-reviewSchema.virtual('additionalRatingsAverage').get(function() {
-  const ratings = [this.qualityRating, this.valueRating, this.deliveryRating].filter(r => r !== null);
-  if (ratings.length === 0) return null;
-  return Math.round((ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length) * 10) / 10;
-});
+reviewSchema.virtual("additionalRatingsAverage").get(function additionalRatingsAverage() {
+  const ratings = [this.qualityRating, this.valueRating, this.deliveryRating].filter(
+    (value) => typeof value === "number"
+  );
 
-// Pre-save middleware to validate review uniqueness per user per product
-reviewSchema.pre('save', async function(next) {
-  if (this.isNew) {
-    const existingReview = await this.constructor.findOne({
-      user: this.user,
-      product: this.product,
-    });
-    
-    if (existingReview) {
-      const error = new Error('You have already reviewed this product');
-      error.name = 'ValidationError';
-      return next(error);
-    }
+  if (!ratings.length) {
+    return null;
   }
-  next();
+
+  return Math.round((ratings.reduce((sum, value) => sum + value, 0) / ratings.length) * 10) / 10;
 });
 
-// Static method to get review statistics for a product
-reviewSchema.statics.getProductReviewStats = async function(productId) {
+reviewSchema.statics.getProductReviewStats = async function getProductReviewStats(productId) {
   const stats = await this.aggregate([
-    { $match: { product: new mongoose.Types.ObjectId(productId), status: 'approved' } },
+    {
+      $match: {
+        product: new mongoose.Types.ObjectId(productId),
+        status: "approved",
+      },
+    },
     {
       $group: {
         _id: null,
         totalReviews: { $sum: 1 },
-        averageRating: { $avg: '$rating' },
-        ratingDistribution: {
-          $push: '$rating'
-        },
+        averageRating: { $avg: "$rating" },
         verifiedPurchases: {
-          $sum: { $cond: ['$isVerifiedPurchase', 1, 0] }
+          $sum: {
+            $cond: [{ $eq: ["$isVerifiedPurchase", true] }, 1, 0],
+          },
         },
-        averageQualityRating: { $avg: '$qualityRating' },
-        averageValueRating: { $avg: '$valueRating' },
-        averageDeliveryRating: { $avg: '$deliveryRating' },
-      }
+        averageQualityRating: { $avg: "$qualityRating" },
+        averageValueRating: { $avg: "$valueRating" },
+        averageDeliveryRating: { $avg: "$deliveryRating" },
+        imagesCount: { $sum: "$imageCount" },
+        helpfulVotes: { $sum: "$helpfulVotes" },
+        ratings: { $push: "$rating" },
+      },
     },
     {
       $project: {
         _id: 0,
         totalReviews: 1,
-        averageRating: { $round: ['$averageRating', 1] },
+        averageRating: { $round: ["$averageRating", 1] },
         verifiedPurchases: 1,
         verifiedPurchasePercentage: {
-          $round: [{ $multiply: [{ $divide: ['$verifiedPurchases', '$totalReviews'] }, 100] }, 1]
+          $cond: [
+            { $gt: ["$totalReviews", 0] },
+            {
+              $round: [
+                {
+                  $multiply: [
+                    {
+                      $divide: ["$verifiedPurchases", "$totalReviews"],
+                    },
+                    100,
+                  ],
+                },
+                1,
+              ],
+            },
+            0,
+          ],
         },
-        averageQualityRating: { $round: ['$averageQualityRating', 1] },
-        averageValueRating: { $round: ['$averageValueRating', 1] },
-        averageDeliveryRating: { $round: ['$averageDeliveryRating', 1] },
+        averageQualityRating: { $round: ["$averageQualityRating", 1] },
+        averageValueRating: { $round: ["$averageValueRating", 1] },
+        averageDeliveryRating: { $round: ["$averageDeliveryRating", 1] },
+        imagesCount: 1,
+        helpfulVotes: 1,
         ratingDistribution: {
-          5: { $size: { $filter: { input: '$ratingDistribution', cond: { $eq: ['$$this', 5] } } } },
-          4: { $size: { $filter: { input: '$ratingDistribution', cond: { $eq: ['$$this', 4] } } } },
-          3: { $size: { $filter: { input: '$ratingDistribution', cond: { $eq: ['$$this', 3] } } } },
-          2: { $size: { $filter: { input: '$ratingDistribution', cond: { $eq: ['$$this', 2] } } } },
-          1: { $size: { $filter: { input: '$ratingDistribution', cond: { $eq: ['$$this', 1] } } } },
-        }
-      }
-    }
+          5: {
+            $size: {
+              $filter: {
+                input: "$ratings",
+                cond: { $eq: ["$$this", 5] },
+              },
+            },
+          },
+          4: {
+            $size: {
+              $filter: {
+                input: "$ratings",
+                cond: { $eq: ["$$this", 4] },
+              },
+            },
+          },
+          3: {
+            $size: {
+              $filter: {
+                input: "$ratings",
+                cond: { $eq: ["$$this", 3] },
+              },
+            },
+          },
+          2: {
+            $size: {
+              $filter: {
+                input: "$ratings",
+                cond: { $eq: ["$$this", 2] },
+              },
+            },
+          },
+          1: {
+            $size: {
+              $filter: {
+                input: "$ratings",
+                cond: { $eq: ["$$this", 1] },
+              },
+            },
+          },
+        },
+      },
+    },
   ]);
 
-  return stats[0] || {
-    totalReviews: 0,
-    averageRating: 0,
-    verifiedPurchases: 0,
-    verifiedPurchasePercentage: 0,
-    ratingDistribution: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 }
-  };
+  return (
+    stats[0] || {
+      totalReviews: 0,
+      averageRating: 0,
+      verifiedPurchases: 0,
+      verifiedPurchasePercentage: 0,
+      averageQualityRating: null,
+      averageValueRating: null,
+      averageDeliveryRating: null,
+      imagesCount: 0,
+      helpfulVotes: 0,
+      ratingDistribution: {
+        5: 0,
+        4: 0,
+        3: 0,
+        2: 0,
+        1: 0,
+      },
+    }
+  );
 };
 
-// Static method to get helpful reviews
-reviewSchema.statics.getHelpfulReviews = async function(productId, limit = 3) {
-  return this.find({ 
-    product: productId, 
-    status: 'approved',
-    totalVotes: { $gte: 5 }, // Only reviews with at least 5 votes
-  })
-  .sort({ helpfulVotes: -1, createdAt: -1 })
-  .limit(limit)
-  .populate('user', 'name')
-  .lean();
-};
+reviewSchema.set("toJSON", { virtuals: true });
+reviewSchema.set("toObject", { virtuals: true });
 
-const Review = mongoose.model("Review", reviewSchema);
-
-module.exports = Review; 
+module.exports = mongoose.model("Review", reviewSchema);

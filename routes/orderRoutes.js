@@ -19,6 +19,8 @@ const {
   testDeliveryEmail,
   calculateDelivery,
 } = require('../controllers/orderController');
+const { sendReviewRequestEmailForOrder } = require('../controllers/reviewController');
+const { createRateLimiter } = require('../middleware/rateLimiter');
 
 router.post('/', optionalProtect, createOrder);
 router.get('/', protect, admin, getOrders);
@@ -31,6 +33,18 @@ router.get('/delivery-calendar', protect, admin, getDeliveryCalendar);
 
 // Test delivery email route
 router.post('/test-delivery-email', protect, admin, testDeliveryEmail);
+
+router.post(
+  '/:id/send-review-email',
+  protect,
+  admin,
+  createRateLimiter({
+    windowMs: 60 * 60 * 1000,
+    max: 25,
+    message: 'Too many review email requests. Please wait before sending again.',
+  }),
+  sendReviewRequestEmailForOrder
+);
 
 // Invoice download route (must be before /:id catch-all)
 router.get('/:id/invoice', optionalProtect, getOrderInvoice);

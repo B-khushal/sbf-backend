@@ -35,6 +35,16 @@ const upload = multer({
   limits: { fileSize: 50 * 1024 * 1024 } // 50MB limit
 });
 
+const enforceUploadRole = (req, res, next) => {
+  const uploadType = String(req.query.type || "product").toLowerCase();
+
+  if (uploadType === "review") {
+    return next();
+  }
+
+  return adminOrVendor(req, res, next);
+};
+
 // @route   GET /api/uploads
 // @desc    Test upload endpoint with authentication
 // @access  Private/Admin
@@ -104,7 +114,7 @@ router.get("/auth-test", protect, admin, (req, res) => {
 // @route   POST /api/uploads
 // @desc    Upload an image to Cloudinary
 // @access  Private/Admin/Vendor
-router.post("/", protect, adminOrVendor, (req, res, next) => {
+router.post("/", protect, enforceUploadRole, (req, res, next) => {
   upload.single("image")(req, res, (err) => {
     if (err instanceof multer.MulterError) {
       console.error('âŒ Multer error:', err);
@@ -165,6 +175,7 @@ router.post("/", protect, adminOrVendor, (req, res, next) => {
       footer: 'sbf-branding',
       branding: 'sbf-branding',
       hero: 'sbf-hero',
+      review: 'sbf-reviews',
       product: 'sbf-products',
     };
     const folder = folderByType[uploadType] || 'sbf-products';

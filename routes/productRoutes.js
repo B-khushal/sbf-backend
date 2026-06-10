@@ -26,8 +26,10 @@ const {
 const {
   createProductReview,
   getProductReviews,
+  getReviewEligibility,
 } = require('../controllers/reviewController');
-const { protect, admin, adminOrVendor } = require('../middleware/authMiddleware');
+const { protect, admin, adminOrVendor, optionalProtect } = require('../middleware/authMiddleware');
+const { createRateLimiter } = require('../middleware/rateLimiter');
 const Product = require('../models/Product');
 const mongoose = require('mongoose');
 const path = require('path');
@@ -98,9 +100,28 @@ router.route('/:id')
   .put(protect, adminOrVendor, updateProduct)
   .delete(protect, adminOrVendor, deleteProduct);
 
+router.get(
+  '/:id/reviews/eligibility',
+  protect,
+  createRateLimiter({
+    windowMs: 60 * 1000,
+    max: 30,
+    message: 'Too many eligibility checks. Please try again shortly.',
+  }),
+  getReviewEligibility
+);
+
 router.route('/:id/reviews')
-  .get(getProductReviews)
-  .post(protect, createProductReview);
+  .get(optionalProtect, getProductReviews)
+  .post(
+    protect,
+    createRateLimiter({
+      windowMs: 60 * 60 * 1000,
+      max: 8,
+      message: 'Too many review submissions. Please wait before trying again.',
+    }),
+    createProductReview
+  );
 
 // Admin routes for product management
 router.get('/admin/list', protect, adminOrVendor, getAdminProducts);
