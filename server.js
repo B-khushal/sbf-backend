@@ -65,6 +65,133 @@ const startServer = async () => {
     await connectDB();
     console.log('Database connected successfully');
 
+    // Initialize default categories if none exist in Category collection
+    try {
+      const Category = require('./models/Category');
+      const count = await Category.countDocuments();
+      if (count === 0) {
+        console.log('🌱 Seeding default categories into Category collection...');
+        
+        // Define default category taxonomy matching categoryTaxonomy.ts and settings defaults
+        const defaultTaxonomy = [
+          // Primary Categories
+          { name: "Flowers", slug: "flowers", description: "Fresh blooms for every occasion", image: "/images/roses-1.png", sortOrder: 0 },
+          { name: "Chocolate", slug: "chocolate", description: "Delicious chocolate arrangements", image: "/images/p-orchid.png", sortOrder: 1 },
+          { name: "Birthday", slug: "birthday", description: "Celebrate special moments", image: "/images/p-lilly.png", sortOrder: 2 },
+          { name: "Anniversary", slug: "anniversary", description: "Romantic gestures made perfect", image: "/images/roses-1.png", sortOrder: 3 },
+          { name: "Baskets", slug: "baskets", description: "Elegant gift baskets", image: "/images/p-carnation.png", sortOrder: 4 },
+          { name: "Combos", slug: "combos", description: "Perfect combo packages", image: "/images/p-sunflower.png", sortOrder: 5 },
+          { name: "Plants", slug: "plants", description: "Indoor & outdoor plants", image: "/images/p-sunflower.png", sortOrder: 6 },
+          { name: "Sympathy", slug: "sympathy", description: "Comforting arrangements", image: "/images/p-lilly.png", sortOrder: 7 },
+          { name: "Occasions", slug: "occasions", description: "Special celebrations", image: "/images/p-carnation.png", sortOrder: 8 },
+        ];
+
+        const savedParents = {};
+
+        // Seed parents
+        for (let item of defaultTaxonomy) {
+          const parent = await Category.create({
+            name: item.name,
+            slug: item.slug,
+            description: item.description,
+            image: item.image,
+            categoryUrl: `/${item.slug}`,
+            sortOrder: item.sortOrder,
+            status: 'active',
+            parentId: null
+          });
+          savedParents[item.slug] = parent._id;
+        }
+
+        // Subcategories definitions
+        const subcategories = {
+          flowers: [
+            { name: "Roses", slug: "roses", description: "Fresh premium roses", image: "/images/roses-1.png", sortOrder: 0 },
+            { name: "Lilies", slug: "lilies", description: "Elegant graceful lilies", image: "/images/p-lilly.png", sortOrder: 1 },
+            { name: "Tulips", slug: "tulips", description: "Colorful fresh tulips", image: "/images/roses-1.png", sortOrder: 2 },
+            { name: "Orchids", slug: "orchids", description: "Sophisticated exotic orchids", image: "/images/p-orchid.png", sortOrder: 3 },
+            { name: "Sunflowers", slug: "sunflowers", description: "Vibrant happy sunflowers", image: "/images/p-sunflower.png", sortOrder: 4 },
+            { name: "Bouquets", slug: "bouquets", description: "Beautiful custom flower bouquets", image: "/images/roses-1.png", sortOrder: 5 }
+          ],
+          chocolate: [
+            { name: "Chocolate Baskets", slug: "chocolate-baskets", description: "Premium chocolate gift baskets", image: "/images/p-orchid.png", sortOrder: 0 },
+            { name: "Chocolate Bouquets", slug: "chocolate-bouquets", description: "Artistic chocolate arrangements", image: "/images/roses-1.png", sortOrder: 1 },
+            { name: "Chocolate Gift Sets", slug: "chocolate-gift-sets", description: "Curated chocolate selections", image: "/images/p-lilly.png", sortOrder: 2 },
+            { name: "Premium Chocolates", slug: "premium-chocolates", description: "Imported and hand-made chocolates", image: "/images/p-orchid.png", sortOrder: 3 }
+          ],
+          birthday: [
+            { name: "Birthday Bouquets", slug: "birthday-bouquets", description: "Vibrant birthday arrangements", image: "/images/roses-1.png", sortOrder: 0 },
+            { name: "Party Arrangements", slug: "party-arrangements", description: "Celebration floral décor", image: "/images/p-sunflower.png", sortOrder: 1 },
+            { name: "Kids Birthday", slug: "kids-birthday", description: "Fun designs for children", image: "/images/roses-1.png", sortOrder: 2 },
+            { name: "Birthday Cakes", slug: "birthday-cakes", description: "Delicious fresh birthday cakes", image: "/images/p-lilly.png", sortOrder: 3 },
+            { name: "Birthday Combos", slug: "birthday-combos", description: "Perfect birthday gift combos", image: "/images/p-sunflower.png", sortOrder: 4 }
+          ],
+          anniversary: [
+            { name: "Romantic Bouquets", slug: "romantic-bouquets", description: "Express love with romance", image: "/images/roses-1.png", sortOrder: 0 },
+            { name: "Premium Roses", slug: "premium-roses", description: "Symbol of everlasting love", image: "/images/roses-1.png", sortOrder: 1 },
+            { name: "Love Arrangements", slug: "love-arrangements", description: "Special anniversary arrangements", image: "/images/p-orchid.png", sortOrder: 2 },
+            { name: "Anniversary Gifts", slug: "anniversary-gifts", description: "Heartfelt anniversary gifts", image: "/images/p-lilly.png", sortOrder: 3 },
+            { name: "Anniversary Combos", slug: "anniversary-combos", description: "Love & cake combinations", image: "/images/roses-1.png", sortOrder: 4 }
+          ],
+          baskets: [
+            { name: "Fruit Baskets", slug: "fruit-baskets", description: "Healthy fresh fruit baskets", image: "/images/p-orchid.png", sortOrder: 0 },
+            { name: "Flower Baskets", slug: "flower-baskets", description: "Beautiful flower baskets", image: "/images/p-lilly.png", sortOrder: 1 },
+            { name: "Mixed Baskets", slug: "mixed-baskets", description: "Assorted flowers and fruits", image: "/images/p-sunflower.png", sortOrder: 2 },
+            { name: "Gift Hampers", slug: "gift-hampers", description: "Premium luxury gift hampers", image: "/images/roses-1.png", sortOrder: 3 }
+          ],
+          combos: [
+            { name: "Combo Packs", slug: "combo-packs", description: "Great discount combo packs", image: "/images/p-sunflower.png", sortOrder: 0 },
+            { name: "Birthday Combos", slug: "birthday-combos", description: "Birthday cake & bouquet combos", image: "/images/p-sunflower.png", sortOrder: 1 },
+            { name: "Anniversary Combos", slug: "anniversary-combos", description: "Anniversary gift packages", image: "/images/roses-1.png", sortOrder: 2 },
+            { name: "Romantic Combos", slug: "romantic-combos", description: "Love bouquets & cakes", image: "/images/roses-1.png", sortOrder: 3 },
+            { name: "Special Occasion Combos", slug: "special-occasion-combos", description: "Festive celebration combos", image: "/images/p-orchid.png", sortOrder: 4 }
+          ],
+          plants: [
+            { name: "Indoor Plants", slug: "indoor-plants", description: "Lush green indoor plants", image: "/images/p-sunflower.png", sortOrder: 0 },
+            { name: "Succulents", slug: "succulents", description: "Hardy low-maintenance succulents", image: "/images/roses-1.png", sortOrder: 1 },
+            { name: "Garden Plants", slug: "garden-plants", description: "Beautiful garden plants", image: "/images/p-sunflower.png", sortOrder: 2 },
+            { name: "Air Purifying", slug: "air-purifying", description: "Natural air purifying plants", image: "/images/p-lilly.png", sortOrder: 3 }
+          ],
+          sympathy: [
+            { name: "Sympathy Bouquets", slug: "sympathy-bouquets", description: "Comforting sympathy flowers", image: "/images/p-lilly.png", sortOrder: 0 },
+            { name: "Condolence", slug: "condolence", description: "Peaceful condolence arrangements", image: "/images/p-lilly.png", sortOrder: 1 },
+            { name: "Condolence Arrangements", slug: "condolence-arrangements", description: "Condolence arrangements", image: "/images/p-lilly.png", sortOrder: 2 },
+            { name: "Memorial Flowers", slug: "memorial-flowers", description: "Loving memorial flower tributes", image: "/images/p-lilly.png", sortOrder: 3 },
+            { name: "Peaceful Arrangements", slug: "peaceful-arrangements", description: "Peaceful arrangements", image: "/images/p-lilly.png", sortOrder: 4 }
+          ],
+          occasions: [
+            { name: "Wedding", slug: "wedding", description: "Beautiful wedding arrangements", image: "/images/p-carnation.png", sortOrder: 0 },
+            { name: "Graduation", slug: "graduation", description: "Joyful graduation bouquets", image: "/images/roses-1.png", sortOrder: 1 },
+            { name: "Baby Shower", slug: "baby-shower", description: "Delightful baby shower flowers", image: "/images/roses-1.png", sortOrder: 2 },
+            { name: "Housewarming", slug: "housewarming", description: "Welcoming housewarming gifts", image: "/images/p-sunflower.png", sortOrder: 3 },
+            { name: "Congratulations", slug: "congratulations", description: "Celebratory arrangements", image: "/images/p-carnation.png", sortOrder: 4 }
+          ]
+        };
+
+        // Seed children
+        for (let parentSlug in subcategories) {
+          const parentId = savedParents[parentSlug];
+          if (parentId) {
+            for (let sub of subcategories[parentSlug]) {
+              await Category.create({
+                name: sub.name,
+                slug: sub.slug,
+                description: sub.description,
+                image: sub.image,
+                categoryUrl: `/${parentSlug}/${sub.slug}`,
+                sortOrder: sub.sortOrder,
+                status: 'active',
+                parentId: parentId
+              });
+            }
+          }
+        }
+        console.log('Category Seeding: Default categories seeded successfully!');
+      }
+    } catch (err) {
+      console.error('⚠️ Category seeding failed:', err);
+    }
+
     // Update existing settings document with the new phone number if it contains the old one
     try {
       const Settings = require('./models/settings');
@@ -120,6 +247,7 @@ const startServer = async () => {
     }));
 
     app.use('/api/products', require('./routes/productRoutes'));
+    app.use('/api/categories', require('./routes/categoryRoutes'));
     app.use('/api/addons', require('./routes/addonRoutes'));
     app.use('/api/users', require('./routes/userRoutes'));
     app.use('/api/orders', require('./routes/orderRoutes'));

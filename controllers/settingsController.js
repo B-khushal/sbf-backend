@@ -116,11 +116,31 @@ exports.getAllSettings = async (req, res) => {
       settings = await Settings.findOne();
     }
 
+    const Category = require('../models/Category');
+    const dbCategories = await Category.find({ status: 'active' }).sort({ sortOrder: 1, name: 1 });
+    
+    // Map dbCategories to the settings category structure
+    const formattedCategories = dbCategories.map(cat => ({
+      id: cat._id.toString(),
+      name: cat.name,
+      slug: cat.slug,
+      description: cat.description || '',
+      image: cat.image || '',
+      link: cat.categoryUrl || `/${cat.slug}`,
+      enabled: cat.status === 'active',
+      order: cat.sortOrder || 0,
+      priority: cat.sortOrder || 0,
+      parentId: cat.parentId ? cat.parentId.toString() : null
+    }));
+
+    // Filter parents for homepage categories section
+    const parentCategories = formattedCategories.filter(cat => !cat.parentId);
+
     res.json({
       heroSlides: settings.heroSlides || [],
       homeSections: settings.homeSections || [],
-      categories: settings.categories || [],
-      shopCategories: settings.shopCategories || [],
+      categories: parentCategories,
+      shopCategories: formattedCategories,
       headerSettings: settings.headerSettings || {},
       footerSettings: settings.footerSettings || {},
       notificationsSettings: settings.notificationsSettings || {},
