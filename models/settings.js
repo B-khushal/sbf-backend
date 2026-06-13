@@ -30,6 +30,19 @@ const mobileBannerSchema = new mongoose.Schema({
   schedulePublishEnd: { type: Date, default: null }
 });
 
+const promoBannerSchema = new mongoose.Schema({
+  id: { type: String, required: true },
+  title: { type: String, default: '' },
+  subtitle: { type: String, default: '' },
+  image: { type: String, default: '' },
+  link: { type: String, default: '' },
+  badge: { type: String, default: '' },
+  ctaText: { type: String, default: 'Shop Now' },
+  enabled: { type: Boolean, default: true },
+  order: { type: Number, default: 0 }
+});
+
+
 const homeSectionSchema = new mongoose.Schema({
   id: { type: String, required: true },
   type: {
@@ -313,6 +326,7 @@ const productDisplaySettingsSchema = new mongoose.Schema({
 const settingsSchema = new mongoose.Schema({
   heroSlides: [heroSlideSchema],
   mobileBanners: [mobileBannerSchema],
+  promoBanners: [promoBannerSchema],
   homeSections: [homeSectionSchema],
   categories: [categorySchema],
   shopCategories: [categorySchema],
@@ -793,10 +807,35 @@ settingsSchema.statics.initializeDefaultSettings = async function() {
         schedulePublishEnd: null
       }
     ];
+    const defaultPromoBanners = [
+      {
+        id: "pb-1",
+        title: "Anniversary Collection",
+        subtitle: "Celebrate love with standard rose arrangements and luxury gifts.",
+        image: "https://images.unsplash.com/photo-1518199266791-5375a83190b7?auto=format&fit=crop&q=80&w=600",
+        link: "/shop?category=anniversary",
+        badge: "Same-day Delivery",
+        ctaText: "Send Romance Gifts",
+        enabled: true,
+        order: 0
+      },
+      {
+        id: "pb-2",
+        title: "Luxury Handcrafted Bouquets",
+        subtitle: "Exceptional designs from premium exotic local and imported flowers.",
+        image: "https://images.unsplash.com/photo-1561181286-d3fee7d55364?auto=format&fit=crop&q=80&w=600",
+        link: "/shop?category=premium-collections",
+        badge: "👑 Premium",
+        ctaText: "Explore Elite Store",
+        enabled: true,
+        order: 1
+      }
+    ];
 
     await this.create({ 
       heroSlides: defaultHeroSlides,
       mobileBanners: defaultMobileBanners,
+      promoBanners: defaultPromoBanners,
       homeSections: defaultSections,
       categories: defaultCategories,
       shopCategories: defaultShopCategories,

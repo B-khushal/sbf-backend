@@ -139,6 +139,7 @@ exports.getAllSettings = async (req, res) => {
     res.json({
       heroSlides: settings.heroSlides || [],
       mobileBanners: settings.mobileBanners || [],
+      promoBanners: settings.promoBanners || [],
       homeSections: settings.homeSections || [],
       categories: parentCategories,
       shopCategories: formattedCategories,
@@ -164,6 +165,7 @@ exports.updateAllSettings = async (req, res) => {
     const { 
       heroSlides, 
       mobileBanners,
+      promoBanners,
       homeSections, 
       categories, 
       shopCategories, 
@@ -239,6 +241,7 @@ exports.updateAllSettings = async (req, res) => {
     const updateData = {};
     if (heroSlides) updateData.heroSlides = heroSlides;
     if (mobileBanners) updateData.mobileBanners = mobileBanners;
+    if (promoBanners) updateData.promoBanners = promoBanners;
     if (homeSections) updateData.homeSections = homeSections;
     if (categories) updateData.categories = categories;
     if (shopCategories) updateData.shopCategories = shopCategories;
@@ -262,6 +265,7 @@ exports.updateAllSettings = async (req, res) => {
       const previousState = {
         heroSlides: settings.heroSlides || [],
         mobileBanners: settings.mobileBanners || [],
+        promoBanners: settings.promoBanners || [],
         homeSections: settings.homeSections || [],
         categories: settings.categories || [],
         shopCategories: settings.shopCategories || [],
@@ -281,6 +285,7 @@ exports.updateAllSettings = async (req, res) => {
       // Apply changes to live settings
       if (heroSlides) settings.heroSlides = heroSlides;
       if (mobileBanners) settings.mobileBanners = mobileBanners;
+      if (promoBanners) settings.promoBanners = promoBanners;
       if (homeSections) settings.homeSections = homeSections;
       if (categories) settings.categories = categories;
       if (shopCategories) settings.shopCategories = shopCategories;
@@ -303,6 +308,7 @@ exports.updateAllSettings = async (req, res) => {
       success: true,
       heroSlides: settings.heroSlides,
       mobileBanners: settings.mobileBanners,
+      promoBanners: settings.promoBanners,
       homeSections: settings.homeSections,
       categories: settings.categories,
       shopCategories: settings.shopCategories,
@@ -667,6 +673,7 @@ exports.restoreSettingsVersion = async (req, res) => {
     // Restore keys
     if (targetVersion.heroSlides) settings.heroSlides = targetVersion.heroSlides;
     if (targetVersion.mobileBanners) settings.mobileBanners = targetVersion.mobileBanners;
+    if (targetVersion.promoBanners) settings.promoBanners = targetVersion.promoBanners;
     if (targetVersion.homeSections) settings.homeSections = targetVersion.homeSections;
     if (targetVersion.categories) settings.categories = targetVersion.categories;
     if (targetVersion.shopCategories) settings.shopCategories = targetVersion.shopCategories;
