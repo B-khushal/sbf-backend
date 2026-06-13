@@ -18,6 +18,18 @@ const heroSlideSchema = new mongoose.Schema({
   languages: { type: mongoose.Schema.Types.Mixed, default: {} }
 });
 
+const mobileBannerSchema = new mongoose.Schema({
+  id: { type: String, required: true },
+  title: { type: String, default: '' },
+  subtitle: { type: String, default: '' },
+  image: { type: String, default: '' },
+  link: { type: String, default: '' },
+  enabled: { type: Boolean, default: true },
+  order: { type: Number, default: 0 },
+  schedulePublishStart: { type: Date, default: null },
+  schedulePublishEnd: { type: Date, default: null }
+});
+
 const homeSectionSchema = new mongoose.Schema({
   id: { type: String, required: true },
   type: {
@@ -300,6 +312,7 @@ const productDisplaySettingsSchema = new mongoose.Schema({
 
 const settingsSchema = new mongoose.Schema({
   heroSlides: [heroSlideSchema],
+  mobileBanners: [mobileBannerSchema],
   homeSections: [homeSectionSchema],
   categories: [categorySchema],
   shopCategories: [categorySchema],
@@ -756,8 +769,34 @@ settingsSchema.statics.initializeDefaultSettings = async function() {
       ]
     };
 
+    const defaultMobileBanners = [
+      {
+        id: "mb-1",
+        title: "FREE DELIVERY!!",
+        subtitle: "On eligible delivery slots",
+        image: "https://images.unsplash.com/photo-1513151233558-d860c5398176?auto=format&fit=crop&q=80&w=800",
+        link: "/shop",
+        enabled: true,
+        order: 0,
+        schedulePublishStart: null,
+        schedulePublishEnd: null
+      },
+      {
+        id: "mb-2",
+        title: "SAME DAY DELIVERY",
+        subtitle: "Order before 6 PM",
+        image: "https://images.unsplash.com/photo-1549465220-1a8b9238cd48?auto=format&fit=crop&q=80&w=800",
+        link: "/shop",
+        enabled: true,
+        order: 1,
+        schedulePublishStart: null,
+        schedulePublishEnd: null
+      }
+    ];
+
     await this.create({ 
       heroSlides: defaultHeroSlides,
+      mobileBanners: defaultMobileBanners,
       homeSections: defaultSections,
       categories: defaultCategories,
       shopCategories: defaultShopCategories,

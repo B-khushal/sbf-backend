@@ -203,9 +203,37 @@ const startServer = async () => {
           settingsDoc.markModified('footerSettings.contactInfo');
           updated = true;
         }
+        if (!settingsDoc.mobileBanners || settingsDoc.mobileBanners.length === 0) {
+          settingsDoc.mobileBanners = [
+            {
+              id: "mb-1",
+              title: "FREE DELIVERY!!",
+              subtitle: "On eligible delivery slots",
+              image: "https://images.unsplash.com/photo-1513151233558-d860c5398176?auto=format&fit=crop&q=80&w=800",
+              link: "/shop",
+              enabled: true,
+              order: 0,
+              schedulePublishStart: null,
+              schedulePublishEnd: null
+            },
+            {
+              id: "mb-2",
+              title: "SAME DAY DELIVERY",
+              subtitle: "Order before 6 PM",
+              image: "https://images.unsplash.com/photo-1549465220-1a8b9238cd48?auto=format&fit=crop&q=80&w=800",
+              link: "/shop",
+              enabled: true,
+              order: 1,
+              schedulePublishStart: null,
+              schedulePublishEnd: null
+            }
+          ];
+          settingsDoc.markModified('mobileBanners');
+          updated = true;
+        }
         if (updated) {
           await settingsDoc.save();
-          console.log('⚙️ Database Migration: Updated settings contact phone number to +91 9949683222');
+          console.log('⚙️ Database Migration: Updated settings database configuration successfully');
         }
       }
     } catch (migErr) {

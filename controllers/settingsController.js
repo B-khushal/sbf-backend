@@ -138,6 +138,7 @@ exports.getAllSettings = async (req, res) => {
 
     res.json({
       heroSlides: settings.heroSlides || [],
+      mobileBanners: settings.mobileBanners || [],
       homeSections: settings.homeSections || [],
       categories: parentCategories,
       shopCategories: formattedCategories,
@@ -162,6 +163,7 @@ exports.updateAllSettings = async (req, res) => {
   try {
     const { 
       heroSlides, 
+      mobileBanners,
       homeSections, 
       categories, 
       shopCategories, 
@@ -180,9 +182,63 @@ exports.updateAllSettings = async (req, res) => {
       settings = new Settings();
     }
 
+    // Sync Categories to the Category database collection
+    const mongoose = require('mongoose');
+    const Category = require('../models/Category');
+
+    const categoriesToSync = [];
+    if (categories && Array.isArray(categories)) {
+      categoriesToSync.push(...categories);
+    }
+    if (shopCategories && Array.isArray(shopCategories)) {
+      categoriesToSync.push(...shopCategories);
+    }
+
+    // Deduplicate categories by ID or slug to avoid double-processing
+    const uniqueCategories = [];
+    const seenIds = new Set();
+    for (const cat of categoriesToSync) {
+      if (cat && cat.id && !seenIds.has(cat.id)) {
+        seenIds.add(cat.id);
+        uniqueCategories.push(cat);
+      }
+    }
+
+    for (const cat of uniqueCategories) {
+      const isMongoId = mongoose.Types.ObjectId.isValid(cat.id);
+      const slugVal = cat.slug || cat.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+      const urlVal = cat.link || `/${slugVal}`;
+      const updateFields = {
+        name: cat.name,
+        slug: slugVal,
+        description: cat.description || '',
+        image: cat.image || '',
+        categoryUrl: urlVal,
+        status: cat.enabled ? 'active' : 'inactive',
+        sortOrder: cat.priority !== undefined ? cat.priority : (cat.order || 0),
+        parentId: cat.parentId && mongoose.Types.ObjectId.isValid(cat.parentId) ? cat.parentId : null,
+        showInShop: cat.enabled
+      };
+
+      try {
+        if (isMongoId) {
+          await Category.findByIdAndUpdate(cat.id, updateFields, { new: true });
+        } else {
+          // If it is a new category, check if slug or URL exists to prevent duplicate key errors
+          const existingCat = await Category.findOne({ $or: [{ slug: slugVal }, { categoryUrl: urlVal }] });
+          if (!existingCat) {
+            await Category.create(updateFields);
+          }
+        }
+      } catch (catErr) {
+        console.error(`Failed to sync category ${cat.name}:`, catErr.message);
+      }
+    }
+
     // Capture the payload for updating
     const updateData = {};
     if (heroSlides) updateData.heroSlides = heroSlides;
+    if (mobileBanners) updateData.mobileBanners = mobileBanners;
     if (homeSections) updateData.homeSections = homeSections;
     if (categories) updateData.categories = categories;
     if (shopCategories) updateData.shopCategories = shopCategories;
@@ -205,6 +261,7 @@ exports.updateAllSettings = async (req, res) => {
       // Publish settings: save history first
       const previousState = {
         heroSlides: settings.heroSlides || [],
+        mobileBanners: settings.mobileBanners || [],
         homeSections: settings.homeSections || [],
         categories: settings.categories || [],
         shopCategories: settings.shopCategories || [],
@@ -223,6 +280,7 @@ exports.updateAllSettings = async (req, res) => {
 
       // Apply changes to live settings
       if (heroSlides) settings.heroSlides = heroSlides;
+      if (mobileBanners) settings.mobileBanners = mobileBanners;
       if (homeSections) settings.homeSections = homeSections;
       if (categories) settings.categories = categories;
       if (shopCategories) settings.shopCategories = shopCategories;
@@ -244,6 +302,7 @@ exports.updateAllSettings = async (req, res) => {
     res.json({
       success: true,
       heroSlides: settings.heroSlides,
+      mobileBanners: settings.mobileBanners,
       homeSections: settings.homeSections,
       categories: settings.categories,
       shopCategories: settings.shopCategories,
@@ -607,6 +666,7 @@ exports.restoreSettingsVersion = async (req, res) => {
 
     // Restore keys
     if (targetVersion.heroSlides) settings.heroSlides = targetVersion.heroSlides;
+    if (targetVersion.mobileBanners) settings.mobileBanners = targetVersion.mobileBanners;
     if (targetVersion.homeSections) settings.homeSections = targetVersion.homeSections;
     if (targetVersion.categories) settings.categories = targetVersion.categories;
     if (targetVersion.shopCategories) settings.shopCategories = targetVersion.shopCategories;
