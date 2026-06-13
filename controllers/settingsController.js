@@ -130,7 +130,8 @@ exports.getAllSettings = async (req, res) => {
       enabled: cat.status === 'active',
       order: cat.sortOrder || 0,
       priority: cat.sortOrder || 0,
-      parentId: cat.parentId ? cat.parentId.toString() : null
+      parentId: cat.parentId ? cat.parentId.toString() : null,
+      showInShop: cat.showInShop !== false
     }));
 
     // Filter parents for homepage categories section
@@ -219,7 +220,7 @@ exports.updateAllSettings = async (req, res) => {
         status: cat.enabled ? 'active' : 'inactive',
         sortOrder: cat.priority !== undefined ? cat.priority : (cat.order || 0),
         parentId: cat.parentId && mongoose.Types.ObjectId.isValid(cat.parentId) ? cat.parentId : null,
-        showInShop: cat.enabled
+        showInShop: cat.showInShop !== undefined ? cat.showInShop : cat.enabled
       };
 
       try {

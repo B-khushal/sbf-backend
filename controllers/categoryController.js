@@ -391,6 +391,30 @@ const bulkStatusUpdate = asyncHandler(async (req, res) => {
   res.json({ message: 'Selected categories status updated successfully' });
 });
 
+// @desc    Bulk update showInShop
+// @route   POST /api/categories/bulk-show-in-shop
+// @access  Private/Admin
+const bulkShowInShopUpdate = asyncHandler(async (req, res) => {
+  const { ids, showInShop } = req.body;
+
+  if (!ids || !Array.isArray(ids) || ids.length === 0) {
+    res.status(400);
+    throw new Error('No categories selected');
+  }
+
+  if (typeof showInShop !== 'boolean') {
+    res.status(400);
+    throw new Error('Invalid showInShop value (must be boolean)');
+  }
+
+  await Category.updateMany(
+    { _id: { $in: ids } },
+    { $set: { showInShop } }
+  );
+
+  res.json({ message: 'Selected categories shop visibility updated successfully' });
+});
+
 // @desc    Resolve a URL path to a category or redirect
 // @route   GET /api/categories/resolve
 // @access  Public
@@ -425,5 +449,6 @@ module.exports = {
   deleteCategory,
   bulkDelete,
   bulkStatusUpdate,
+  bulkShowInShopUpdate,
   resolveCategoryUrl,
 };
