@@ -276,6 +276,7 @@ const startServer = async () => {
 
     app.use('/api/products', require('./routes/productRoutes'));
     app.use('/api/categories', require('./routes/categoryRoutes'));
+    app.use('/api/social-feed', require('./routes/socialFeedRoutes'));
     app.use('/api/addons', require('./routes/addonRoutes'));
     app.use('/api/users', require('./routes/userRoutes'));
     app.use('/api/orders', require('./routes/orderRoutes'));
