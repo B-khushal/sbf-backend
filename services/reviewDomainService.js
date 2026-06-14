@@ -29,7 +29,10 @@ const sanitizeImageUrls = (values) =>
   }).filter((url) => /^https?:\/\//i.test(url) || url.startsWith("/uploads/"));
 
 const buildReviewPublicUrl = (product, orderId) => {
-  const frontendUrl = (process.env.FRONTEND_URL || "https://www.sbflorist.in").replace(/\/$/, "");
+  let frontendUrl = (process.env.FRONTEND_URL || "https://sbflorist.in").replace(/\/$/, "");
+  if (frontendUrl.includes("onrender.com")) {
+    frontendUrl = "https://sbflorist.in";
+  }
   const productSlug = slugify(product?.title || product?.name || "product");
   const query = orderId ? `?orderId=${orderId}` : "";
 

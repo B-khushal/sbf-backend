@@ -164,7 +164,7 @@ const submitContactForm = async (req, res) => {
                 </div>
                 
                 <div style="text-align: center; margin-top: 30px;">
-                  <a href="${process.env.FRONTEND_URL || 'https://www.sbflorist.in'}/shop" 
+                  <a href="${(process.env.FRONTEND_URL && !process.env.FRONTEND_URL.includes('onrender.com')) ? process.env.FRONTEND_URL : 'https://sbflorist.in'}/shop" 
                      style="background: linear-gradient(135deg, #ec4899 0%, #be185d 100%); color: white; padding: 12px 25px; text-decoration: none; border-radius: 25px; font-weight: bold; margin-right: 10px;">
                     🛍️ Browse Our Collection
                   </a>

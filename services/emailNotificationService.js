@@ -9,6 +9,14 @@ let emailTransporter = null;
 let orderConfirmationTransporter = null;
 let deliveryConfirmationTransporter = null;
 
+const getFrontendUrl = () => {
+  let url = process.env.FRONTEND_URL || 'https://sbflorist.in';
+  if (url.includes('onrender.com')) {
+    return 'https://sbflorist.in';
+  }
+  return url;
+};
+
 // Email configuration for order confirmations
 const ORDER_CONFIRMATION_EMAIL_CONFIG = {
   service: 'gmail',
@@ -408,7 +416,7 @@ const generateOrderConfirmationEmail = (orderData) => {
             <p><strong>Need help?</strong></p>
             <p>📧 Email: 2006sbf@gmail.com</p>
             <p>📞 Phone: 9949683222</p>
-            <p>🌐 Website: <a href="${process.env.FRONTEND_URL || 'https://sbflorist.in'}">${(process.env.FRONTEND_URL || 'https://sbflorist.in').replace(/^https?:\/\//, '')}</a></p>
+            <p>🌐 Website: <a href="${getFrontendUrl()}">${getFrontendUrl().replace(/^https?:\/\//, '')}</a></p>
           </div>
           
           <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb; font-size: 12px; color: #9ca3af;">
@@ -1248,7 +1256,7 @@ const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
             <div class="invoice-head">
               <p class="invoice-title">Invoice</p>
               <p class="invoice-sub">Spring Blossoms Florist • Door No. 12-2-786/A & B, Najam Centre, Pillar No. 32, Rethi Bowli, Mehdipatnam, Hyderabad, Telangana 500028</p>
-              <p class="invoice-sub">Phone: 9949683222 • Email: 2006sbf@gmail.com • ${(process.env.FRONTEND_URL || 'https://sbflorist.in').replace(/^https?:\/\//, '')}</p>
+              <p class="invoice-sub">Phone: 9949683222 • Email: 2006sbf@gmail.com • ${getFrontendUrl().replace(/^https?:\/\//, '')}</p>
             </div>
 
             <table class="meta-grid section" role="presentation">
