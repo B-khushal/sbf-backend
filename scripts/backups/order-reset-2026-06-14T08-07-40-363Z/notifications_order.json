@@ -1,0 +1,1566 @@
+[
+  {
+    "_id": "68582340371529ef81c8f828",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 250600222 has been placed by springblossoms sec. Amount: ₹1619.991",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "6858233e371529ef81c8f81d",
+      "orderNumber": "250600222",
+      "customerName": "springblossoms sec",
+      "amount": 1619.991,
+      "currency": "INR"
+    },
+    "createdAt": "2025-06-22T15:37:36.833Z",
+    "__v": 0
+  },
+  {
+    "_id": "6858376e51bb9cc25fbbf377",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 250600322 has been placed by Khushal Prasad. Amount: $27.87638",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "6858376b51bb9cc25fbbf36c",
+      "orderNumber": "250600322",
+      "customerName": "Khushal Prasad",
+      "amount": 27.87638,
+      "currency": "USD"
+    },
+    "createdAt": "2025-06-22T17:03:42.282Z",
+    "__v": 0
+  },
+  {
+    "_id": "68584c435a4fcbb2e9a2c215",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 250600422 has been placed by springblossoms sec. Amount: ₹1400",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "68584c405a4fcbb2e9a2c20c",
+      "orderNumber": "250600422",
+      "customerName": "springblossoms sec",
+      "amount": 1400,
+      "currency": "INR"
+    },
+    "createdAt": "2025-06-22T18:32:35.458Z",
+    "__v": 0
+  },
+  {
+    "_id": "68598202d15aa96b260f99f9",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 250600523 has been placed by Khushal Trial. Amount: ₹1512",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "685981fed15aa96b260f99ef",
+      "orderNumber": "250600523",
+      "customerName": "Khushal Trial",
+      "amount": 1512,
+      "currency": "INR"
+    },
+    "createdAt": "2025-06-23T16:34:10.148Z",
+    "__v": 0
+  },
+  {
+    "_id": "685a68214b39a469f5950628",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 250600624 has been placed by Deepak Kumar. Amount: $24.402",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "685a681d4b39a469f595061f",
+      "orderNumber": "250600624",
+      "customerName": "Deepak Kumar",
+      "amount": 24.402,
+      "currency": "USD"
+    },
+    "createdAt": "2025-06-24T08:56:01.080Z",
+    "__v": 0
+  },
+  {
+    "_id": "685a68734b39a469f5950646",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 250600724 has been placed by Deepak Kumar. Amount: $25.564",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "685a68704b39a469f595063d",
+      "orderNumber": "250600724",
+      "customerName": "Deepak Kumar",
+      "amount": 25.564,
+      "currency": "USD"
+    },
+    "createdAt": "2025-06-24T08:57:23.650Z",
+    "__v": 0
+  },
+  {
+    "_id": "685c35159bc99936650229ea",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 250600825 has been placed by Khushal Prasad. Amount: ₹127.5",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "685c35129bc99936650229df",
+      "orderNumber": "250600825",
+      "customerName": "Khushal Prasad",
+      "amount": 127.5,
+      "currency": "INR"
+    },
+    "createdAt": "2025-06-25T17:42:45.909Z",
+    "__v": 0
+  },
+  {
+    "_id": "68678d9457e00f326a3501ef",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 250700104 has been placed by PAPAGARI LAXMI KANTH REDDY. Amount: ₹9.68",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "68678d9057e00f326a3501d9",
+      "orderNumber": "250700104",
+      "customerName": "PAPAGARI LAXMI KANTH REDDY",
+      "amount": 9.68,
+      "currency": "INR"
+    },
+    "createdAt": "2025-07-04T08:15:16.358Z",
+    "__v": 0
+  },
+  {
+    "_id": "686b9851c95f0ced1db9e21c",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 250700207 has been placed by Deepak Kumar. Amount: ₹10",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "686b984dc95f0ced1db9e213",
+      "orderNumber": "250700207",
+      "customerName": "Deepak Kumar",
+      "amount": 10,
+      "currency": "INR"
+    },
+    "createdAt": "2025-07-07T09:50:09.066Z",
+    "__v": 0
+  },
+  {
+    "_id": "686baa07ce282699e6443320",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 250700307 has been placed by Khushal Prasad. Amount: ₹12",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "686baa04ce282699e6443309",
+      "orderNumber": "250700307",
+      "customerName": "Khushal Prasad",
+      "amount": 12,
+      "currency": "INR"
+    },
+    "createdAt": "2025-07-07T11:05:43.600Z",
+    "__v": 0
+  },
+  {
+    "_id": "686baf12bfef0ada7ec8103b",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 250700407 has been placed by Khushal Prasad. Amount: ₹12",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "686baf0fbfef0ada7ec81023",
+      "orderNumber": "250700407",
+      "customerName": "Khushal Prasad",
+      "amount": 12,
+      "currency": "INR"
+    },
+    "createdAt": "2025-07-07T11:27:14.383Z",
+    "__v": 0
+  },
+  {
+    "_id": "686c07f6153f812a948e9fc6",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 250700507 has been placed by Khushal Prasad. Amount: ₹12",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "686c07f2153f812a948e9fb9",
+      "orderNumber": "250700507",
+      "customerName": "Khushal Prasad",
+      "amount": 12,
+      "currency": "INR"
+    },
+    "createdAt": "2025-07-07T17:46:30.142Z",
+    "__v": 0
+  },
+  {
+    "_id": "686c24644ec6697037315f2a",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 250700607 has been placed by Khushal Prasad. Amount: ₹14",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "686c24614ec6697037315efb",
+      "orderNumber": "250700607",
+      "customerName": "Khushal Prasad",
+      "amount": 14,
+      "currency": "INR"
+    },
+    "createdAt": "2025-07-07T19:47:48.586Z",
+    "__v": 0
+  },
+  {
+    "_id": "686e6e153484b009c2e2f42a",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 250700709 has been placed by Yashwanth Nagireddy. Amount: ₹10",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "686e6e0f3484b009c2e2f420",
+      "orderNumber": "250700709",
+      "customerName": "Yashwanth Nagireddy",
+      "amount": 10,
+      "currency": "INR"
+    },
+    "createdAt": "2025-07-09T13:26:45.713Z",
+    "__v": 0
+  },
+  {
+    "_id": "68823a50704753cf4c4ee329",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 250700824 has been placed by Khushal Prasad. Amount: ₹2",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "68823a4a704753cf4c4edf41",
+      "orderNumber": "250700824",
+      "customerName": "Khushal Prasad",
+      "amount": 2,
+      "currency": "INR"
+    },
+    "createdAt": "2025-07-24T13:51:12.354Z",
+    "__v": 0
+  },
+  {
+    "_id": "68862bdb704753cf4c4fc6fd",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 250700927 has been placed by Khushal Prasad. Amount: ₹1",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "68862bd6704753cf4c4fc6f0",
+      "orderNumber": "250700927",
+      "customerName": "Khushal Prasad",
+      "amount": 1,
+      "currency": "INR"
+    },
+    "createdAt": "2025-07-27T13:38:35.541Z",
+    "__v": 0
+  },
+  {
+    "_id": "692f23a46d9cd0f031a349fc",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 251200102 has been placed by Khushal Trial. Amount: ₹4500",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "692f23a06d9cd0f031a349c9",
+      "orderNumber": "251200102",
+      "customerName": "Khushal Trial",
+      "amount": 4500,
+      "currency": "INR"
+    },
+    "createdAt": "2025-12-02T17:36:36.490Z",
+    "__v": 0
+  },
+  {
+    "_id": "6955520720fd84ec385d69b9",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 251200231 has been placed by Khushal Prasad. Amount: ₹7650",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "6955520320fd84ec385d69ac",
+      "orderNumber": "251200231",
+      "customerName": "Khushal Prasad",
+      "amount": 7650,
+      "currency": "INR"
+    },
+    "createdAt": "2025-12-31T16:40:39.440Z",
+    "__v": 0
+  },
+  {
+    "_id": "6978a718eab98f78d3beeff2",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260100127 has been placed by Khushal Prasad. Amount: ₹4500",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "6978a713eab98f78d3beefe2",
+      "orderNumber": "260100127",
+      "customerName": "Khushal Prasad",
+      "amount": 4500,
+      "currency": "INR"
+    },
+    "createdAt": "2026-01-27T11:52:56.460Z",
+    "__v": 0
+  },
+  {
+    "_id": "6980b5ddeb5844ae0a269bf2",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260200102 has been placed by Khushal Prasad. Amount: ₹1200",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "6980b4eceb5844ae0a269aca",
+      "orderNumber": "260200102",
+      "customerName": "Khushal Prasad",
+      "amount": 1200,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-02T14:34:05.270Z",
+    "__v": 0
+  },
+  {
+    "_id": "6980b618eb5844ae0a269c01",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260200202 has been placed by Khushal Prasad. Amount: ₹1200",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "6980b527eb5844ae0a269aff",
+      "orderNumber": "260200202",
+      "customerName": "Khushal Prasad",
+      "amount": 1200,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-02T14:35:04.394Z",
+    "__v": 0
+  },
+  {
+    "_id": "6980b670eb5844ae0a269c0a",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260200302 has been placed by Khushal Prasad. Amount: ₹1200",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "6980b57feb5844ae0a269bb2",
+      "orderNumber": "260200302",
+      "customerName": "Khushal Prasad",
+      "amount": 1200,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-02T14:36:32.734Z",
+    "__v": 0
+  },
+  {
+    "_id": "6980b8b8eb5844ae0a26a3ef",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260200402 has been placed by Khushal Prasad. Amount: ₹4500",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "6980b7c8eb5844ae0a26a37f",
+      "orderNumber": "260200402",
+      "customerName": "Khushal Prasad",
+      "amount": 4500,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-02T14:46:16.842Z",
+    "__v": 0
+  },
+  {
+    "_id": "6980b8bc7f8c05298c719362",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260200502 has been placed by Khushal Prasad. Amount: ₹2399",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "6980b8b67f8c05298c719352",
+      "orderNumber": "260200502",
+      "customerName": "Khushal Prasad",
+      "amount": 2399,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-02T14:46:20.642Z",
+    "__v": 0
+  },
+  {
+    "_id": "6980bb367f8c05298c719ae8",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260200602 has been placed by Khushal Prasad. Amount: ₹3599.1",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "6980bb307f8c05298c719a96",
+      "orderNumber": "260200602",
+      "customerName": "Khushal Prasad",
+      "amount": 3599.1,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-02T14:56:54.554Z",
+    "__v": 0
+  },
+  {
+    "_id": "6980bcd9eb5844ae0a26a8dc",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260200702 has been placed by Khushal Prasad. Amount: ₹1899",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "6980bbe8eb5844ae0a26a771",
+      "orderNumber": "260200702",
+      "customerName": "Khushal Prasad",
+      "amount": 1899,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-02T15:03:53.098Z",
+    "__v": 0
+  },
+  {
+    "_id": "6980bd547f8c05298c719e40",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260200802 has been placed by Khushal Prasad. Amount: ₹1899",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "6980bd4f7f8c05298c719e33",
+      "orderNumber": "260200802",
+      "customerName": "Khushal Prasad",
+      "amount": 1899,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-02T15:05:56.357Z",
+    "__v": 0
+  },
+  {
+    "_id": "6980c1dfeb5844ae0a26adfd",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260200902 has been placed by Deepak Kumar. Amount: ₹7225",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "6980c0eeeb5844ae0a26acfc",
+      "orderNumber": "260200902",
+      "customerName": "Deepak Kumar",
+      "amount": 7225,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-02T15:25:19.444Z",
+    "__v": 0
+  },
+  {
+    "_id": "6980c40feb5844ae0a26b0f6",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260201002 has been placed by Deepak Kumar. Amount: ₹6200",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "6980c31eeb5844ae0a26b0b6",
+      "orderNumber": "260201002",
+      "customerName": "Deepak Kumar",
+      "amount": 6200,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-02T15:34:39.270Z",
+    "__v": 0
+  },
+  {
+    "_id": "6980c5adeb5844ae0a26b2a3",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260201102 has been placed by Deepak Kumar. Amount: ₹6200",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "6980c4bceb5844ae0a26b299",
+      "orderNumber": "260201102",
+      "customerName": "Deepak Kumar",
+      "amount": 6200,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-02T15:41:33.162Z",
+    "__v": 0
+  },
+  {
+    "_id": "6980cc92a2798006eafb87cd",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260201202 has been placed by Khushal Prasad. Amount: ₹6200",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "6980cc8ca2798006eafb87bd",
+      "orderNumber": "260201202",
+      "customerName": "Khushal Prasad",
+      "amount": 6200,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-02T16:10:58.268Z",
+    "__v": 0
+  },
+  {
+    "_id": "698d6ccf705d789461f3aab2",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260201312 has been placed by Khushal Prasad. Amount: ₹5000",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "698d6cc9705d789461f3aaa5",
+      "orderNumber": "260201312",
+      "customerName": "Khushal Prasad",
+      "amount": 5000,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-12T06:01:51.725Z",
+    "__v": 0
+  },
+  {
+    "_id": "698daf6eb52d294ebc506b98",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260201412 has been placed by Khushal Prasad. Amount: ₹1699",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "698dae7db52d294ebc506b4f",
+      "orderNumber": "260201412",
+      "customerName": "Khushal Prasad",
+      "amount": 1699,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-12T10:46:06.321Z",
+    "__v": 0
+  },
+  {
+    "_id": "698db0bcb52d294ebc506d31",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260201512 has been placed by Khushal Prasad. Amount: ₹1699",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "698dafcbb52d294ebc506bcf",
+      "orderNumber": "260201512",
+      "customerName": "Khushal Prasad",
+      "amount": 1699,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-12T10:51:40.664Z",
+    "__v": 0
+  },
+  {
+    "_id": "698db120b52d294ebc506d52",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260201612 has been placed by Khushal Prasad. Amount: ₹1699",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "698db02fb52d294ebc506cd3",
+      "orderNumber": "260201612",
+      "customerName": "Khushal Prasad",
+      "amount": 1699,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-12T10:53:20.359Z",
+    "__v": 0
+  },
+  {
+    "_id": "698db42ab52d294ebc5079b4",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260201712 has been placed by Khushal Prasad. Amount: ₹1699",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "698db33ab52d294ebc5071bc",
+      "orderNumber": "260201712",
+      "customerName": "Khushal Prasad",
+      "amount": 1699,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-12T11:06:18.910Z",
+    "__v": 0
+  },
+  {
+    "_id": "698db592b52d294ebc507d04",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260201812 has been placed by Khushal Prasad. Amount: ₹1699",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "698db4a1b52d294ebc507c6b",
+      "orderNumber": "260201812",
+      "customerName": "Khushal Prasad",
+      "amount": 1699,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-12T11:12:18.770Z",
+    "__v": 0
+  },
+  {
+    "_id": "698db5e0b52d294ebc507d25",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260201912 has been placed by Khushal Prasad. Amount: ₹1699",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "698db4efb52d294ebc507ca9",
+      "orderNumber": "260201912",
+      "customerName": "Khushal Prasad",
+      "amount": 1699,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-12T11:13:36.270Z",
+    "__v": 0
+  },
+  {
+    "_id": "698db8deb52d294ebc5080f8",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260202012 has been placed by Khushal Prasad. Amount: ₹1699",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "698db7edb52d294ebc5080a3",
+      "orderNumber": "260202012",
+      "customerName": "Khushal Prasad",
+      "amount": 1699,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-12T11:26:22.810Z",
+    "__v": 0
+  },
+  {
+    "_id": "698dbb6eb52d294ebc508407",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260202112 has been placed by Khushal Prasad. Amount: ₹1999",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "698dba7db52d294ebc508308",
+      "orderNumber": "260202112",
+      "customerName": "Khushal Prasad",
+      "amount": 1999,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-12T11:37:18.496Z",
+    "__v": 0
+  },
+  {
+    "_id": "698dbc19b52d294ebc50840d",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260202212 has been placed by Khushal Trial. Amount: ₹1699",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "698dbb28b52d294ebc5083fd",
+      "orderNumber": "260202212",
+      "customerName": "Khushal Trial",
+      "amount": 1699,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-12T11:40:09.500Z",
+    "__v": 0
+  },
+  {
+    "_id": "698dbe5cb52d294ebc508c34",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260202312 has been placed by Khushal Prasad. Amount: ₹1999",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "698dbd6bb52d294ebc5084c4",
+      "orderNumber": "260202312",
+      "customerName": "Khushal Prasad",
+      "amount": 1999,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-12T11:49:48.320Z",
+    "__v": 0
+  },
+  {
+    "_id": "698dbeacb52d294ebc508e82",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260202412 has been placed by Khushal Trial. Amount: ₹1699",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "698dbdbbb52d294ebc508505",
+      "orderNumber": "260202412",
+      "customerName": "Khushal Trial",
+      "amount": 1699,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-12T11:51:08.262Z",
+    "__v": 0
+  },
+  {
+    "_id": "698dbf1bb52d294ebc50907e",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260202512 has been placed by Khushal Trial. Amount: ₹3380",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "698dbe2bb52d294ebc508996",
+      "orderNumber": "260202512",
+      "customerName": "Khushal Trial",
+      "amount": 3380,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-12T11:52:59.908Z",
+    "__v": 0
+  },
+  {
+    "_id": "698de2b3d8b5835aad9123f0",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260202612 has been placed by Khushal Prasad. Amount: ₹1699",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "698de1c2d8b5835aad9122d1",
+      "orderNumber": "260202612",
+      "customerName": "Khushal Prasad",
+      "amount": 1699,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-12T14:24:51.273Z",
+    "__v": 0
+  },
+  {
+    "_id": "698de2fbd8b5835aad91240a",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260202712 has been placed by Khushal Prasad. Amount: ₹1999",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "698de20ad8b5835aad91233e",
+      "orderNumber": "260202712",
+      "customerName": "Khushal Prasad",
+      "amount": 1999,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-12T14:26:03.761Z",
+    "__v": 0
+  },
+  {
+    "_id": "698de52a78f1941d3ee805ce",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260202912 has been placed by Khushal Prasad. Amount: ₹1999",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "698de52278f1941d3ee805bf",
+      "orderNumber": "260202912",
+      "customerName": "Khushal Prasad",
+      "amount": 1999,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-12T14:35:22.742Z",
+    "__v": 0
+  },
+  {
+    "_id": "698de58dd8b5835aad9127de",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260202812 has been placed by Khushal Prasad. Amount: ₹1699",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "698de49cd8b5835aad91271a",
+      "orderNumber": "260202812",
+      "customerName": "Khushal Prasad",
+      "amount": 1699,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-12T14:37:01.039Z",
+    "__v": 0
+  },
+  {
+    "_id": "698de852d8b5835aad912b6c",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260203012 has been placed by Khushal Prasad. Amount: ₹1999",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "698de761d8b5835aad912a49",
+      "orderNumber": "260203012",
+      "customerName": "Khushal Prasad",
+      "amount": 1999,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-12T14:48:50.048Z",
+    "__v": 0
+  },
+  {
+    "_id": "698df4ea29c968223f1f94e7",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260203112 has been placed by Khushal Prasad. Amount: ₹1699",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "698df4e429c968223f1f94da",
+      "orderNumber": "260203112",
+      "customerName": "Khushal Prasad",
+      "amount": 1699,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-12T15:42:34.923Z",
+    "__v": 0
+  },
+  {
+    "_id": "698df55029c968223f1f974e",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260203212 has been placed by Khushal Prasad. Amount: ₹7225",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "698df54a29c968223f1f9741",
+      "orderNumber": "260203212",
+      "customerName": "Khushal Prasad",
+      "amount": 7225,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-12T15:44:16.689Z",
+    "__v": 0
+  },
+  {
+    "_id": "698df87d9e1e9657824cb628",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260203312 has been placed by Khushal Prasad. Amount: ₹2200",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "698df8769e1e9657824cb618",
+      "orderNumber": "260203312",
+      "customerName": "Khushal Prasad",
+      "amount": 2200,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-12T15:57:49.381Z",
+    "__v": 0
+  },
+  {
+    "_id": "698e1e095effb52db2148e14",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260203412 has been placed by Khushal Prasad. Amount: ₹4500",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "698e1d185effb52db2148d47",
+      "orderNumber": "260203412",
+      "customerName": "Khushal Prasad",
+      "amount": 4500,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-12T18:38:01.630Z",
+    "__v": 0
+  },
+  {
+    "_id": "698f3c7af3a7a3514b614ec4",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260203513 has been placed by Khushal Prasad. Amount: ₹3080",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "698f3c72f3a7a3514b614eb7",
+      "orderNumber": "260203513",
+      "customerName": "Khushal Prasad",
+      "amount": 3080,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-13T15:00:10.113Z",
+    "__v": 0
+  },
+  {
+    "_id": "698f3f8b20c1420675083db2",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260203613 has been placed by Khushal Prasad. Amount: ₹3599",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "698f3f8620c1420675083da5",
+      "orderNumber": "260203613",
+      "customerName": "Khushal Prasad",
+      "amount": 3599,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-13T15:13:15.630Z",
+    "__v": 0
+  },
+  {
+    "_id": "698f41226c96d7ff43899dbe",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260203713 has been placed by Khushal Prasad. Amount: ₹7225",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "698f411d6c96d7ff43899db1",
+      "orderNumber": "260203713",
+      "customerName": "Khushal Prasad",
+      "amount": 7225,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-13T15:20:02.239Z",
+    "__v": 0
+  },
+  {
+    "_id": "698f42f56c96d7ff4389a0a2",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260203813 has been placed by Khushal Prasad. Amount: ₹1500",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "698f42f06c96d7ff4389a095",
+      "orderNumber": "260203813",
+      "customerName": "Khushal Prasad",
+      "amount": 1500,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-13T15:27:49.528Z",
+    "__v": 0
+  },
+  {
+    "_id": "698f44a6a970d3a080845bb7",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260203913 has been placed by Khushal Prasad. Amount: ₹1200",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "698f44a1a970d3a080845baa",
+      "orderNumber": "260203913",
+      "customerName": "Khushal Prasad",
+      "amount": 1200,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-13T15:35:02.259Z",
+    "__v": 0
+  },
+  {
+    "_id": "698f45cbe357d12c40022c6b",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260204013 has been placed by Khushal Prasad. Amount: ₹4800",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "698f45c6e357d12c40022c5e",
+      "orderNumber": "260204013",
+      "customerName": "Khushal Prasad",
+      "amount": 4800,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-13T15:39:55.796Z",
+    "__v": 0
+  },
+  {
+    "_id": "698f4ba9e357d12c40022e2c",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260204113 has been placed by Khushal Prasad. Amount: ₹6107",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "698f4ba4e357d12c40022e1f",
+      "orderNumber": "260204113",
+      "customerName": "Khushal Prasad",
+      "amount": 6107,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-13T16:04:57.894Z",
+    "__v": 0
+  },
+  {
+    "_id": "6990794bd4c25a43ef489393",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260204214 has been placed by Khushal Prasad. Amount: ₹4500",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "69907945d4c25a43ef489383",
+      "orderNumber": "260204214",
+      "customerName": "Khushal Prasad",
+      "amount": 4500,
+      "currency": "INR"
+    },
+    "createdAt": "2026-02-14T13:31:55.064Z",
+    "__v": 0
+  },
+  {
+    "_id": "69a3f95c66470c4f3d138332",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260300101 has been placed by SobhanaSrikanth. Amount: ₹2399",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "69a3f86b66470c4f3d138288",
+      "orderNumber": "260300101",
+      "customerName": "SobhanaSrikanth",
+      "amount": 2399,
+      "currency": "INR"
+    },
+    "createdAt": "2026-03-01T08:31:24.579Z",
+    "__v": 0
+  },
+  {
+    "_id": "69a3fb7d66470c4f3d138dcd",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260300201 has been placed by Khushal Prasad. Amount: ₹4500",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "69a3fa8d66470c4f3d138ac1",
+      "orderNumber": "260300201",
+      "customerName": "Khushal Prasad",
+      "amount": 4500,
+      "currency": "INR"
+    },
+    "createdAt": "2026-03-01T08:40:29.840Z",
+    "__v": 0
+  },
+  {
+    "_id": "69a410524ea1e677128ff0ac",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260300301 has been placed by Khushal Prasad. Amount: ₹4500",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "69a4104d4ea1e677128ff09f",
+      "orderNumber": "260300301",
+      "customerName": "Khushal Prasad",
+      "amount": 4500,
+      "currency": "INR"
+    },
+    "createdAt": "2026-03-01T10:09:22.861Z",
+    "__v": 0
+  },
+  {
+    "_id": "69a4114f9be4e4cc4554052a",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260300401 has been placed by Khushal Prasad. Amount: ₹7225",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "69a411499be4e4cc4554051d",
+      "orderNumber": "260300401",
+      "customerName": "Khushal Prasad",
+      "amount": 7225,
+      "currency": "INR"
+    },
+    "createdAt": "2026-03-01T10:13:35.918Z",
+    "__v": 0
+  },
+  {
+    "_id": "69a4135e4fd4959eba8442aa",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260300501 has been placed by Khushal Prasad. Amount: ₹4500",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "69a4126c4fd4959eba843c70",
+      "orderNumber": "260300501",
+      "customerName": "Khushal Prasad",
+      "amount": 4500,
+      "currency": "INR"
+    },
+    "createdAt": "2026-03-01T10:22:22.146Z",
+    "__v": 0
+  },
+  {
+    "_id": "69a415449be4e4cc45540cfa",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260300601 has been placed by Khushal Prasad. Amount: ₹4050",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "69a4153f9be4e4cc45540ced",
+      "orderNumber": "260300601",
+      "customerName": "Khushal Prasad",
+      "amount": 4050,
+      "currency": "INR"
+    },
+    "createdAt": "2026-03-01T10:30:28.802Z",
+    "__v": 0
+  },
+  {
+    "_id": "69ac164b56dbd64b02a4d51e",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260300707 has been placed by Khushal Prasad. Amount: ₹3080",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "69ac164656dbd64b02a4d511",
+      "orderNumber": "260300707",
+      "customerName": "Khushal Prasad",
+      "amount": 3080,
+      "currency": "INR"
+    },
+    "createdAt": "2026-03-07T12:12:59.824Z",
+    "__v": 0
+  },
+  {
+    "_id": "69ac32669faf759d91e172b6",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260300807 has been placed by Khushal Prasad. Amount: ₹2199",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "69ac32609faf759d91e172a6",
+      "orderNumber": "260300807",
+      "customerName": "Khushal Prasad",
+      "amount": 2199,
+      "currency": "INR"
+    },
+    "createdAt": "2026-03-07T14:12:54.285Z",
+    "__v": 0
+  },
+  {
+    "_id": "69b547c086331671160c8e44",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260300914 has been placed by Khushal Prasad. Amount: ₹2899",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "69b547c086331671160c8e3a",
+      "orderNumber": "260300914",
+      "customerName": "Khushal Prasad",
+      "amount": 2899,
+      "currency": "INR"
+    },
+    "createdAt": "2026-03-14T11:34:24.889Z",
+    "__v": 0
+  },
+  {
+    "_id": "69b549921e815883a5891cb0",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260301014 has been placed by Khushal Prasad. Amount: ₹2599",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "69b5498c1e815883a5891b55",
+      "orderNumber": "260301014",
+      "customerName": "Khushal Prasad",
+      "amount": 2599,
+      "currency": "INR"
+    },
+    "createdAt": "2026-03-14T11:42:10.184Z",
+    "__v": 0
+  },
+  {
+    "_id": "69c53acea3406cec0bc8b365",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260301126 has been placed by Khushal Prasad. Amount: ₹3380",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "69c53ac7a3406cec0bc8b355",
+      "orderNumber": "260301126",
+      "customerName": "Khushal Prasad",
+      "amount": 3380,
+      "currency": "INR"
+    },
+    "createdAt": "2026-03-26T13:55:26.044Z",
+    "__v": 0
+  },
+  {
+    "_id": "69c548739ac9d246fdff5ca6",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260301226 has been placed by SobhanaSrikanth. Amount: ₹2699",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "69c547829ac9d246fdff5be8",
+      "orderNumber": "260301226",
+      "customerName": "SobhanaSrikanth",
+      "amount": 2699,
+      "currency": "INR"
+    },
+    "createdAt": "2026-03-26T14:53:39.759Z",
+    "__v": 0
+  },
+  {
+    "_id": "69c61be9f7c28db7a48eca28",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260301327 has been placed by ritvik prasad. Amount: ₹3080",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "69c61af8f7c28db7a48ec90c",
+      "orderNumber": "260301327",
+      "customerName": "ritvik prasad",
+      "amount": 3080,
+      "currency": "INR"
+    },
+    "createdAt": "2026-03-27T05:55:53.674Z",
+    "__v": 0
+  },
+  {
+    "_id": "69c937a3434afb7841783b9f",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260301429 has been placed by Khushal Prasad. Amount: ₹3080",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "69c936b2434afb784178375e",
+      "orderNumber": "260301429",
+      "customerName": "Khushal Prasad",
+      "amount": 3080,
+      "currency": "INR"
+    },
+    "createdAt": "2026-03-29T14:30:59.211Z",
+    "__v": 0
+  },
+  {
+    "_id": "69c93998434afb7841783eda",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260301529 has been placed by Khushal Prasad. Amount: ₹7225",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "69c938a7434afb7841783e55",
+      "orderNumber": "260301529",
+      "customerName": "Khushal Prasad",
+      "amount": 7225,
+      "currency": "INR"
+    },
+    "createdAt": "2026-03-29T14:39:20.744Z",
+    "__v": 0
+  },
+  {
+    "_id": "69c93c87d4b66fc2b4d614e6",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260301629 has been placed by Khushal Prasad. Amount: ₹7225",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "69c93c81d4b66fc2b4d614d9",
+      "orderNumber": "260301629",
+      "customerName": "Khushal Prasad",
+      "amount": 7225,
+      "currency": "INR"
+    },
+    "createdAt": "2026-03-29T14:51:51.895Z",
+    "__v": 0
+  },
+  {
+    "_id": "69c93d0fd4b66fc2b4d616a4",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260301729 has been placed by Khushal Prasad. Amount: ₹3599",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "69c93d0ad4b66fc2b4d6169a",
+      "orderNumber": "260301729",
+      "customerName": "Khushal Prasad",
+      "amount": 3599,
+      "currency": "INR"
+    },
+    "createdAt": "2026-03-29T14:54:07.838Z",
+    "__v": 0
+  },
+  {
+    "_id": "69c93f2f893e6c15ed8b4129",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260301829 has been placed by Khushal Prasad. Amount: ₹2339",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "69c93e3d893e6c15ed8b4009",
+      "orderNumber": "260301829",
+      "customerName": "Khushal Prasad",
+      "amount": 2339,
+      "currency": "INR"
+    },
+    "createdAt": "2026-03-29T15:03:11.587Z",
+    "__v": 0
+  },
+  {
+    "_id": "69c94010893e6c15ed8b41a7",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260301929 has been placed by Khushal Prasad. Amount: ₹2339",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "69c93f20893e6c15ed8b4116",
+      "orderNumber": "260301929",
+      "customerName": "Khushal Prasad",
+      "amount": 2339,
+      "currency": "INR"
+    },
+    "createdAt": "2026-03-29T15:06:56.987Z",
+    "__v": 0
+  },
+  {
+    "_id": "69c943c9b297a707e6fbec95",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260302029 has been placed by Khushal Prasad. Amount: ₹2339",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "69c942d8b297a707e6fbeb5e",
+      "orderNumber": "260302029",
+      "customerName": "Khushal Prasad",
+      "amount": 2339,
+      "currency": "INR"
+    },
+    "createdAt": "2026-03-29T15:22:49.872Z",
+    "__v": 0
+  },
+  {
+    "_id": "69c944558acc4a8b518f6a20",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260302129 has been placed by Khushal Prasad. Amount: ₹2339",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "69c944508acc4a8b518f6a16",
+      "orderNumber": "260302129",
+      "customerName": "Khushal Prasad",
+      "amount": 2339,
+      "currency": "INR"
+    },
+    "createdAt": "2026-03-29T15:25:09.593Z",
+    "__v": 0
+  },
+  {
+    "_id": "69c95624595bb8280572122c",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260302229 has been placed by SobhanaSrikanth. Amount: ₹14079",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "69c95534595bb82805720f95",
+      "orderNumber": "260302229",
+      "customerName": "SobhanaSrikanth",
+      "amount": 14079,
+      "currency": "INR"
+    },
+    "createdAt": "2026-03-29T16:41:08.969Z",
+    "__v": 0
+  },
+  {
+    "_id": "69c95675595bb82805721236",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260302329 has been placed by SobhanaSrikanth. Amount: ₹14079",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "69c95584595bb82805721173",
+      "orderNumber": "260302329",
+      "customerName": "SobhanaSrikanth",
+      "amount": 14079,
+      "currency": "INR"
+    },
+    "createdAt": "2026-03-29T16:42:29.157Z",
+    "__v": 0
+  },
+  {
+    "_id": "69d28bbf208b8610c0612829",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260400105 has been placed by Khushal Prasad. Amount: ₹7525",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "69d28ace208b8610c06125b7",
+      "orderNumber": "260400105",
+      "customerName": "Khushal Prasad",
+      "amount": 7525,
+      "currency": "INR"
+    },
+    "createdAt": "2026-04-05T16:20:15.600Z",
+    "__v": 0
+  },
+  {
+    "_id": "69d6a069208b8610c0614f6f",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260400208 has been placed by Khushal Prasad. Amount: ₹3080",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "69d69f78208b8610c0614a0c",
+      "orderNumber": "260400208",
+      "customerName": "Khushal Prasad",
+      "amount": 3080,
+      "currency": "INR"
+    },
+    "createdAt": "2026-04-08T18:37:29.406Z",
+    "__v": 0
+  },
+  {
+    "_id": "69d6a3b3208b8610c061585b",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260400308 has been placed by Khushal Prasad. Amount: ₹7000",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "69d6a2c2208b8610c0615664",
+      "orderNumber": "260400308",
+      "customerName": "Khushal Prasad",
+      "amount": 7000,
+      "currency": "INR"
+    },
+    "createdAt": "2026-04-08T18:51:31.233Z",
+    "__v": 0
+  },
+  {
+    "_id": "6a1d88757c43ab1382a03a04",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260600201 has been placed by Khushal Prasad. Amount: ₹1709",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "6a1d886f7c43ab1382a039f7",
+      "orderNumber": "260600201",
+      "customerName": "Khushal Prasad",
+      "amount": 1709,
+      "currency": "INR"
+    },
+    "createdAt": "2026-06-01T13:26:13.931Z",
+    "__v": 0
+  },
+  {
+    "_id": "6a1d88c080a381d618708adf",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260600101 has been placed by Khushal Prasad. Amount: ₹1709",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "6a1d87cf80a381d61870890d",
+      "orderNumber": "260600101",
+      "customerName": "Khushal Prasad",
+      "amount": 1709,
+      "currency": "INR"
+    },
+    "createdAt": "2026-06-01T13:27:28.368Z",
+    "__v": 0
+  },
+  {
+    "_id": "6a23f1b229bda388652fa1d8",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260600306 has been placed by Khushal Prasad. Amount: ₹2",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "6a23f1ab29bda388652fa1ce",
+      "orderNumber": "260600306",
+      "customerName": "Khushal Prasad",
+      "amount": 2,
+      "currency": "INR"
+    },
+    "createdAt": "2026-06-06T10:08:50.504Z",
+    "__v": 0
+  },
+  {
+    "_id": "6a243c10b8ff62a2f00a496b",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260600406 has been placed by SobhanaSrikanth. Amount: ₹2",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "6a243c0bb8ff62a2f00a4961",
+      "orderNumber": "260600406",
+      "customerName": "SobhanaSrikanth",
+      "amount": 2,
+      "currency": "INR"
+    },
+    "createdAt": "2026-06-06T15:26:08.005Z",
+    "__v": 0
+  },
+  {
+    "_id": "6a246e213fec0886faaff968",
+    "type": "order",
+    "title": "🎉 New Order Received!",
+    "message": "Order 260600506 has been placed by springblossoms sec. Amount: ₹249",
+    "read": true,
+    "userId": null,
+    "metadata": {
+      "orderId": "6a246e1c3fec0886faaff95e",
+      "orderNumber": "260600506",
+      "customerName": "springblossoms sec",
+      "amount": 249,
+      "currency": "INR"
+    },
+    "createdAt": "2026-06-06T18:59:45.834Z",
+    "__v": 0
+  }
+]

@@ -1,0 +1,68 @@
+[
+  {
+    "_id": "6a29990d4ebcc3ad42614c53",
+    "order": "6a23f1ab29bda388652fa1ce",
+    "product": "686c3844d7faecda489c1814",
+    "customer": "67e94ba835eb20eee3feba0e",
+    "requestedBy": "67e94ba835eb20eee3feba0e",
+    "customerName": "Khushal Prasad",
+    "customerEmail": "khushalprasad242@gmail.com",
+    "productName": "20 Red Rose Bouquet with baby's breath",
+    "reviewUrl": "https://sbf-frontend.onrender.com/products/686c3844d7faecda489c1814/reviews/20-red-rose-bouquet-with-babys-breath?orderId=6a23f1ab29bda388652fa1ce",
+    "status": "sent",
+    "templateKey": "review-request-v1",
+    "messageId": "<2fa57a69-96a1-ec93-f69a-7fe7559397e3@gmail.com>",
+    "errorMessage": "",
+    "sentAt": "2026-06-10T17:04:13.267Z",
+    "meta": {
+      "orderNumber": "260600306"
+    },
+    "createdAt": "2026-06-10T17:04:13.271Z",
+    "updatedAt": "2026-06-10T17:04:13.271Z",
+    "__v": 0
+  },
+  {
+    "_id": "6a299e206fe4705d1c1d0587",
+    "order": "6a243c0bb8ff62a2f00a4961",
+    "product": "686c3844d7faecda489c1814",
+    "customer": "685690f585d40dde26913505",
+    "requestedBy": "67e94ba835eb20eee3feba0e",
+    "customerName": "SobhanaSrikanth",
+    "customerEmail": "sobhanasrikanthkantam@gmail.com",
+    "productName": "20 Red Rose Bouquet with baby's breath",
+    "reviewUrl": "https://sbf-frontend.onrender.com/products/686c3844d7faecda489c1814/reviews/20-red-rose-bouquet-with-babys-breath?orderId=6a243c0bb8ff62a2f00a4961",
+    "status": "sent",
+    "templateKey": "review-request-v1",
+    "messageId": "<935a290d-a91d-ca37-1a5f-311e2cbe0ba4@gmail.com>",
+    "errorMessage": "",
+    "sentAt": "2026-06-10T17:25:52.303Z",
+    "meta": {
+      "orderNumber": "260600406"
+    },
+    "createdAt": "2026-06-10T17:25:52.304Z",
+    "updatedAt": "2026-06-10T17:25:52.304Z",
+    "__v": 0
+  },
+  {
+    "_id": "6a29b4f56fe4705d1c1d13d6",
+    "order": "6a246e1c3fec0886faaff95e",
+    "product": "6a246a043fec0886faafeb85",
+    "customer": "6855bdcdca9134c5126bb058",
+    "requestedBy": "67e94ba835eb20eee3feba0e",
+    "customerName": "springblossoms sec",
+    "customerEmail": "springblossomssec@gmail.com",
+    "productName": "Timeless Romance – 10 Red Rose Bouquet",
+    "reviewUrl": "https://sbf-frontend.onrender.com/products/6a246a043fec0886faafeb85/reviews/timeless-romance-10-red-rose-bouquet?orderId=6a246e1c3fec0886faaff95e",
+    "status": "sent",
+    "templateKey": "review-request-v1",
+    "messageId": "<b1f0b353-d5ef-ccea-e71d-7bca097b0bd0@gmail.com>",
+    "errorMessage": "",
+    "sentAt": "2026-06-10T19:03:17.999Z",
+    "meta": {
+      "orderNumber": "260600506"
+    },
+    "createdAt": "2026-06-10T19:03:18.000Z",
+    "updatedAt": "2026-06-10T19:03:18.000Z",
+    "__v": 0
+  }
+]
