@@ -184,7 +184,35 @@ const footerSettingsSchema = new mongoose.Schema({
     androidLink: { type: String, default: '' },
     iosLink: { type: String, default: '' }
   },
-  backgroundStyle: { type: String, default: 'default' }
+  backgroundStyle: { type: String, default: 'default' },
+  securePaymentEnabled: { type: Boolean, default: true },
+  securePaymentHeaderText: { type: String, default: 'Secure Payments by' },
+  securePaymentHighlightText: { type: String, default: '100% Safe & Encrypted Transactions' },
+  securePaymentGatewayText: { type: String, default: 'Trusted Payment Gateway' },
+  securePaymentTrustText: { type: String, default: 'Trusted by Millions of Businesses' },
+  securePaymentLogoType: { type: String, default: 'default' },
+  securePaymentCustomLogo: { type: String, default: '' },
+  paymentMethodUpiEnabled: { type: Boolean, default: true },
+  paymentMethodUpiType: { type: String, default: 'default' },
+  paymentMethodUpiUrl: { type: String, default: '' },
+  paymentMethodVisaEnabled: { type: Boolean, default: true },
+  paymentMethodVisaType: { type: String, default: 'default' },
+  paymentMethodVisaUrl: { type: String, default: '' },
+  paymentMethodMastercardEnabled: { type: Boolean, default: true },
+  paymentMethodMastercardType: { type: String, default: 'default' },
+  paymentMethodMastercardUrl: { type: String, default: '' },
+  paymentMethodRuPayEnabled: { type: Boolean, default: true },
+  paymentMethodRuPayType: { type: String, default: 'default' },
+  paymentMethodRuPayUrl: { type: String, default: '' },
+  paymentMethodNetBankingEnabled: { type: Boolean, default: true },
+  paymentMethodNetBankingType: { type: String, default: 'default' },
+  paymentMethodNetBankingUrl: { type: String, default: '' },
+  paymentMethodWalletsEnabled: { type: Boolean, default: true },
+  paymentMethodWalletsType: { type: String, default: 'default' },
+  paymentMethodWalletsUrl: { type: String, default: '' },
+  paymentMethodEmiEnabled: { type: Boolean, default: true },
+  paymentMethodEmiType: { type: String, default: 'default' },
+  paymentMethodEmiUrl: { type: String, default: '' }
 });
 
 const notificationsSettingsSchema = new mongoose.Schema({
