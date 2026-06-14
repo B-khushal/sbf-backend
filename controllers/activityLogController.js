@@ -66,7 +66,7 @@ const getAdminLogs = async (req, res) => {
     } = req.query;
 
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
-    const limitNum = Math.min(200, Math.max(1, parseInt(limit, 10) || 25));
+    const limitNum = Math.min(1000, Math.max(1, parseInt(limit, 10) || 25));
     const skip = (pageNum - 1) * limitNum;
 
     const baseMatch = {};
