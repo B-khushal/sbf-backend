@@ -722,3 +722,69 @@ exports.discardDraft = async (req, res) => {
     res.status(500).json({ message: 'Error discarding draft settings', error: error.message });
   }
 }; 
+
+// Get WhatsApp widget settings
+exports.getWhatsAppWidgetSettings = async (req, res) => {
+  try {
+    let settings = await Settings.findOne();
+    if (!settings) {
+      await Settings.initializeDefaultSettings();
+      settings = await Settings.findOne();
+    }
+    
+    const defaults = {
+      enabled: true,
+      phoneNumber: '9949683222',
+      position: 'right',
+      message: "Hello! I'm interested in your flower arrangements.",
+      showHoverCard: true,
+      showFloatingAnimation: true,
+      businessName: 'Spring Blossoms Florist',
+      widgetTitle: 'WhatsApp Us',
+      widgetSubtitle: 'Need help choosing flowers?',
+      widgetSize: 'medium',
+      iconStyle: 'circle',
+      borderRadius: 12,
+      shadowIntensity: 'medium',
+      welcomeText: 'Chat with our floral experts.',
+      ctaButtonText: 'Chat Now',
+      onlineStatusText: 'Online',
+      businessHoursMessage: 'Typically replies within minutes'
+    };
+
+    const whatsappFloating = settings.notificationsSettings?.whatsappFloating || {};
+    res.json({ ...defaults, ...whatsappFloating });
+  } catch (error) {
+    console.error('Error fetching WhatsApp settings:', error);
+    res.status(500).json({ message: 'Error fetching WhatsApp settings' });
+  }
+};
+
+// Update WhatsApp widget settings
+exports.updateWhatsAppWidgetSettings = async (req, res) => {
+  try {
+    const updates = req.body;
+    let settings = await Settings.findOne();
+    if (!settings) {
+      settings = new Settings();
+    }
+
+    if (!settings.notificationsSettings) {
+      settings.notificationsSettings = {};
+    }
+
+    // Merge updates into whatsappFloating
+    settings.notificationsSettings.whatsappFloating = {
+      ...(settings.notificationsSettings.whatsappFloating || {}),
+      ...updates
+    };
+
+    settings.markModified('notificationsSettings');
+    await settings.save();
+
+    res.json(settings.notificationsSettings.whatsappFloating);
+  } catch (error) {
+    console.error('Error updating WhatsApp settings:', error);
+    res.status(500).json({ message: 'Error updating WhatsApp settings' });
+  }
+}; 

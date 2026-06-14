@@ -220,7 +220,20 @@ const notificationsSettingsSchema = new mongoose.Schema({
     enabled: { type: Boolean, default: true },
     phoneNumber: { type: String, default: '9949683222' },
     position: { type: String, default: 'right' },
-    message: { type: String, default: "Hello! I'm interested in your flower arrangements." }
+    message: { type: String, default: "Hello! I'm interested in your flower arrangements." },
+    showHoverCard: { type: Boolean, default: true },
+    showFloatingAnimation: { type: Boolean, default: true },
+    businessName: { type: String, default: 'Spring Blossoms Florist' },
+    widgetTitle: { type: String, default: 'WhatsApp Us' },
+    widgetSubtitle: { type: String, default: 'Need help choosing flowers?' },
+    widgetSize: { type: String, default: 'medium' },
+    iconStyle: { type: String, default: 'circle' },
+    borderRadius: { type: Number, default: 12 },
+    shadowIntensity: { type: String, default: 'medium' },
+    welcomeText: { type: String, default: 'Chat with our floral experts.' },
+    ctaButtonText: { type: String, default: 'Chat Now' },
+    onlineStatusText: { type: String, default: 'Online' },
+    businessHoursMessage: { type: String, default: 'Typically replies within minutes' }
   },
   popupCreator: {
     enabled: { type: Boolean, default: false },

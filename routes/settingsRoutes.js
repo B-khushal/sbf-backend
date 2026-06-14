@@ -43,4 +43,8 @@ router.put('/header', protect, admin, settingsController.updateHeaderSettings);
 router.get('/footer', settingsController.getFooterSettings);
 router.put('/footer', protect, admin, settingsController.updateFooterSettings);
 
+// WhatsApp settings routes
+router.get('/whatsapp-widget', settingsController.getWhatsAppWidgetSettings);
+router.put('/whatsapp-widget', protect, admin, settingsController.updateWhatsAppWidgetSettings);
+
 module.exports = router;
