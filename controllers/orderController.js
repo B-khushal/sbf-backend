@@ -115,6 +115,138 @@ const cleanProductData = (product) => {
   }
 };
 
+const resolveGiftBuilderProductIds = async (items, requestingUserId) => {
+  if (!items || !Array.isArray(items)) return items;
+  
+  let templateProduct = null;
+  const User = require('../models/User');
+  const Product = require('../models/Product');
+  
+  for (let i = 0; i < items.length; i++) {
+    const productId = items[i].product || items[i].productId;
+    if (typeof productId === 'string' && productId.startsWith('valentine-gift-')) {
+      if (!templateProduct) {
+        templateProduct = await Product.findOne({ title: 'Custom Valentine Gift Box' });
+        if (!templateProduct) {
+          const adminUser = await User.findOne({ role: 'admin' });
+          const ownerId = adminUser ? adminUser._id : (requestingUserId || null);
+          templateProduct = await Product.create({
+            user: ownerId,
+            title: 'Custom Valentine Gift Box',
+            price: 0,
+            category: 'Valentine',
+            description: 'Custom Valentine Gift Box containing selected items',
+            images: ['/images/valentine-gift-box.jpg'],
+            productType: 'valentine',
+            isValentineProduct: true,
+            hidden: true,
+            countInStock: 99999
+          });
+        }
+      }
+      if (items[i].product) items[i].product = templateProduct._id;
+      if (items[i].productId) items[i].productId = templateProduct._id;
+    }
+  }
+  return items;
+};
+
+const validateOrderValentineRules = async (items, shippingDetails) => {
+  const ValentineSettings = require('../models/ValentineSettings');
+  const Product = require('../models/Product');
+  const settings = await ValentineSettings.findOne();
+  const isValentineEnabled = settings ? settings.enabled : false;
+
+  let hasValentine = false;
+  let hasRegular = false;
+
+  const deliveryDate = shippingDetails && shippingDetails.deliveryDate ? new Date(shippingDetails.deliveryDate) : null;
+
+  for (const item of items) {
+    const productId = item.product || item.productId;
+    if (!productId) continue;
+    const prod = await Product.findById(productId);
+    if (!prod) continue;
+
+    const isVal = prod.productType === 'valentine' || prod.isValentineProduct;
+    if (isVal) {
+      hasValentine = true;
+    } else {
+      hasRegular = true;
+    }
+
+    if (isVal) {
+      // Valentine product checks
+      if (!isValentineEnabled) {
+        throw new Error("Valentine Special products are not available currently.");
+      }
+
+      if (!deliveryDate) {
+        throw new Error("Delivery date is required for Valentine Special products.");
+      }
+
+      // Check if delivery date is within Valentine Week (8 Feb - 15 Feb)
+      const dMonth = deliveryDate.getMonth(); // 1 = Feb
+      const dDate = deliveryDate.getDate();
+      const isValentineWeek = (dMonth === 1 && dDate >= 8 && dDate <= 15);
+
+      if (!isValentineWeek) {
+        throw new Error("Valentine Special products can only be delivered during Valentine's Week (8 Feb - 15 Feb).");
+      }
+
+      // Check if selected date is allowed for this product
+      const dayStr = `${dDate} Feb`;
+      const fullDayStr = `${dDate} February`;
+      
+      const isDateAllowed = prod.availableDates.some(availDate => {
+        const cleanAvail = availDate.trim().toLowerCase();
+        return cleanAvail === dayStr.toLowerCase() || 
+               cleanAvail === fullDayStr.toLowerCase() || 
+               cleanAvail.includes(String(dDate));
+      });
+
+      if (!isDateAllowed && prod.availableDates && prod.availableDates.length > 0) {
+        throw new Error(`Product "${prod.title || prod.name}" is not available for delivery on ${dayStr}.`);
+      }
+
+      // Check date-wise inventory
+      if (prod.dateWiseStock && typeof prod.dateWiseStock.get === 'function') {
+        const stockForDate = prod.dateWiseStock.get(dayStr) ?? prod.dateWiseStock.get(fullDayStr);
+        if (stockForDate !== undefined && stockForDate <= 0) {
+          throw new Error(`Sold Out For Selected Date`);
+        }
+      }
+
+      // Check date-wise pricing
+      if (prod.dateWisePricing && typeof prod.dateWisePricing.get === 'function') {
+        const priceForDate = prod.dateWisePricing.get(dayStr) ?? prod.dateWisePricing.get(fullDayStr);
+        if (priceForDate !== undefined) {
+          const expectedPrice = priceForDate;
+          const itemPrice = item.finalPrice || item.price;
+          if (Math.abs(itemPrice - expectedPrice) > 5) {
+            throw new Error(`Pricing mismatch for "${prod.title || prod.name}" on ${dayStr}. Expected ₹${expectedPrice}, got ₹${itemPrice}.`);
+          }
+        }
+      }
+    } else {
+      // Regular product checks
+      if (deliveryDate) {
+        const dMonth = deliveryDate.getMonth(); // 1 = Feb
+        const dDate = deliveryDate.getDate();
+        const isValentineWeek = (dMonth === 1 && dDate >= 8 && dDate <= 15);
+        if (isValentineWeek) {
+          throw new Error("Valentine Week delivery dates are reserved exclusively for Valentine's Special products.");
+        }
+      }
+    }
+  }
+
+  // Prevent mixed carts
+  if (hasValentine && hasRegular) {
+    throw new Error("Valentine Special products and Regular products cannot be checked out together because they follow different delivery schedules.");
+  }
+};
+
 
 // @desc    Create new order
 // @route   POST /api/orders
@@ -127,11 +259,24 @@ const createOrder = async (req, res) => {
 
     const { shippingDetails, items, paymentDetails, totalAmount, giftDetails, currency, currencyRate, originalCurrency } = req.body;
 
+    // Resolve any client-side valentine-gift- IDs
+    await resolveGiftBuilderProductIds(items, req.user?._id);
+
     // Validate required data
     if (!items || items.length === 0) {
       return res.status(400).json({
         success: false,
         message: 'Order must contain items'
+      });
+    }
+
+    // Valentine validations
+    try {
+      await validateOrderValentineRules(items, shippingDetails);
+    } catch (valError) {
+      return res.status(400).json({
+        success: false,
+        message: valError.message
       });
     }
 
@@ -545,9 +690,23 @@ const updateOrderToDelivered = async (req, res) => {
               });
             }
           } else {
-            // Check if we have enough stock
             if (product.countInStock >= item.quantity) {
               product.countInStock -= item.quantity;
+
+              if (product.productType === 'valentine' || product.isValentineProduct) {
+                const d = new Date(order.shippingDetails.deliveryDate);
+                const dayStr = `${d.getDate()} Feb`;
+                const fullDayStr = `${d.getDate()} February`;
+                let keyToUse = null;
+                if (product.dateWiseStock && typeof product.dateWiseStock.has === 'function') {
+                  if (product.dateWiseStock.has(dayStr)) keyToUse = dayStr;
+                  else if (product.dateWiseStock.has(fullDayStr)) keyToUse = fullDayStr;
+                  if (keyToUse) {
+                    const currentStock = product.dateWiseStock.get(keyToUse);
+                    product.dateWiseStock.set(keyToUse, Math.max(0, currentStock - item.quantity));
+                  }
+                }
+              }
 
               try {
                 // Clean product data before saving to prevent casting errors
@@ -1354,11 +1513,24 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
 
     // If payment is verified and orderData is provided, create the order
     if (orderData) {
+      // Resolve any client-side valentine-gift- IDs
+      await resolveGiftBuilderProductIds(orderData.items, req.user?._id);
+
       // Validate required data
       if (!orderData.items || orderData.items.length === 0) {
         return res.status(400).json({
           success: false,
           message: 'Order must contain items'
+        });
+      }
+
+      // Valentine validations
+      try {
+        await validateOrderValentineRules(orderData.items, orderData.shippingDetails);
+      } catch (valError) {
+        return res.status(400).json({
+          success: false,
+          message: valError.message
         });
       }
 

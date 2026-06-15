@@ -133,6 +133,14 @@ const getProducts = async (req, res) => {
         { approvalStatus: { $exists: false } } // Backward compatibility
       ]
     };
+
+    // Filter by productType / isValentineProduct
+    if (req.query.isValentineProduct === 'true' || req.query.productType === 'valentine') {
+      query.isValentineProduct = true;
+    } else {
+      query.isValentineProduct = { $ne: true };
+      query.productType = { $ne: 'valentine' };
+    }
     
     const count = await Product.countDocuments(query);
     // Remove pagination: fetch all products
@@ -232,6 +240,25 @@ const createProduct = asyncHandler(async (req, res) => {
     comboDescription,
     comboSubcategory,
     sameDay,
+    productType,
+    isValentineProduct,
+    showInValentineShop,
+    valentineCategories,
+    valentineSections,
+    availableDates,
+    valentineBadge,
+    featureInValentineHero,
+    enableValentinePricing,
+    dateWiseStock,
+    dateWisePricing,
+    dateWiseOffers,
+    dateWiseDeliveryCharges,
+    valentineDate,
+    isValentineExclusive,
+    valentineCategory,
+    valentineSeoTitle,
+    valentineSeoDescription,
+    valentineSlug,
   } = req.body;
 
   // If user is a vendor, find their vendor profile and set it
@@ -252,27 +279,46 @@ const createProduct = asyncHandler(async (req, res) => {
     approvalStatus,
     title,
     description,
-      price,
-      discount: discount || 0,
+    price,
+    discount: discount || 0,
     category,
     categories: categories || [],
-      countInStock,
-      images,
+    countInStock,
+    images,
     details: details || [],
     careInstructions: careInstructions || [],
     isNew: typeof isNew === 'boolean' ? isNew : Boolean(isNewArrival),
-      isFeatured: isFeatured || false,
+    isFeatured: isFeatured || false,
     hidden: hidden || false,
     sameDay: sameDay !== undefined ? Boolean(sameDay) : true,
     isCustomizable: isCustomizable || false,
     customizationOptions: customizationOptions || {},
     hasPriceVariants: hasPriceVariants ?? false,
     priceVariants: priceVariants ?? [],
-      comboItems: comboItems || [],
+    comboItems: comboItems || [],
     comboName: comboName || '',
     comboDescription: comboDescription || '',
     comboSubcategory: comboSubcategory || '',
     subcategory: subcategory || '',
+    productType: productType || 'regular',
+    isValentineProduct: isValentineProduct || false,
+    showInValentineShop: showInValentineShop || false,
+    valentineCategories: valentineCategories || [],
+    valentineSections: valentineSections || [],
+    availableDates: availableDates || [],
+    valentineBadge: valentineBadge || '',
+    featureInValentineHero: featureInValentineHero || false,
+    enableValentinePricing: enableValentinePricing || false,
+    dateWiseStock: dateWiseStock || {},
+    dateWisePricing: dateWisePricing || {},
+    dateWiseOffers: dateWiseOffers || {},
+    dateWiseDeliveryCharges: dateWiseDeliveryCharges || {},
+    valentineDate: valentineDate || null,
+    isValentineExclusive: isValentineExclusive || false,
+    valentineCategory: valentineCategory || '',
+    valentineSeoTitle: valentineSeoTitle || '',
+    valentineSeoDescription: valentineSeoDescription || '',
+    valentineSlug: valentineSlug || '',
   });
 
   console.log('📋 Product object before save:', {
@@ -322,6 +368,25 @@ const updateProduct = asyncHandler(async (req, res) => {
     comboDescription,
     comboSubcategory,
     sameDay,
+    productType,
+    isValentineProduct,
+    showInValentineShop,
+    valentineCategories,
+    valentineSections,
+    availableDates,
+    valentineBadge,
+    featureInValentineHero,
+    enableValentinePricing,
+    dateWiseStock,
+    dateWisePricing,
+    dateWiseOffers,
+    dateWiseDeliveryCharges,
+    valentineDate,
+    isValentineExclusive,
+    valentineCategory,
+    valentineSeoTitle,
+    valentineSeoDescription,
+    valentineSlug,
   } = req.body;
 
   const product = await Product.findById(req.params.id);
@@ -361,6 +426,25 @@ const updateProduct = asyncHandler(async (req, res) => {
       comboDescription: comboDescription || '',
       comboSubcategory: comboSubcategory || '',
       subcategory: subcategory || '',
+      productType: productType || 'regular',
+      isValentineProduct: isValentineProduct || false,
+      showInValentineShop: showInValentineShop || false,
+      valentineCategories: valentineCategories || [],
+      valentineSections: valentineSections || [],
+      availableDates: availableDates || [],
+      valentineBadge: valentineBadge || '',
+      featureInValentineHero: featureInValentineHero || false,
+      enableValentinePricing: enableValentinePricing || false,
+      dateWiseStock: dateWiseStock || {},
+      dateWisePricing: dateWisePricing || {},
+      dateWiseOffers: dateWiseOffers || {},
+      dateWiseDeliveryCharges: dateWiseDeliveryCharges || {},
+      valentineDate: valentineDate || null,
+      isValentineExclusive: isValentineExclusive || false,
+      valentineCategory: valentineCategory || '',
+      valentineSeoTitle: valentineSeoTitle || '',
+      valentineSeoDescription: valentineSeoDescription || '',
+      valentineSlug: valentineSlug || '',
     };
 
     // If vendor updates product, set to pending approval
@@ -1012,6 +1096,62 @@ const rejectProduct = async (req, res) => {
   }
 };
 
+// @desc    Bulk update Valentine settings for products
+// @route   POST /api/products/admin/bulk-valentine
+// @access  Private/Admin
+const bulkUpdateValentineSettings = asyncHandler(async (req, res) => {
+  const { productIds, action, value } = req.body;
+
+  if (!Array.isArray(productIds) || productIds.length === 0) {
+    return res.status(400).json({ message: 'No product IDs provided' });
+  }
+
+  let updateQuery = {};
+  switch (action) {
+    case 'addToShop':
+      updateQuery = { 
+        showInValentineShop: true, 
+        isValentineProduct: true, 
+        productType: 'valentine' 
+      };
+      break;
+    case 'removeFromShop':
+      updateQuery = { showInValentineShop: false };
+      break;
+    case 'assignCategories':
+      if (!Array.isArray(value)) {
+        return res.status(400).json({ message: 'Categories list must be an array' });
+      }
+      updateQuery = { valentineCategories: value };
+      break;
+    case 'assignDates':
+      if (!Array.isArray(value)) {
+        return res.status(400).json({ message: 'Dates list must be an array' });
+      }
+      updateQuery = { availableDates: value };
+      break;
+    case 'enableOffers':
+      updateQuery = { enableValentinePricing: true };
+      break;
+    case 'disableProducts':
+      updateQuery = { 
+        isValentineProduct: false, 
+        productType: 'regular',
+        showInValentineShop: false 
+      };
+      break;
+    default:
+      return res.status(400).json({ message: 'Invalid bulk action' });
+  }
+
+  await Product.updateMany(
+    { _id: { $in: productIds } },
+    { $set: updateQuery }
+  );
+
+  res.json({ success: true, message: 'Products updated successfully' });
+});
+
 
 module.exports = {
   getProducts,
@@ -1035,4 +1175,5 @@ module.exports = {
   getPendingProducts,
   approveProduct,
   rejectProduct,
+  bulkUpdateValentineSettings,
 };

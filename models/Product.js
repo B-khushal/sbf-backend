@@ -305,6 +305,89 @@ const productSchema = mongoose.Schema(
         default: "",
       },
     },
+    // Valentine-specific fields
+    productType: {
+      type: String,
+      enum: ['regular', 'valentine'],
+      default: 'regular'
+    },
+    isValentineProduct: {
+      type: Boolean,
+      default: false
+    },
+    showInValentineShop: {
+      type: Boolean,
+      default: false
+    },
+    valentineCategories: {
+      type: [String],
+      default: []
+    },
+    valentineSections: {
+      type: [String],
+      default: []
+    },
+    availableDates: {
+      type: [String],
+      default: []
+    },
+    valentineBadge: {
+      type: String,
+      default: ''
+    },
+    featureInValentineHero: {
+      type: Boolean,
+      default: false
+    },
+    enableValentinePricing: {
+      type: Boolean,
+      default: false
+    },
+    dateWiseStock: {
+      type: Map,
+      of: Number,
+      default: {}
+    },
+    dateWisePricing: {
+      type: Map,
+      of: Number,
+      default: {}
+    },
+    dateWiseOffers: {
+      type: Map,
+      of: String,
+      default: {}
+    },
+    dateWiseDeliveryCharges: {
+      type: Map,
+      of: Number,
+      default: {}
+    },
+    valentineDate: {
+      type: String,
+      default: null,
+      enum: [null, 'rose-day', 'propose-day', 'chocolate-day', 'teddy-day', 'promise-day', 'hug-day', 'valentines-day', 'celebration-day']
+    },
+    isValentineExclusive: {
+      type: Boolean,
+      default: false,
+    },
+    valentineCategory: {
+      type: String,
+      default: '',
+    },
+    valentineSeoTitle: {
+      type: String,
+      default: ''
+    },
+    valentineSeoDescription: {
+      type: String,
+      default: ''
+    },
+    valentineSlug: {
+      type: String,
+      default: ''
+    },
     // Combo-specific fields
     comboItems: {
       type: [comboItemSchema],

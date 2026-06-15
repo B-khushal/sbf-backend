@@ -21,6 +21,7 @@ const {
   getPendingProducts,
   approveProduct,
   rejectProduct,
+  bulkUpdateValentineSettings,
 } = require('../controllers/productController');
 
 const {
@@ -131,6 +132,7 @@ router.get('/admin/low-stock', protect, adminOrVendor, getLowStockProducts);
 router.get('/admin/pending-approval', protect, admin, getPendingProducts);
 router.put('/admin/:id/approve', protect, admin, approveProduct);
 router.put('/admin/:id/reject', protect, admin, rejectProduct);
+router.post('/admin/bulk-valentine', protect, admin, bulkUpdateValentineSettings);
 
 // @route   GET /api/products/category/:category
 // @desc    Get products by category
