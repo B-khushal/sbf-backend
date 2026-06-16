@@ -233,7 +233,9 @@ const notificationsSettingsSchema = new mongoose.Schema({
     welcomeText: { type: String, default: 'Chat with our floral experts.' },
     ctaButtonText: { type: String, default: 'Chat Now' },
     onlineStatusText: { type: String, default: 'Online' },
-    businessHoursMessage: { type: String, default: 'Typically replies within minutes' }
+    businessHoursMessage: { type: String, default: 'Typically replies within minutes' },
+    showOnlyOnHomepage: { type: Boolean, default: false },
+    showOnValentineLanding: { type: Boolean, default: false }
   },
   popupCreator: {
     enabled: { type: Boolean, default: false },

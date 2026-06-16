@@ -218,7 +218,11 @@ const valentineSettingsSchema = new mongoose.Schema({
     navbarBackgroundStyle: { type: String, enum: ['glassmorphism', 'solid'], default: 'glassmorphism' },
     enableFloatingAnimation: { type: Boolean, default: true },
     enableHeartParticles: { type: Boolean, default: true },
-    enableSeasonalTheme: { type: Boolean, default: true }
+    enableSeasonalTheme: { type: Boolean, default: true },
+    showWishlistDuringValentine: { type: Boolean, default: false },
+    valentineLabel: { type: String, default: 'LOVE' },
+    valentineButtonSize: { type: Number, default: 48 },
+    valentineGlowEnabled: { type: Boolean, default: true }
   },
 
   updatedAt: { type: Date, default: Date.now }
