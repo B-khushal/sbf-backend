@@ -401,6 +401,42 @@ const productSchema = mongoose.Schema(
       type: String,
       default: "",
     },
+    displayOrders: {
+      featured: {
+        type: Number,
+        default: 0
+      },
+      shop: {
+        type: Number,
+        default: 0
+      },
+      newArrivals: {
+        type: Number,
+        default: 0
+      },
+      recommended: {
+        type: Number,
+        default: 0
+      },
+      occasions: {
+        valentine: { type: Number, default: 0 },
+        mothersDay: { type: Number, default: 0 },
+        fathersDay: { type: Number, default: 0 },
+        friendshipDay: { type: Number, default: 0 },
+        rakhi: { type: Number, default: 0 },
+        diwali: { type: Number, default: 0 },
+        newYear: { type: Number, default: 0 }
+      },
+      categories: {
+        type: Map,
+        of: Number,
+        default: {}
+      }
+    },
+    isRecommended: {
+      type: Boolean,
+      default: false
+    },
   },
   {
     timestamps: true,

@@ -3,6 +3,7 @@ const User = require('../models/User');
 const Vendor = require('../models/Vendor');
 const Order = require('../models/Order');
 const Review = require('../models/Review');
+const SectionSortingPreference = require('../models/SectionSortingPreference');
 const asyncHandler = require('express-async-handler');
 
 // Helper function to clean product data before saving
@@ -144,8 +145,16 @@ const getProducts = async (req, res) => {
     
     const count = await Product.countDocuments(query);
     // Remove pagination: fetch all products
-    const products = await Product.find(query)
-      .sort({ createdAt: -1 });
+    let products = await Product.find(query);
+
+    // Apply sorting preference
+    let section = 'shop';
+    if (req.query.isValentineProduct === 'true' || req.query.productType === 'valentine') {
+      section = 'valentine';
+    } else if (req.query.category) {
+      section = `category:${req.query.category}`;
+    }
+    products = await applySavedSortingToProducts(products, section);
 
     // Add real review statistics
     const productsWithReviews = await addReviewStats(products);
@@ -613,15 +622,18 @@ const getTopProducts = async (req, res) => {
 // @access  Public
 const getFeaturedProducts = async (req, res) => {
   try {
-    const products = await Product.find({ 
+    let products = await Product.find({ 
       isFeatured: true, 
       hidden: { $ne: true },
       $or: [
         { approvalStatus: 'approved' },
         { approvalStatus: { $exists: false } }
       ]
-    })
-      .sort({ createdAt: -1 }); // Removed .limit(8)
+    });
+    
+    // Apply saved sorting
+    products = await applySavedSortingToProducts(products, 'featured');
+    
     console.log("Featured Products Query:", { isFeatured: true, hidden: { $ne: true }, approvalOrNoStatus: true });
     console.log("Fetched Featured Products:", products.map(p => ({ title: p.title, isFeatured: p.isFeatured })));
     
@@ -640,7 +652,7 @@ const getFeaturedProducts = async (req, res) => {
 // @access  Public
 const getNewProducts = async (req, res) => {
   try {
-    const products = await Product.find({
+    let products = await Product.find({
       $and: [
         {
           $or: [
@@ -657,8 +669,11 @@ const getNewProducts = async (req, res) => {
           ],
         },
       ],
-    })
-      .sort({ createdAt: -1 }); // Removed .limit(8)
+    });
+    
+    // Apply saved sorting
+    products = await applySavedSortingToProducts(products, 'newArrivals');
+    
     console.log("Fetched New Products:", products.map(p => ({ title: p.title, isNew: p.isNew })));
     
     // Add real review statistics
@@ -963,13 +978,16 @@ const getProductsByCategory = async (req, res) => {
     };
     
     const count = await Product.countDocuments(query);
-    const products = await Product.find(query)
-      .limit(pageSize)
-      .skip(pageSize * (page - 1))
-      .sort({ createdAt: -1 });
+    let products = await Product.find(query);
+
+    // Apply saved sorting
+    products = await applySavedSortingToProducts(products, `category:${category}`);
+
+    // Paginate in memory
+    const paginatedProducts = products.slice(pageSize * (page - 1), pageSize * page);
 
     // Add real review statistics
-    const productsWithReviews = await addReviewStats(products);
+    const productsWithReviews = await addReviewStats(paginatedProducts);
 
     res.json({ products: productsWithReviews, page, pages: Math.ceil(count / pageSize), total: count });
   } catch (error) {
@@ -1152,6 +1170,445 @@ const bulkUpdateValentineSettings = asyncHandler(async (req, res) => {
   res.json({ success: true, message: 'Products updated successfully' });
 });
 
+// --- DISPLAY ORDER MANAGEMENT FUNCTIONS ---
+
+// Helper to query products for a given section
+const getProductsForSectionQuery = (section) => {
+  let query = {};
+  
+  if (section === 'featured') {
+    query.isFeatured = true;
+  } else if (section === 'shop') {
+    query.$or = [
+      { approvalStatus: 'approved' },
+      { approvalStatus: { $exists: false } }
+    ];
+  } else if (section === 'newArrivals' || section === 'new') {
+    query.$or = [
+      { isNew: true },
+      { isNewArrival: true }
+    ];
+  } else if (section === 'recommended') {
+    query.isRecommended = true;
+  } else if (section === 'valentine') {
+    query.$or = [
+      { isValentineProduct: true },
+      { productType: 'valentine' }
+    ];
+  } else if (section === 'mothersDay' || section === 'mothers-day') {
+    query.$or = [
+      { category: { $regex: /^mothers-day$/i } },
+      { category: { $regex: /^mother's day$/i } },
+      { categories: { $elemMatch: { $regex: /^mothers-day$/i } } },
+      { categories: { $elemMatch: { $regex: /^mother's day$/i } } }
+    ];
+  } else if (section === 'fathersDay' || section === 'fathers-day') {
+    query.$or = [
+      { category: { $regex: /^fathers-day$/i } },
+      { category: { $regex: /^father's day$/i } },
+      { categories: { $elemMatch: { $regex: /^fathers-day$/i } } },
+      { categories: { $elemMatch: { $regex: /^father's day$/i } } }
+    ];
+  } else if (section === 'friendshipDay' || section === 'friendship-day') {
+    query.$or = [
+      { category: { $regex: /^friendship-day$/i } },
+      { category: { $regex: /^friendship day$/i } },
+      { categories: { $elemMatch: { $regex: /^friendship-day$/i } } },
+      { categories: { $elemMatch: { $regex: /^friendship day$/i } } }
+    ];
+  } else if (section === 'rakhi' || section === 'raksha-bandhan') {
+    query.$or = [
+      { category: { $regex: /^rakhi$/i } },
+      { category: { $regex: /^raksha-bandhan$/i } },
+      { category: { $regex: /^raksha bandhan$/i } },
+      { categories: { $elemMatch: { $regex: /^rakhi$/i } } },
+      { categories: { $elemMatch: { $regex: /^raksha-bandhan$/i } } },
+      { categories: { $elemMatch: { $regex: /^raksha bandhan$/i } } }
+    ];
+  } else if (section === 'diwali') {
+    query.$or = [
+      { category: { $regex: /^diwali$/i } },
+      { categories: { $elemMatch: { $regex: /^diwali$/i } } }
+    ];
+  } else if (section === 'newYear' || section === 'new-year') {
+    query.$or = [
+      { category: { $regex: /^new-year$/i } },
+      { category: { $regex: /^new year$/i } },
+      { categories: { $elemMatch: { $regex: /^new-year$/i } } },
+      { categories: { $elemMatch: { $regex: /^new year$/i } } }
+    ];
+  } else if (section.startsWith('category:')) {
+    const categoryName = section.substring(9).trim();
+    query.$or = [
+      { category: { $regex: new RegExp(`^${categoryName}$`, 'i') } },
+      { subcategory: { $regex: new RegExp(`^${categoryName}$`, 'i') } },
+      { categories: { $elemMatch: { $regex: new RegExp(`^${categoryName}$`, 'i') } } }
+    ];
+  }
+  
+  return query;
+};
+
+// Helper to get display order sequence number of a product for a given section
+const getDisplayOrderValue = (product, section) => {
+  if (!product || !product.displayOrders) return 0;
+  const dobj = product.displayOrders;
+  if (section === 'featured') return dobj.featured || 0;
+  if (section === 'shop') return dobj.shop || 0;
+  if (section === 'newArrivals' || section === 'new') return dobj.newArrivals || 0;
+  if (section === 'recommended') return dobj.recommended || 0;
+  
+  // Occasions
+  if (section === 'valentine' || section === 'valentines-day') return dobj.occasions?.valentine || 0;
+  if (section === 'mothersDay' || section === 'mothers-day') return dobj.occasions?.mothersDay || 0;
+  if (section === 'fathersDay' || section === 'fathers-day') return dobj.occasions?.fathersDay || 0;
+  if (section === 'friendshipDay' || section === 'friendship-day') return dobj.occasions?.friendshipDay || 0;
+  if (section === 'rakhi' || section === 'raksha-bandhan') return dobj.occasions?.rakhi || 0;
+  if (section === 'diwali') return dobj.occasions?.diwali || 0;
+  if (section === 'newYear' || section === 'new-year') return dobj.occasions?.newYear || 0;
+  
+  // Categories
+  if (section.startsWith('category:')) {
+    const categoryName = section.substring(9).trim();
+    if (dobj.categories instanceof Map) {
+      return dobj.categories.get(categoryName) || 0;
+    }
+    return dobj.categories?.[categoryName] || 0;
+  }
+  
+  return 0;
+};
+
+// Main sorting function combining Custom order, Selected Sort preference and Created Date
+const sortProductsWithPreference = (products, section, sortBy, sortDirection) => {
+  const isAsc = sortDirection === 'asc';
+  
+  return products.sort((a, b) => {
+    // 1. Custom Display Order (if defined/greater than 0)
+    const orderA = getDisplayOrderValue(a, section);
+    const orderB = getDisplayOrderValue(b, section);
+    
+    const hasOrderA = orderA > 0;
+    const hasOrderB = orderB > 0;
+    
+    if (hasOrderA && hasOrderB) {
+      if (orderA !== orderB) {
+        return orderA - orderB;
+      }
+    } else if (hasOrderA) {
+      return -1;
+    } else if (hasOrderB) {
+      return 1;
+    }
+    
+    // 2. Selected Sort Rule
+    let valA, valB;
+    switch (sortBy) {
+      case 'name':
+        valA = (a.title || '').toLowerCase();
+        valB = (b.title || '').toLowerCase();
+        break;
+      case 'price':
+        valA = a.price || 0;
+        valB = b.price || 0;
+        break;
+      case 'createdAt':
+      case 'date':
+        valA = new Date(a.createdAt || 0).getTime();
+        valB = new Date(b.createdAt || 0).getTime();
+        break;
+      case 'updatedAt':
+        valA = new Date(a.updatedAt || 0).getTime();
+        valB = new Date(b.updatedAt || 0).getTime();
+        break;
+      case 'stock':
+        valA = a.countInStock || 0;
+        valB = b.countInStock || 0;
+        break;
+      case 'bestSelling':
+        valA = a.numReviews || 0;
+        valB = b.numReviews || 0;
+        break;
+      case 'mostViewed':
+        valA = a.rating || 0;
+        valB = b.rating || 0;
+        break;
+      default:
+        valA = new Date(a.createdAt || 0).getTime();
+        valB = new Date(b.createdAt || 0).getTime();
+        return valB - valA; // Default to newest first
+    }
+    
+    if (valA < valB) return isAsc ? -1 : 1;
+    if (valA > valB) return isAsc ? 1 : -1;
+    
+    // 3. Fallback to Default Created Date (newest first)
+    const timeA = new Date(a.createdAt || 0).getTime();
+    const timeB = new Date(b.createdAt || 0).getTime();
+    return timeB - timeA;
+  });
+};
+
+// Helper wrapper to fetch preference and sort a product list
+const applySavedSortingToProducts = async (products, section) => {
+  const preference = await SectionSortingPreference.findOne({ section }) || {
+    sortBy: 'custom',
+    sortDirection: 'asc'
+  };
+  return sortProductsWithPreference(products, section, preference.sortBy, preference.sortDirection);
+};
+
+// @desc Fetch products for a specific section, ordered by display order + preferences
+// @route GET /api/products/order/:section
+// @access Private/Admin
+const getSectionProductsForSorting = asyncHandler(async (req, res) => {
+  const { section } = req.params;
+  
+  if (!section) {
+    return res.status(400).json({ message: 'Section is required' });
+  }
+  
+  const query = getProductsForSectionQuery(section);
+  const products = await Product.find(query);
+  
+  const preference = await SectionSortingPreference.findOne({ section }) || {
+    sortBy: 'custom',
+    sortDirection: 'asc'
+  };
+  
+  const sortedProducts = sortProductsWithPreference(
+    products, 
+    section, 
+    preference.sortBy, 
+    preference.sortDirection
+  );
+  
+  res.json({
+    section,
+    sortBy: preference.sortBy,
+    sortDirection: preference.sortDirection,
+    products: sortedProducts
+  });
+});
+
+// @desc Update product sequence numbers and sorting preferences
+// @route PUT /api/products/order/update
+// @access Private/Admin
+const updateSectionProductsOrder = asyncHandler(async (req, res) => {
+  const { section, displayOrders, sortBy, sortDirection } = req.body;
+  
+  if (!section) {
+    return res.status(400).json({ message: 'Section is required' });
+  }
+  
+  // Update/Save sorting preference
+  if (sortBy) {
+    await SectionSortingPreference.findOneAndUpdate(
+      { section },
+      { sortBy, sortDirection: sortDirection || 'asc' },
+      { upsert: true, new: true }
+    );
+  }
+  
+  // Update sequence numbers
+  if (displayOrders && typeof displayOrders === 'object') {
+    for (const [productId, orderNumber] of Object.entries(displayOrders)) {
+      const product = await Product.findById(productId);
+      if (product) {
+        if (!product.displayOrders) {
+          product.displayOrders = {};
+        }
+        
+        const numOrder = Number(orderNumber);
+        
+        if (section === 'featured') product.displayOrders.featured = numOrder;
+        else if (section === 'shop') product.displayOrders.shop = numOrder;
+        else if (section === 'newArrivals' || section === 'new') product.displayOrders.newArrivals = numOrder;
+        else if (section === 'recommended') product.displayOrders.recommended = numOrder;
+        else if (section === 'valentine' || section === 'valentines-day') {
+          if (!product.displayOrders.occasions) product.displayOrders.occasions = {};
+          product.displayOrders.occasions.valentine = numOrder;
+        } else if (section === 'mothersDay' || section === 'mothers-day') {
+          if (!product.displayOrders.occasions) product.displayOrders.occasions = {};
+          product.displayOrders.occasions.mothersDay = numOrder;
+        } else if (section === 'fathersDay' || section === 'fathers-day') {
+          if (!product.displayOrders.occasions) product.displayOrders.occasions = {};
+          product.displayOrders.occasions.fathersDay = numOrder;
+        } else if (section === 'friendshipDay' || section === 'friendship-day') {
+          if (!product.displayOrders.occasions) product.displayOrders.occasions = {};
+          product.displayOrders.occasions.friendshipDay = numOrder;
+        } else if (section === 'rakhi' || section === 'raksha-bandhan') {
+          if (!product.displayOrders.occasions) product.displayOrders.occasions = {};
+          product.displayOrders.occasions.rakhi = numOrder;
+        } else if (section === 'diwali') {
+          if (!product.displayOrders.occasions) product.displayOrders.occasions = {};
+          product.displayOrders.occasions.diwali = numOrder;
+        } else if (section === 'newYear' || section === 'new-year') {
+          if (!product.displayOrders.occasions) product.displayOrders.occasions = {};
+          product.displayOrders.occasions.newYear = numOrder;
+        } else if (section.startsWith('category:')) {
+          const categoryName = section.substring(9).trim();
+          if (!product.displayOrders.categories) {
+            product.displayOrders.categories = new Map();
+          }
+          product.displayOrders.categories.set(categoryName, numOrder);
+        }
+        
+        await product.save();
+      }
+    }
+  }
+  
+  res.json({ success: true, message: 'Display order updated successfully' });
+});
+
+// @desc Perform bulk operations (Move/Remove Featured, Change Category/Visibility, Update Display Order)
+// @route PUT /api/products/order/bulk-update
+// @access Private/Admin
+const bulkUpdateSectionProducts = asyncHandler(async (req, res) => {
+  const { productIds, action, value, section } = req.body;
+  
+  if (!Array.isArray(productIds) || productIds.length === 0) {
+    return res.status(400).json({ message: 'No product IDs provided' });
+  }
+  
+  if (action === 'moveToFeatured') {
+    const featuredProducts = await Product.find({ isFeatured: true });
+    let maxOrder = 0;
+    featuredProducts.forEach(p => {
+      const order = p.displayOrders?.featured || 0;
+      if (order > maxOrder) maxOrder = order;
+    });
+    
+    for (let i = 0; i < productIds.length; i++) {
+      const product = await Product.findById(productIds[i]);
+      if (product) {
+        product.isFeatured = true;
+        if (!product.displayOrders) product.displayOrders = {};
+        product.displayOrders.featured = maxOrder + i + 1;
+        await product.save();
+      }
+    }
+  } else if (action === 'removeFromFeatured') {
+    for (const id of productIds) {
+      const product = await Product.findById(id);
+      if (product) {
+        product.isFeatured = false;
+        if (product.displayOrders) product.displayOrders.featured = 0;
+        await product.save();
+      }
+    }
+  } else if (action === 'changeCategory') {
+    if (!value) {
+      return res.status(400).json({ message: 'New category is required' });
+    }
+    await Product.updateMany(
+      { _id: { $in: productIds } },
+      { $set: { category: value } }
+    );
+  } else if (action === 'changeVisibility') {
+    const hidden = value === false;
+    await Product.updateMany(
+      { _id: { $in: productIds } },
+      { $set: { hidden: hidden } }
+    );
+  } else if (action === 'updateDisplayOrder') {
+    if (value && typeof value === 'object') {
+      const activeSection = section || 'shop';
+      for (const [productId, orderNumber] of Object.entries(value)) {
+        const product = await Product.findById(productId);
+        if (product) {
+          if (!product.displayOrders) product.displayOrders = {};
+          const numOrder = Number(orderNumber);
+          
+          if (activeSection === 'featured') product.displayOrders.featured = numOrder;
+          else if (activeSection === 'shop') product.displayOrders.shop = numOrder;
+          else if (activeSection === 'newArrivals' || activeSection === 'new') product.displayOrders.newArrivals = numOrder;
+          else if (activeSection === 'recommended') product.displayOrders.recommended = numOrder;
+          else if (activeSection === 'valentine' || activeSection === 'valentines-day') {
+            if (!product.displayOrders.occasions) product.displayOrders.occasions = {};
+            product.displayOrders.occasions.valentine = numOrder;
+          } else if (activeSection === 'mothersDay' || activeSection === 'mothers-day') {
+            if (!product.displayOrders.occasions) product.displayOrders.occasions = {};
+            product.displayOrders.occasions.mothersDay = numOrder;
+          } else if (activeSection === 'fathersDay' || activeSection === 'fathers-day') {
+            if (!product.displayOrders.occasions) product.displayOrders.occasions = {};
+            product.displayOrders.occasions.fathersDay = numOrder;
+          } else if (activeSection === 'friendshipDay' || activeSection === 'friendship-day') {
+            if (!product.displayOrders.occasions) product.displayOrders.occasions = {};
+            product.displayOrders.occasions.friendshipDay = numOrder;
+          } else if (activeSection === 'rakhi' || activeSection === 'raksha-bandhan') {
+            if (!product.displayOrders.occasions) product.displayOrders.occasions = {};
+            product.displayOrders.occasions.rakhi = numOrder;
+          } else if (activeSection === 'diwali') {
+            if (!product.displayOrders.occasions) product.displayOrders.occasions = {};
+            product.displayOrders.occasions.diwali = numOrder;
+          } else if (activeSection === 'newYear' || activeSection === 'new-year') {
+            if (!product.displayOrders.occasions) product.displayOrders.occasions = {};
+            product.displayOrders.occasions.newYear = numOrder;
+          } else if (activeSection.startsWith('category:')) {
+            const categoryName = activeSection.substring(9).trim();
+            if (!product.displayOrders.categories) {
+              product.displayOrders.categories = new Map();
+            }
+            product.displayOrders.categories.set(categoryName, numOrder);
+          }
+          await product.save();
+        }
+      }
+    }
+  } else {
+    return res.status(400).json({ message: 'Invalid bulk action' });
+  }
+  
+  res.json({ success: true, message: 'Bulk update completed successfully' });
+});
+
+// @desc Reset display order sequence numbers back to 0
+// @route POST /api/products/order/reset
+// @access Private/Admin
+const resetSectionProductsOrder = asyncHandler(async (req, res) => {
+  const { section } = req.body;
+  
+  if (!section) {
+    return res.status(400).json({ message: 'Section is required' });
+  }
+  
+  const query = getProductsForSectionQuery(section);
+  const products = await Product.find(query);
+  
+  for (const product of products) {
+    if (product.displayOrders) {
+      if (section === 'featured') product.displayOrders.featured = 0;
+      else if (section === 'shop') product.displayOrders.shop = 0;
+      else if (section === 'newArrivals' || section === 'new') product.displayOrders.newArrivals = 0;
+      else if (section === 'recommended') product.displayOrders.recommended = 0;
+      else if (section === 'valentine' || section === 'valentines-day') {
+        if (product.displayOrders.occasions) product.displayOrders.occasions.valentine = 0;
+      } else if (section === 'mothersDay' || section === 'mothers-day') {
+        if (product.displayOrders.occasions) product.displayOrders.occasions.mothersDay = 0;
+      } else if (section === 'fathersDay' || section === 'fathers-day') {
+        if (product.displayOrders.occasions) product.displayOrders.occasions.fathersDay = 0;
+      } else if (section === 'friendshipDay' || section === 'friendship-day') {
+        if (product.displayOrders.occasions) product.displayOrders.occasions.friendshipDay = 0;
+      } else if (section === 'rakhi' || section === 'raksha-bandhan') {
+        if (product.displayOrders.occasions) product.displayOrders.occasions.rakhi = 0;
+      } else if (section === 'diwali') {
+        if (product.displayOrders.occasions) product.displayOrders.occasions.diwali = 0;
+      } else if (section === 'newYear' || section === 'new-year') {
+        if (product.displayOrders.occasions) product.displayOrders.occasions.newYear = 0;
+      } else if (section.startsWith('category:')) {
+        const categoryName = section.substring(9).trim();
+        if (product.displayOrders.categories) {
+          product.displayOrders.categories.delete(categoryName);
+        }
+      }
+      await product.save();
+    }
+  }
+  
+  res.json({ success: true, message: 'Display order reset successfully' });
+});
 
 module.exports = {
   getProducts,
@@ -1176,4 +1633,9 @@ module.exports = {
   approveProduct,
   rejectProduct,
   bulkUpdateValentineSettings,
+  getSectionProductsForSorting,
+  updateSectionProductsOrder,
+  bulkUpdateSectionProducts,
+  resetSectionProductsOrder,
+  applySavedSortingToProducts, // Exported to be reused by public endpoints
 };

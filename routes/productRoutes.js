@@ -22,6 +22,10 @@ const {
   approveProduct,
   rejectProduct,
   bulkUpdateValentineSettings,
+  getSectionProductsForSorting,
+  updateSectionProductsOrder,
+  bulkUpdateSectionProducts,
+  resetSectionProductsOrder,
 } = require('../controllers/productController');
 
 const {
@@ -133,6 +137,12 @@ router.get('/admin/pending-approval', protect, admin, getPendingProducts);
 router.put('/admin/:id/approve', protect, admin, approveProduct);
 router.put('/admin/:id/reject', protect, admin, rejectProduct);
 router.post('/admin/bulk-valentine', protect, admin, bulkUpdateValentineSettings);
+
+// Display order management routes (admin only)
+router.get('/order/:section', protect, admin, getSectionProductsForSorting);
+router.put('/order/update', protect, admin, updateSectionProductsOrder);
+router.put('/order/bulk-update', protect, admin, bulkUpdateSectionProducts);
+router.post('/order/reset', protect, admin, resetSectionProductsOrder);
 
 // @route   GET /api/products/category/:category
 // @desc    Get products by category
