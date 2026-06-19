@@ -167,6 +167,11 @@ const productSchema = mongoose.Schema(
         required: true,
       },
     ],
+    originalImages: [
+      {
+        type: String,
+      },
+    ],
     discount: {
       type: Number,
       default: 0
@@ -387,6 +392,16 @@ const productSchema = mongoose.Schema(
     valentineSlug: {
       type: String,
       default: ''
+    },
+    // Seasonal Campaign fields
+    seasonalCampaigns: {
+      type: [String],
+      default: []
+    },
+    campaignSettings: {
+      type: Map,
+      of: mongoose.Schema.Types.Mixed,
+      default: {}
     },
     // Combo-specific fields
     comboItems: {

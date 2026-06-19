@@ -1,4 +1,4 @@
-﻿const cloudinary = require('cloudinary').v2;
+const cloudinary = require('cloudinary').v2;
 
 // Debug environment variables
 console.log('ðŸ”§ Cloudinary Configuration Check:', {
@@ -35,7 +35,7 @@ const isRetryableUploadError = (error) => {
   return message.includes('timeout') || message.includes('socket hang up');
 };
 
-const uploadToCloudinaryOnce = (buffer, filename, folder) =>
+const uploadToCloudinaryOnce = (buffer, filename, folder, options = {}) =>
   new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       {
@@ -55,6 +55,7 @@ const uploadToCloudinaryOnce = (buffer, filename, folder) =>
           },
         ],
         timeout: 60000,
+        ...options
       },
       (error, result) => {
         if (error) return reject(error);
@@ -80,6 +81,35 @@ const uploadToCloudinary = async (buffer, filename, folder = 'sbf-products') => 
       const shouldRetry = attempt < maxAttempts && isRetryableUploadError(error);
 
       console.error(`Cloudinary upload attempt ${attempt}/${maxAttempts} failed:`, {
+        code: error?.code,
+        message: error?.message,
+        http_code: error?.http_code,
+        retrying: shouldRetry,
+      });
+
+      if (!shouldRetry) throw error;
+      await sleep(700 * attempt);
+    }
+  }
+
+  throw lastError;
+};
+
+// Upload private/authenticated image to Cloudinary to restrict direct public access
+const uploadToCloudinarySecure = async (buffer, filename, folder = 'sbf-products') => {
+  const maxAttempts = 3;
+  let lastError;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const result = await uploadToCloudinaryOnce(buffer, filename, folder, { type: 'authenticated' });
+      console.log('Cloudinary secure upload success:', result.secure_url);
+      return result;
+    } catch (error) {
+      lastError = error;
+      const shouldRetry = attempt < maxAttempts && isRetryableUploadError(error);
+
+      console.error(`Cloudinary secure upload attempt ${attempt}/${maxAttempts} failed:`, {
         code: error?.code,
         message: error?.message,
         http_code: error?.http_code,
@@ -210,10 +240,10 @@ const getEnhancedProductImageUrl = (publicId, options = {}) => {
 const deleteFromCloudinary = async (publicId) => {
   try {
     const result = await cloudinary.uploader.destroy(publicId);
-    console.log('ðŸ—‘ï¸ Cloudinary delete result:', result);
+    console.log('🗑️ Cloudinary delete result:', result);
     return result;
   } catch (error) {
-    console.error('âŒ Cloudinary delete error:', error);
+    console.error('❌ Cloudinary delete error:', error);
     throw error;
   }
 };
@@ -221,9 +251,10 @@ const deleteFromCloudinary = async (publicId) => {
 module.exports = {
   cloudinary,
   uploadToCloudinary,
+  uploadToCloudinarySecure,
   deleteFromCloudinary,
   getOptimizedImageUrl,
   getThumbnailUrl,
   getSquareImageUrl,
   getEnhancedProductImageUrl,
-}; 
+};

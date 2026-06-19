@@ -151,6 +151,15 @@ exports.getAllSettings = async (req, res) => {
       deliverySettings: settings.deliverySettings || {},
       themeSettings: settings.themeSettings || {},
       productDisplaySettings: settings.productDisplaySettings || {},
+      imageProtectionSettings: settings.imageProtectionSettings || {
+        enableWatermark: true,
+        watermarkText: "sbflorist.in",
+        watermarkOpacity: 20,
+        watermarkPosition: "Center + Bottom Right",
+        watermarkSize: 30,
+        watermarkRotation: -45,
+        repeatingPattern: false
+      },
       draftSettings: settings.draftSettings || null,
       history: settings.history || []
     });
@@ -177,6 +186,7 @@ exports.updateAllSettings = async (req, res) => {
       deliverySettings,
       themeSettings,
       productDisplaySettings,
+      imageProtectionSettings,
       isDraft = false
     } = req.body;
 
@@ -253,6 +263,7 @@ exports.updateAllSettings = async (req, res) => {
     if (deliverySettings) updateData.deliverySettings = deliverySettings;
     if (themeSettings) updateData.themeSettings = themeSettings;
     if (productDisplaySettings) updateData.productDisplaySettings = productDisplaySettings;
+    if (imageProtectionSettings) updateData.imageProtectionSettings = imageProtectionSettings;
 
     if (isDraft) {
       // Save draft settings
@@ -277,6 +288,7 @@ exports.updateAllSettings = async (req, res) => {
         deliverySettings: settings.deliverySettings || {},
         themeSettings: settings.themeSettings || {},
         productDisplaySettings: settings.productDisplaySettings || {},
+        imageProtectionSettings: settings.imageProtectionSettings || {},
         publishedAt: settings.updatedAt || new Date()
       };
 
@@ -297,6 +309,7 @@ exports.updateAllSettings = async (req, res) => {
       if (deliverySettings) settings.deliverySettings = deliverySettings;
       if (themeSettings) settings.themeSettings = themeSettings;
       if (productDisplaySettings) settings.productDisplaySettings = productDisplaySettings;
+      if (imageProtectionSettings) settings.imageProtectionSettings = imageProtectionSettings;
 
       // Clear draftSettings since we published it
       settings.draftSettings = null;
@@ -320,6 +333,7 @@ exports.updateAllSettings = async (req, res) => {
       deliverySettings: settings.deliverySettings,
       themeSettings: settings.themeSettings,
       productDisplaySettings: settings.productDisplaySettings,
+      imageProtectionSettings: settings.imageProtectionSettings,
       draftSettings: settings.draftSettings,
       history: settings.history
     });
@@ -685,6 +699,7 @@ exports.restoreSettingsVersion = async (req, res) => {
     if (targetVersion.deliverySettings) settings.deliverySettings = targetVersion.deliverySettings;
     if (targetVersion.themeSettings) settings.themeSettings = targetVersion.themeSettings;
     if (targetVersion.productDisplaySettings) settings.productDisplaySettings = targetVersion.productDisplaySettings;
+    if (targetVersion.imageProtectionSettings) settings.imageProtectionSettings = targetVersion.imageProtectionSettings;
 
     settings.draftSettings = null; // Clear draft
     settings.updatedAt = Date.now();

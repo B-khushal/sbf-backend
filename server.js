@@ -65,6 +65,14 @@ const startServer = async () => {
     await connectDB();
     console.log('Database connected successfully');
 
+    // Initialize default seasonal campaigns
+    try {
+      const SeasonalCampaign = require('./models/SeasonalCampaign');
+      await SeasonalCampaign.seedDefaultCampaigns();
+    } catch (campaignSeedErr) {
+      console.error('⚠️ Seasonal Campaign seeding failed:', campaignSeedErr);
+    }
+
     // Initialize default categories if none exist in Category collection
     try {
       const Category = require('./models/Category');
@@ -299,6 +307,7 @@ const startServer = async () => {
     app.use('/api/device-tokens', require('./routes/deviceTokenRoutes'));
     app.use('/api/activity', require('./routes/activityRoutes'));
     app.use('/api/valentine', require('./routes/valentineRoutes'));
+    app.use('/api/seasonal-campaigns', require('./routes/seasonalCampaignRoutes'));
     app.use('/api/admin', require('./routes/adminRoutes'));
     app.use('/wake-up', require('./routes/wakeUpRoutes'));
     app.use('/api/settings', settingsRoutes);

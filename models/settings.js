@@ -366,6 +366,16 @@ const productDisplaySettingsSchema = new mongoose.Schema({
   productLabels: { type: [String], default: ['New', 'Hot', 'Sale'] }
 });
 
+const imageProtectionSettingsSchema = new mongoose.Schema({
+  enableWatermark: { type: Boolean, default: true },
+  watermarkText: { type: String, default: 'sbflorist.in' },
+  watermarkOpacity: { type: Number, default: 20 },
+  watermarkPosition: { type: String, default: 'Center + Bottom Right' },
+  watermarkSize: { type: Number, default: 30 },
+  watermarkRotation: { type: Number, default: -45 },
+  repeatingPattern: { type: Boolean, default: false }
+});
+
 const settingsSchema = new mongoose.Schema({
   heroSlides: [heroSlideSchema],
   mobileBanners: [mobileBannerSchema],
@@ -393,6 +403,10 @@ const settingsSchema = new mongoose.Schema({
   },
   productDisplaySettings: {
     type: productDisplaySettingsSchema,
+    default: () => ({})
+  },
+  imageProtectionSettings: {
+    type: imageProtectionSettingsSchema,
     default: () => ({})
   },
   draftSettings: {
@@ -888,7 +902,16 @@ settingsSchema.statics.initializeDefaultSettings = async function() {
       globalSettings: {},
       deliverySettings: {},
       themeSettings: {},
-      productDisplaySettings: {}
+      productDisplaySettings: {},
+      imageProtectionSettings: {
+        enableWatermark: true,
+        watermarkText: "sbflorist.in",
+        watermarkOpacity: 20,
+        watermarkPosition: "Center + Bottom Right",
+        watermarkSize: 30,
+        watermarkRotation: -45,
+        repeatingPattern: false
+      }
     });
   }
 };

@@ -268,6 +268,8 @@ const createProduct = asyncHandler(async (req, res) => {
     valentineSeoTitle,
     valentineSeoDescription,
     valentineSlug,
+    seasonalCampaigns,
+    campaignSettings,
   } = req.body;
 
   // If user is a vendor, find their vendor profile and set it
@@ -328,6 +330,8 @@ const createProduct = asyncHandler(async (req, res) => {
     valentineSeoTitle: valentineSeoTitle || '',
     valentineSeoDescription: valentineSeoDescription || '',
     valentineSlug: valentineSlug || '',
+    seasonalCampaigns: seasonalCampaigns || [],
+    campaignSettings: campaignSettings || {},
   });
 
   console.log('📋 Product object before save:', {
@@ -396,6 +400,8 @@ const updateProduct = asyncHandler(async (req, res) => {
     valentineSeoTitle,
     valentineSeoDescription,
     valentineSlug,
+    seasonalCampaigns,
+    campaignSettings,
   } = req.body;
 
   const product = await Product.findById(req.params.id);
@@ -454,6 +460,8 @@ const updateProduct = asyncHandler(async (req, res) => {
       valentineSeoTitle: valentineSeoTitle || '',
       valentineSeoDescription: valentineSeoDescription || '',
       valentineSlug: valentineSlug || '',
+      seasonalCampaigns: seasonalCampaigns || [],
+      campaignSettings: campaignSettings || {},
     };
 
     // If vendor updates product, set to pending approval

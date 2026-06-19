@@ -1,8 +1,8 @@
-﻿const express = require("express");
+const express = require("express");
 const multer = require("multer");
 const path = require("path");
 const { protect, admin, adminOrVendor } = require("../middleware/authMiddleware");
-const { uploadToCloudinary } = require("../config/cloudinary");
+const { uploadToCloudinary, uploadToCloudinarySecure } = require("../config/cloudinary");
 
 const router = express.Router();
 
@@ -180,10 +180,39 @@ router.post("/", protect, enforceUploadRole, (req, res, next) => {
     };
     const folder = folderByType[uploadType] || 'sbf-products';
     
-    // Upload to Cloudinary
-    const result = await uploadToCloudinary(req.file.buffer, filename, folder);
+    let imageBuffer = req.file.buffer;
+    let originalUrl = "";
+
+    // Fetch watermarking settings
+    const Settings = require("../models/settings");
+    const settings = await Settings.findOne();
+    const imageProtection = settings?.imageProtectionSettings || { enableWatermark: true };
+
+    if (uploadType === "product" && imageProtection.enableWatermark) {
+      console.log("💧 Applying watermark to product image");
+      // 1. Upload original image privately/authenticated
+      try {
+        const originalResult = await uploadToCloudinarySecure(req.file.buffer, `${filename}_original`, folder);
+        originalUrl = originalResult.secure_url;
+        console.log("✅ Cloudinary original secure upload successful:", originalUrl);
+      } catch (secureErr) {
+        console.error("❌ Failed secure upload of original image:", secureErr);
+      }
+
+      // 2. Apply watermark locally
+      try {
+        const { watermarkImage } = require("../utils/watermark");
+        imageBuffer = await watermarkImage(req.file.buffer, imageProtection);
+        console.log("✅ Watermark applied successfully to buffer");
+      } catch (watermarkErr) {
+        console.error("❌ Watermark application failed, falling back to original:", watermarkErr);
+      }
+    }
+
+    // Upload to Cloudinary (public/watermarked)
+    const result = await uploadToCloudinary(imageBuffer, filename, folder);
     
-    console.log('âœ… Cloudinary upload successful:', {
+    console.log('✅ Cloudinary public upload successful:', {
       url: result.secure_url,
       publicId: result.public_id,
       format: result.format,
@@ -195,6 +224,7 @@ router.post("/", protect, enforceUploadRole, (req, res, next) => {
 
     res.json({ 
       imageUrl: result.secure_url,
+      originalUrl: originalUrl || result.secure_url, // fallback to public url if secure failed
       publicId: result.public_id,
       filename: result.public_id,
       originalName: req.file.originalname,
