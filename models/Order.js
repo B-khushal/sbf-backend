@@ -21,6 +21,14 @@ const orderSchema = new mongoose.Schema({
     state: String,
     zipCode: String,
     notes: String,
+    cardMessage: {
+      type: String,
+      maxlength: [150, 'Card message cannot exceed 150 characters']
+    },
+    deliverySpecialInstructions: {
+      type: String,
+      maxlength: [250, 'Delivery special instructions cannot exceed 250 characters']
+    },
     deliveryDate: Date,
     timeSlot: String
   },

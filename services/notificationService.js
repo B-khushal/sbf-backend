@@ -160,7 +160,8 @@ const generateOrderConfirmationEmail = (orderData) => {
               Phone: ${order.shippingDetails.phone}
             </p>
             
-            ${order.shippingDetails.notes ? `<p><strong>Special Instructions:</strong> ${order.shippingDetails.notes}</p>` : ''}
+            ${(order.shippingDetails.cardMessage || order.shippingDetails.giftMessage) ? `<p><strong>Card Message:</strong> ${order.shippingDetails.cardMessage || order.shippingDetails.giftMessage}</p>` : ''}
+            ${(order.shippingDetails.deliverySpecialInstructions || order.shippingDetails.notes) ? `<p><strong>Special Instructions:</strong> ${order.shippingDetails.deliverySpecialInstructions || order.shippingDetails.notes}</p>` : ''}
           </div>
         </div>
         
@@ -223,7 +224,7 @@ ${order.shippingDetails.address}
 ${order.shippingDetails.apartment ? order.shippingDetails.apartment + '\n' : ''}${order.shippingDetails.city}, ${order.shippingDetails.state} ${order.shippingDetails.zipCode}
 📞 ${order.shippingDetails.phone}
 
-${order.shippingDetails.notes ? `*Special Instructions:* ${order.shippingDetails.notes}\n` : ''}
+${(order.shippingDetails.cardMessage || order.shippingDetails.giftMessage) ? `*Card Message:* ${order.shippingDetails.cardMessage || order.shippingDetails.giftMessage}\n` : ''}${(order.shippingDetails.deliverySpecialInstructions || order.shippingDetails.notes) ? `*Special Instructions:* ${order.shippingDetails.deliverySpecialInstructions || order.shippingDetails.notes}\n` : ''}
 We'll keep you updated on your order status. Thank you for choosing SBF! 🙏
 
 Need help? Reply to this message or call us.`;

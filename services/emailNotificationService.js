@@ -123,8 +123,15 @@ const formatDate = (date) => {
 const formatTime = (timeSlot) => {
   if (!timeSlot) return 'Standard delivery';
 
+  const lowerSlot = timeSlot.toLowerCase();
+  if (lowerSlot === 'same_day') return 'Same-Day Delivery (09:00 AM - 09:00 PM)';
+  if (lowerSlot === 'morning') return 'Morning (09:00 AM - 12:00 PM)';
+  if (lowerSlot === 'afternoon') return 'Afternoon (12:00 PM - 03:00 PM)';
+  if (lowerSlot === 'late_afternoon') return 'Late Afternoon (03:00 PM - 06:00 PM)';
+  if (lowerSlot === 'evening') return 'Evening (06:00 PM - 09:00 PM)';
+
   // Handle special cases
-  if (timeSlot.toLowerCase().includes('midnight')) {
+  if (lowerSlot.includes('midnight')) {
     return 'Midnight Delivery (12:00 AM - 6:00 AM)';
   }
 
@@ -387,23 +394,25 @@ const generateOrderConfirmationEmail = (orderData) => {
               </div>
             </div>
             
-            ${order.shippingDetails.notes ? `
+            ${(order.shippingDetails.deliverySpecialInstructions || order.shippingDetails.notes) ? `
               <div class="special-notes">
-                <strong>Special Instructions:</strong> ${order.shippingDetails.notes}
+                <strong>Special Instructions:</strong> ${order.shippingDetails.deliverySpecialInstructions || order.shippingDetails.notes}
               </div>
             ` : ''}
           </div>
           
-          ${order.giftDetails && order.giftDetails.message ? `
+          ${(order.shippingDetails.cardMessage || order.shippingDetails.giftMessage || (order.giftDetails && order.giftDetails.message)) ? `
             <div class="address-section">
-              <h3>🎁 Gift Information</h3>
-              <div class="order-detail">
-                <span>Recipient:</span>
-                <strong>${order.giftDetails.recipientName || 'Not specified'}</strong>
-              </div>
+              <h3>💌 Card Message</h3>
               <div class="special-notes">
-                <strong>Gift Message:</strong> ${order.giftDetails.message}
+                <strong>Message:</strong> ${order.shippingDetails.cardMessage || order.shippingDetails.giftMessage || order.giftDetails.message}
               </div>
+              ${order.giftDetails && order.giftDetails.recipientName ? `
+                <div class="order-detail" style="margin-top: 10px;">
+                  <span>Recipient:</span>
+                  <strong>${order.giftDetails.recipientName}</strong>
+                </div>
+              ` : ''}
             </div>
           ` : ''}
         </div>
@@ -509,7 +518,8 @@ const generateAdminOrderNotificationEmail = (orderData) => {
               <div><strong>Phone:</strong> ${order.shippingDetails.phone}</div>
               <div><strong>Delivery Date:</strong> ${formatDate(order.shippingDetails.deliveryDate)}</div>
               <div><strong>Time Slot:</strong> ${formatTime(order.shippingDetails.timeSlot)}</div>
-              ${order.shippingDetails.notes ? `<div><strong>Notes:</strong> ${order.shippingDetails.notes}</div>` : ''}
+              ${(order.shippingDetails.cardMessage || order.shippingDetails.giftMessage) ? `<div><strong>Card Message:</strong> ${order.shippingDetails.cardMessage || order.shippingDetails.giftMessage}</div>` : ''}
+              ${(order.shippingDetails.deliverySpecialInstructions || order.shippingDetails.notes) ? `<div><strong>Special Instructions:</strong> ${order.shippingDetails.deliverySpecialInstructions || order.shippingDetails.notes}</div>` : ''}
             </div>
           </div>
           
@@ -816,17 +826,18 @@ const generateInvoiceHTML = (orderData) => {
                       <div style="font-size: 11px; color: #334155; line-height: 1.5; margin-top: 4px;">
                         <strong>Date:</strong> ${deliveryDate}<br>
                         <strong>Slot:</strong> ${shipping.timeSlot || 'Standard Delivery'}
+                        ${(shipping.deliverySpecialInstructions || shipping.notes) ? `<br><strong style="font-size: 10px; color: #64748b;">Instructions:</strong> ` + (shipping.deliverySpecialInstructions || shipping.notes) : ''}
                       </div>
                     </div>
                   </td>
                 </tr>
               </table>
 
-              ${shipping.giftMessage ? `
+              ${(shipping.cardMessage || shipping.giftMessage) ? `
                 <div class="details-card" style="border: 1px dashed #c5a880; background: #fffdf5; padding: 10px 12px;">
-                  <div class="card-title" style="color: #c5a880; border-bottom: 1px dashed #fed7aa; margin-bottom: 4px;">🎁 Gift Card Message</div>
+                  <div class="card-title" style="color: #c5a880; border-bottom: 1px dashed #fed7aa; margin-bottom: 4px;">💌 Card Message</div>
                   <div style="font-size: 11px; font-style: italic; color: #475569; line-height: 1.4; margin-top: 4px;">
-                    "${shipping.giftMessage}"
+                    "${shipping.cardMessage || shipping.giftMessage}"
                   </div>
                 </div>
               ` : ''}

@@ -311,6 +311,29 @@ const createOrder = async (req, res) => {
     // Server-side calculation and validation
     const subtotalCalculated = items.reduce((sum, item) => sum + (item.finalPrice || item.price) * item.quantity, 0);
 
+    // Enforce same-day delivery IST cutoff validation
+    if (shippingDetails && shippingDetails.deliveryDate) {
+      const deliveryDateMoment = moment(shippingDetails.deliveryDate).utcOffset('+05:30').startOf('day');
+      const currentIST = moment().utcOffset('+05:30');
+      const currentISTStartOfToday = moment().utcOffset('+05:30').startOf('day');
+
+      if (deliveryDateMoment.isBefore(currentISTStartOfToday, 'day')) {
+        return res.status(400).json({
+          success: false,
+          message: 'Delivery date cannot be in the past.'
+        });
+      }
+
+      if (deliveryDateMoment.isSame(currentISTStartOfToday, 'day')) {
+        if (currentIST.hour() >= 18) {
+          return res.status(400).json({
+            success: false,
+            message: 'Same-day delivery is available only for orders placed before 6:00 PM. Please select the next available delivery date.'
+          });
+        }
+      }
+    }
+
     const deliveryChargeResult = await calculateDeliveryFee({
       subtotal: subtotalCalculated,
       timeSlot: shippingDetails.timeSlot,
@@ -365,6 +388,8 @@ const createOrder = async (req, res) => {
         state: shippingDetails.state,
         zipCode: shippingDetails.zipCode,
         notes: shippingDetails.notes || '',
+        cardMessage: shippingDetails.cardMessage || '',
+        deliverySpecialInstructions: shippingDetails.deliverySpecialInstructions || '',
         deliveryDate: shippingDetails.deliveryDate,
         timeSlot: shippingDetails.timeSlot
       },
