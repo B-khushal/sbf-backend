@@ -26,6 +26,7 @@ const {
   updateSectionProductsOrder,
   bulkUpdateSectionProducts,
   resetSectionProductsOrder,
+  getSharePreview,
 } = require('../controllers/productController');
 
 const {
@@ -99,6 +100,8 @@ router.get('/featured', getFeaturedProducts);
 router.get('/new', getNewProducts);
 router.get('/categories', getProductCategories);
 router.get('/categories-with-counts', getCategoriesWithCounts);
+
+router.get('/share-preview/:type/:idOrSlug', getSharePreview);
 
 router.route('/:id')
   .get(getProductById)

@@ -400,9 +400,24 @@ const startServer = async () => {
       app.use(express.static(frontendDistPath));
     }
 
-    app.get('*', (req, res) => {
+    app.get('*', async (req, res) => {
       if (req.path.startsWith('/api/')) {
         return res.status(404).json({ message: 'API endpoint not found' });
+      }
+
+      // Intercept product routes to inject dynamic preview metadata
+      const productRoutePattern = /^\/(product|products|valentine-product)\/([^/]+)$/;
+      const match = req.path.match(productRoutePattern);
+      
+      if (match) {
+        try {
+          const { getSharePreview } = require('./controllers/productController');
+          req.params.type = match[1];
+          req.params.idOrSlug = match[2];
+          return await getSharePreview(req, res);
+        } catch (err) {
+          console.error('Error redirecting to getSharePreview in server.js:', err);
+        }
       }
 
       if (hasFrontendBuild) {

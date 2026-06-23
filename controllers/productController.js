@@ -5,6 +5,7 @@ const Order = require('../models/Order');
 const Review = require('../models/Review');
 const SectionSortingPreference = require('../models/SectionSortingPreference');
 const asyncHandler = require('express-async-handler');
+const mongoose = require('mongoose');
 
 // Helper function to clean product data before saving
 const cleanProductData = (product) => {
@@ -171,7 +172,42 @@ const getProducts = async (req, res) => {
 // @access Public
 const getProductById = async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id);
+    const idOrSlug = req.params.id;
+    let product;
+
+    if (mongoose.Types.ObjectId.isValid(idOrSlug)) {
+      product = await Product.findById(idOrSlug);
+    } else {
+      const terms = idOrSlug.split('-');
+      const firstTerm = terms[0];
+      
+      if (firstTerm) {
+        // Find products matching the first term in their title to narrow down
+        const candidates = await Product.find({
+          $or: [
+            { title: { $regex: new RegExp(firstTerm, 'i') } },
+            { valentineSlug: idOrSlug }
+          ]
+        });
+
+        // Helper function to slugify title
+        const slugify = (text) => {
+          return text
+            .toString()
+            .toLowerCase()
+            .replace(/\s+/g, '-')           // Replace spaces with -
+            .replace(/[^\w\-]+/g, '')       // Remove all non-word chars (except -)
+            .replace(/\-\-+/g, '-')         // Replace multiple - with single -
+            .replace(/^-+/, '')             // Trim - from start
+            .replace(/-+$/, '');            // Trim - from end
+        };
+
+        product = candidates.find(c => 
+          slugify(c.title) === idOrSlug || c.valentineSlug === idOrSlug
+        );
+      }
+    }
+
     if (!product) return res.status(404).json({ message: "Product not found" });
     
     // Check if product is hidden and user is not admin
@@ -213,8 +249,8 @@ const getProductById = async (req, res) => {
 
     return res.json(productWithReviews);
   } catch (error) {
-    console.error("❌ Invalid product ID:", error);
-    return res.status(500).json({ message: "Invalid product ID" });
+    console.error("❌ Error fetching product:", error);
+    return res.status(500).json({ message: "Error fetching product details" });
   }
 };
 
@@ -1618,6 +1654,194 @@ const resetSectionProductsOrder = asyncHandler(async (req, res) => {
   res.json({ success: true, message: 'Display order reset successfully' });
 });
 
+// @desc Get share preview HTML with dynamic meta tags for social crawlers
+// @route GET /api/products/share-preview/:type/:idOrSlug
+// @access Public
+const getSharePreview = async (req, res) => {
+  try {
+    const { type, idOrSlug } = req.params;
+    const path = require('path');
+    const fs = require('fs');
+
+    let product = null;
+
+    if (mongoose.Types.ObjectId.isValid(idOrSlug)) {
+      product = await Product.findById(idOrSlug);
+    } else {
+      const terms = idOrSlug.split('-');
+      const firstTerm = terms[0];
+      
+      if (firstTerm) {
+        // Find products matching the first term in their title to narrow down
+        const candidates = await Product.find({
+          $or: [
+            { title: { $regex: new RegExp(firstTerm, 'i') } },
+            { valentineSlug: idOrSlug }
+          ]
+        });
+
+        // Helper function to slugify title
+        const slugify = (text) => {
+          return text
+            .toString()
+            .toLowerCase()
+            .replace(/\s+/g, '-')           // Replace spaces with -
+            .replace(/[^\w\-]+/g, '')       // Remove all non-word chars (except -)
+            .replace(/\-\-+/g, '-')         // Replace multiple - with single -
+            .replace(/^-+/, '')             // Trim - from start
+            .replace(/-+$/, '');            // Trim - from end
+        };
+
+        product = candidates.find(c => 
+          slugify(c.title) === idOrSlug || c.valentineSlug === idOrSlug
+        );
+      }
+    }
+
+    const frontendUrl = process.env.FRONTEND_URL || 'https://sbflorist.in';
+    const protocol = req.protocol;
+    const host = req.get('host');
+    const backendUrl = `${protocol}://${host}`;
+
+    // Read the index.html template
+    const pathsToTry = [
+      path.join(__dirname, '..', 'dist', 'index.html'),
+      path.join(__dirname, '..', '..', 'sbf-main', 'dist', 'index.html'),
+      path.join(__dirname, '..', '..', 'sbf-main', 'index.html'),
+    ];
+
+    let htmlTemplate = '';
+    for (const p of pathsToTry) {
+      if (fs.existsSync(p)) {
+        try {
+          htmlTemplate = fs.readFileSync(p, 'utf8');
+          break;
+        } catch (err) {
+          console.error(`Error reading index.html at ${p}:`, err);
+        }
+      }
+    }
+
+    if (!htmlTemplate) {
+      // Try fetching from frontend URL
+      try {
+        const axios = require('axios');
+        const response = await axios.get(`${frontendUrl}/index.html`, { timeout: 3000 });
+        htmlTemplate = response.data;
+      } catch (err) {
+        console.error(`Error fetching index.html from frontend URL:`, err.message);
+        // Minimal fallback template
+        htmlTemplate = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Spring Blossoms Florist</title></head><body><div id="root"></div></body></html>`;
+      }
+    }
+
+    let metaData = {
+      title: 'Spring Blossoms Florist - Fresh Flower Delivery',
+      description: 'Premium flower delivery in Hyderabad. Online bouquet shop offering roses, lilies, and custom arrangements with same day and midnight delivery options.',
+      image: 'https://res.cloudinary.com/djtrhfqan/image/upload/v1769532776/sbflorist/assets/logosbf.jpg',
+      url: `${frontendUrl}`,
+      price: '0'
+    };
+
+    if (product) {
+      // Determine actual price including discount
+      let finalPrice = product.price;
+      if (product.discount > 0) {
+        finalPrice = Math.round(product.price * (1 - product.discount / 100));
+      }
+
+      // Title includes product name and price
+      metaData.title = `${product.title} - ₹${finalPrice} | Spring Blossoms Florist`;
+
+      // Clean and format description (strip HTML, truncate to 155 chars)
+      let rawDescription = product.description || '';
+      let cleanedDesc = rawDescription.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+      if (cleanedDesc.length > 155) {
+        cleanedDesc = cleanedDesc.substring(0, 152) + '...';
+      }
+      metaData.description = cleanedDesc || `Buy ${product.title} from Spring Blossoms Florist.`;
+
+      // Price
+      metaData.price = finalPrice.toString();
+
+      // Canonical URL
+      metaData.url = `${frontendUrl}/${type || 'product'}/${idOrSlug}`;
+
+      // Featured image URL (HTTPS, absolute)
+      let mainImage = '';
+      if (product.images && product.images.length > 0) {
+        mainImage = product.images[0];
+      }
+
+      if (mainImage) {
+        if (mainImage.startsWith('http://') || mainImage.startsWith('https://')) {
+          metaData.image = mainImage;
+        } else if (mainImage.startsWith('/uploads/')) {
+          metaData.image = `${backendUrl}${mainImage}`;
+        } else if (mainImage.startsWith('/images/')) {
+          metaData.image = `${frontendUrl}${mainImage}`;
+        } else {
+          metaData.image = `${backendUrl}/uploads/${mainImage}`;
+        }
+      }
+
+      // Optimize image URL for Cloudinary/Unsplash dimensions
+      if (metaData.image.includes('res.cloudinary.com') && metaData.image.includes('/upload/')) {
+        metaData.image = metaData.image.replace('/upload/', '/upload/w_1200,h_630,c_fill/');
+      } else if (metaData.image.includes('images.unsplash.com')) {
+        try {
+          const parsed = new URL(metaData.image);
+          parsed.searchParams.set('w', '1200');
+          parsed.searchParams.set('h', '630');
+          parsed.searchParams.set('fit', 'crop');
+          parsed.searchParams.set('q', '80');
+          metaData.image = parsed.toString();
+        } catch (e) {
+          // ignore
+        }
+      }
+    }
+
+    // Perform meta tag replacement in HTML template
+    let cleanedHtml = htmlTemplate;
+    
+    // Remove existing meta/title/canonical tags
+    cleanedHtml = cleanedHtml.replace(/<title>[^]*?<\/title>/gi, '');
+    cleanedHtml = cleanedHtml.replace(/<meta\s+name=["']description["']\s+content=["'][^]*?["']\s*\/?>/gi, '');
+    cleanedHtml = cleanedHtml.replace(/<link\s+rel=["']canonical["']\s+href=["'][^]*?["']\s*\/?>/gi, '');
+    cleanedHtml = cleanedHtml.replace(/<meta\s+(property|name)=["']og:[^]*?["']\s+content=["'][^]*?["']\s*\/?>/gi, '');
+    cleanedHtml = cleanedHtml.replace(/<meta\s+(property|name)=["']twitter:[^]*?["']\s+content=["'][^]*?["']\s*\/?>/gi, '');
+
+    const newTags = `
+  <title>${metaData.title}</title>
+  <meta name="description" content="${metaData.description}" />
+  <link rel="canonical" href="${metaData.url}" />
+  
+  <meta property="og:type" content="product" />
+  <meta property="og:title" content="${metaData.title}" />
+  <meta property="og:description" content="${metaData.description}" />
+  <meta property="og:image" content="${metaData.image}" />
+  <meta property="og:image:secure_url" content="${metaData.image}" />
+  <meta property="og:url" content="${metaData.url}" />
+  <meta property="og:site_name" content="Spring Blossoms Florist" />
+  <meta property="product:price:amount" content="${metaData.price}" />
+  <meta property="product:price:currency" content="INR" />
+  
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="${metaData.title}" />
+  <meta name="twitter:description" content="${metaData.description}" />
+  <meta name="twitter:image" content="${metaData.image}" />`;
+
+    cleanedHtml = cleanedHtml.replace(/<head>/i, `<head>${newTags}`);
+
+    res.setHeader('Content-Type', 'text/html');
+    return res.status(200).send(cleanedHtml);
+  } catch (error) {
+    console.error('Error generating share preview HTML:', error);
+    return res.status(500).send('Internal Server Error');
+  }
+};
+
 module.exports = {
   getProducts,
   getProductById,
@@ -1646,4 +1870,5 @@ module.exports = {
   bulkUpdateSectionProducts,
   resetSectionProductsOrder,
   applySavedSortingToProducts, // Exported to be reused by public endpoints
+  getSharePreview,
 };
