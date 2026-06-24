@@ -272,7 +272,8 @@ const globalSettingsSchema = new mongoose.Schema({
   schemaMarkup: { type: String, default: '' },
   maintenanceMode: { type: Boolean, default: false },
   customHeadCode: { type: String, default: '' },
-  customBodyCode: { type: String, default: '' }
+  customBodyCode: { type: String, default: '' },
+  maxVideoUploadSize: { type: Number, default: 50 } // Maximum video upload size in MB
 });
 
 const deliverySettingsSchema = new mongoose.Schema({
@@ -578,6 +579,7 @@ settingsSchema.statics.initializeDefaultSettings = async function() {
           ]
         }
       },
+      { id: 'video_section', type: 'video_section', enabled: true, order: 4.5, title: '🎥 Premium Floral Showcase', subtitle: 'Experience the art of floristry and gifting through our vertical showcase reels' },
       { id: 'new', type: 'new', enabled: true, order: 5, title: '🌸 New Arrivals', subtitle: 'Discover our latest seasonal additions' },
       { id: 'philosophy', type: 'philosophy', enabled: true, order: 6, title: 'Artfully Crafted Botanical Experiences', subtitle: 'Every arrangement we create is a unique work of art, designed to bring beauty and tranquility into your everyday spaces.', content: { image: '/images/d3.jpg' } },
       {

@@ -9,30 +9,30 @@ const router = express.Router();
 // Configure multer to use memory storage instead of disk storage
 const storage = multer.memoryStorage();
 
-// Validate file type
+// Validate file type (supports images and vertical video formats)
 const fileFilter = (req, file, cb) => {
-  console.log('ðŸ” File filter check:', {
+  console.log('🔍 File filter check:', {
     originalname: file.originalname,
     mimetype: file.mimetype,
     fieldname: file.fieldname
   });
   
-  const filetypes = /jpg|jpeg|png|webp/;
-  const isValid = filetypes.test(path.extname(file.originalname).toLowerCase()) && filetypes.test(file.mimetype);
+  const filetypes = /jpg|jpeg|png|webp|mp4|webm|mov|quicktime/;
+  const isValid = filetypes.test(path.extname(file.originalname).toLowerCase()) && (filetypes.test(file.mimetype) || file.mimetype.startsWith('video/'));
   
   if (isValid) {
-    console.log('âœ… File type is valid');
+    console.log('✅ File type is valid');
     cb(null, true);
   } else {
-    console.log('âŒ File type is invalid');
-    cb("Images only! (jpg, jpeg, png, webp)");
+    console.log('❌ File type is invalid');
+    cb("Allowed formats: images (jpg, jpeg, png, webp) and videos (mp4, webm, mov)");
   }
 };
 
 const upload = multer({ 
   storage, 
   fileFilter, 
-  limits: { fileSize: 50 * 1024 * 1024 } // 50MB limit
+  limits: { fileSize: 100 * 1024 * 1024 } // 100MB Multer hard limit (actual dynamic limit checked in controller)
 });
 
 const enforceUploadRole = (req, res, next) => {
@@ -139,7 +139,7 @@ router.post("/", protect, enforceUploadRole, (req, res, next) => {
   });
 }, async (req, res) => {
   try {
-    console.log('ðŸ“¸ Upload request received:', {
+    console.log('📷 Upload request received:', {
       method: req.method,
       url: req.url,
       headers: req.headers,
@@ -151,20 +151,34 @@ router.post("/", protect, enforceUploadRole, (req, res, next) => {
         fieldname: req.file.fieldname
       } : 'No file'
     });
+    const Settings = require("../models/settings");
+    const settings = await Settings.findOne();
+    const isVideo = req.file.mimetype.startsWith('video/') || 
+                    ['.mp4', '.webm', '.mov'].includes(path.extname(req.file.originalname).toLowerCase());
 
-    if (!req.file) {
-      console.log('âŒ No file uploaded');
-      return res.status(400).json({ message: "No file uploaded" });
+    // Enforce dynamic video upload limit from Admin settings
+    if (isVideo) {
+      const maxVideoSizeMB = settings?.globalSettings?.maxVideoUploadSize || 50;
+      const maxVideoSizeBytes = maxVideoSizeMB * 1024 * 1024;
+      if (req.file.size > maxVideoSizeBytes) {
+        console.log(`❌ Video upload size ${req.file.size} bytes exceeds limit of ${maxVideoSizeMB}MB`);
+        return res.status(413).json({ 
+          message: `Video file too large. Maximum size configured is ${maxVideoSizeMB}MB.`, 
+          error: "LIMIT_FILE_SIZE" 
+        });
+      }
     }
 
-    console.log('ðŸ“¸ Starting Cloudinary upload:', {
+    console.log('📸 Starting Cloudinary upload:', {
       originalName: req.file.originalname,
       size: req.file.size,
-      mimetype: req.file.mimetype
+      mimetype: req.file.mimetype,
+      isVideo
     });
 
     // Generate unique filename
-    const filename = `image-${Date.now()}-${Math.round(Math.random() * 1E9)}`;
+    const fileExt = path.extname(req.file.originalname).toLowerCase();
+    const filename = `${isVideo ? 'video' : 'image'}-${Date.now()}-${Math.round(Math.random() * 1E9)}${fileExt}`;
     
     // Determine folder based on upload type (from query params or default to products)
     const uploadType = String(req.query.type || 'product').toLowerCase();
@@ -177,53 +191,57 @@ router.post("/", protect, enforceUploadRole, (req, res, next) => {
       hero: 'sbf-hero',
       review: 'sbf-reviews',
       product: 'sbf-products',
+      video: 'sbf-videos',
     };
-    const folder = folderByType[uploadType] || 'sbf-products';
+    const folder = folderByType[uploadType] || (isVideo ? 'sbf-videos' : 'sbf-products');
     
-    let imageBuffer = req.file.buffer;
+    let result;
     let originalUrl = "";
 
-    // Fetch watermarking settings
-    const Settings = require("../models/settings");
-    const settings = await Settings.findOne();
-    const imageProtection = settings?.imageProtectionSettings || { enableWatermark: true };
+    if (isVideo) {
+      // Process video upload
+      const { uploadVideoToCloudinary } = require("../config/cloudinary");
+      result = await uploadVideoToCloudinary(req.file.buffer, filename, folder);
+    } else {
+      // Process image upload (with watermark if applicable)
+      let imageBuffer = req.file.buffer;
+      const imageProtection = settings?.imageProtectionSettings || { enableWatermark: true };
 
-    if (uploadType === "product" && imageProtection.enableWatermark) {
-      console.log("💧 Applying watermark to product image");
-      // 1. Upload original image privately/authenticated
-      try {
-        const originalResult = await uploadToCloudinarySecure(req.file.buffer, `${filename}_original`, folder);
-        originalUrl = originalResult.secure_url;
-        console.log("✅ Cloudinary original secure upload successful:", originalUrl);
-      } catch (secureErr) {
-        console.error("❌ Failed secure upload of original image:", secureErr);
+      if (uploadType === "product" && imageProtection.enableWatermark) {
+        console.log("💧 Applying watermark to product image");
+        // 1. Upload original image privately/authenticated
+        try {
+          const originalResult = await uploadToCloudinarySecure(req.file.buffer, `${filename}_original`, folder);
+          originalUrl = originalResult.secure_url;
+          console.log("✅ Cloudinary original secure upload successful:", originalUrl);
+        } catch (secureErr) {
+          console.error("❌ Failed secure upload of original image:", secureErr);
+        }
+
+        // 2. Apply watermark locally
+        try {
+          const { watermarkImage } = require("../utils/watermark");
+          imageBuffer = await watermarkImage(req.file.buffer, imageProtection);
+          console.log("✅ Watermark applied successfully to buffer");
+        } catch (watermarkErr) {
+          console.error("❌ Watermark application failed, falling back to original:", watermarkErr);
+        }
       }
 
-      // 2. Apply watermark locally
-      try {
-        const { watermarkImage } = require("../utils/watermark");
-        imageBuffer = await watermarkImage(req.file.buffer, imageProtection);
-        console.log("✅ Watermark applied successfully to buffer");
-      } catch (watermarkErr) {
-        console.error("❌ Watermark application failed, falling back to original:", watermarkErr);
-      }
+      result = await uploadToCloudinary(imageBuffer, filename, folder);
     }
-
-    // Upload to Cloudinary (public/watermarked)
-    const result = await uploadToCloudinary(imageBuffer, filename, folder);
     
-    console.log('✅ Cloudinary public upload successful:', {
+    console.log('✅ Cloudinary upload successful:', {
       url: result.secure_url,
       publicId: result.public_id,
       format: result.format,
-      width: result.width,
-      height: result.height,
       bytes: result.bytes,
       folder: folder
     });
 
     res.json({ 
       imageUrl: result.secure_url,
+      videoUrl: isVideo ? result.secure_url : undefined,
       originalUrl: originalUrl || result.secure_url, // fallback to public url if secure failed
       publicId: result.public_id,
       filename: result.public_id,

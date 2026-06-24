@@ -248,11 +248,61 @@ const deleteFromCloudinary = async (publicId) => {
   }
 };
 
+// Upload video to Cloudinary once (Helper)
+const uploadVideoToCloudinaryOnce = (buffer, filename, folder, options = {}) =>
+  new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        resource_type: 'video',
+        folder,
+        public_id: filename.split('.')[0],
+        timeout: 120000, // 2 minutes timeout for video upload
+        ...options
+      },
+      (error, result) => {
+        if (error) return reject(error);
+        return resolve(result);
+      }
+    );
+
+    stream.end(buffer);
+  });
+
+// Upload video to Cloudinary with retry
+const uploadVideoToCloudinary = async (buffer, filename, folder = 'sbf-videos') => {
+  const maxAttempts = 3;
+  let lastError;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const result = await uploadVideoToCloudinaryOnce(buffer, filename, folder);
+      console.log('Cloudinary video upload success:', result.secure_url);
+      return result;
+    } catch (error) {
+      lastError = error;
+      const shouldRetry = attempt < maxAttempts && isRetryableUploadError(error);
+
+      console.error(`Cloudinary video upload attempt ${attempt}/${maxAttempts} failed:`, {
+        code: error?.code,
+        message: error?.message,
+        http_code: error?.http_code,
+        retrying: shouldRetry,
+      });
+
+      if (!shouldRetry) throw error;
+      await sleep(1000 * attempt);
+    }
+  }
+
+  throw lastError;
+};
+
 module.exports = {
   cloudinary,
   uploadToCloudinary,
   uploadToCloudinarySecure,
   deleteFromCloudinary,
+  uploadVideoToCloudinary,
   getOptimizedImageUrl,
   getThumbnailUrl,
   getSquareImageUrl,

@@ -239,6 +239,24 @@ const startServer = async () => {
           settingsDoc.markModified('mobileBanners');
           updated = true;
         }
+        // Migration to add default video_section if missing
+        if (settingsDoc.homeSections && !settingsDoc.homeSections.some(s => s.type === 'video_section')) {
+          console.log('🌱 Migrating database: Adding video_section to homeSections...');
+          settingsDoc.homeSections.push({
+            id: 'video_section',
+            type: 'video_section',
+            enabled: true,
+            order: 4.5,
+            title: '🎥 Premium Floral Showcase',
+            subtitle: 'Experience the art of floristry and gifting through our vertical showcase reels',
+            visibility: { desktop: true, tablet: true, mobile: true },
+            styling: { background: '', padding: 'py-16', spacing: 'mb-0', animation: 'fadeIn' }
+          });
+          settingsDoc.homeSections.sort((a, b) => a.order - b.order);
+          settingsDoc.markModified('homeSections');
+          updated = true;
+        }
+
         if (updated) {
           await settingsDoc.save();
           console.log('⚙️ Database Migration: Updated settings database configuration successfully');
@@ -246,6 +264,53 @@ const startServer = async () => {
       }
     } catch (migErr) {
       console.error('⚠️ Database migration failed:', migErr);
+    }
+
+    // Seed default vertical videos if none exist in HomepageVideo collection
+    try {
+      const HomepageVideo = require('./models/HomepageVideo');
+      const videoCount = await HomepageVideo.countDocuments({ deletedAt: null });
+      if (videoCount === 0) {
+        console.log('🌱 Seeding default vertical videos...');
+        await HomepageVideo.create([
+          {
+            title: "Art of Bouquet Making",
+            description: "Watch our master florists assemble our signature luxury rose arrangements with meticulous attention.",
+            videoUrl: "https://player.vimeo.com/external/371433846.sd.mp4?s=236da2f3c0227e339d3328e1d51c144fb6b45f47&profile_id=139&oauth2_token_id=57447761",
+            thumbnailUrl: "https://images.unsplash.com/photo-1596436889106-be35e843f974?w=600&auto=format&fit=crop&q=80",
+            ctaText: "Order Bouquet",
+            ctaLink: "/shop?category=bouquets",
+            displayOrder: 0,
+            isFeatured: true,
+            isActive: true
+          },
+          {
+            title: "Premium Gifting Experience",
+            description: "Discover our luxurious gift wrapping, custom greeting cards, and secure signature delivery boxes.",
+            videoUrl: "https://player.vimeo.com/external/435674703.sd.mp4?s=7fdf1eb105d1c2512f455325c898a12e2c56a2ff&profile_id=139&oauth2_token_id=57447761",
+            thumbnailUrl: "https://images.unsplash.com/photo-1520763185298-1b434c919102?w=600&auto=format&fit=crop&q=80",
+            ctaText: "Shop Gifts",
+            ctaLink: "/shop",
+            displayOrder: 1,
+            isFeatured: false,
+            isActive: true
+          },
+          {
+            title: "Midnight Anniversary Delivery",
+            description: "Double the surprise right at 12:00 AM. Delivering sweet memories and fresh red roses across Hyderabad.",
+            videoUrl: "https://player.vimeo.com/external/403823616.sd.mp4?s=d00af45c928e11a2f643e9c9cfa7b3e1d1373e2d&profile_id=139&oauth2_token_id=57447761",
+            thumbnailUrl: "https://images.unsplash.com/photo-1582794543139-8ac9cb0f7b11?w=600&auto=format&fit=crop&q=80",
+            ctaText: "Surprise Now",
+            ctaLink: "/shop?category=roses",
+            displayOrder: 2,
+            isFeatured: true,
+            isActive: true
+          }
+        ]);
+        console.log('✅ Vertical videos seeded successfully');
+      }
+    } catch (videoSeedErr) {
+      console.error('⚠️ Video seeding failed:', videoSeedErr);
     }
 
     initEmailService();
@@ -285,6 +350,7 @@ const startServer = async () => {
     app.use('/api/products', require('./routes/productRoutes'));
     app.use('/api/categories', require('./routes/categoryRoutes'));
     app.use('/api/social-feed', require('./routes/socialFeedRoutes'));
+    app.use('/api/homepage-videos', require('./routes/homepageVideoRoutes'));
     app.use('/api/addons', require('./routes/addonRoutes'));
     app.use('/api/users', require('./routes/userRoutes'));
     app.use('/api/orders', require('./routes/orderRoutes'));
