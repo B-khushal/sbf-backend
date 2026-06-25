@@ -3,12 +3,12 @@ const crypto = require('crypto');
 
 // Validate environment variables
 if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
-  console.warn('⚠️ Razorpay credentials not found in environment variables. Using fallback credentials.');
+  console.error('❌ Razorpay credentials not found in environment variables! Please set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in .env.');
 }
 
-// Get Razorpay credentials with detailed logging - Updated for live credentials
-const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || 'rzp_live_SyHCsl7NYNB7JB';
-const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || 'VjvZiPMWe979GtEGwoIVXuLP';
+// Get Razorpay credentials with detailed logging
+const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID;
+const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET;
 
 // Debug logging for production
 console.log('🔍 Environment Variables Check:');

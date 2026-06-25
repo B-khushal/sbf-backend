@@ -1,10 +1,20 @@
 const express = require("express");
 const multer = require("multer");
 const path = require("path");
+const rateLimit = require("express-rate-limit");
 const { protect, admin, adminOrVendor } = require("../middleware/authMiddleware");
 const { uploadToCloudinary, uploadToCloudinarySecure } = require("../config/cloudinary");
 
 const router = express.Router();
+
+// Upload rate limiter: 5 uploads per minute
+const uploadLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  message: { message: "Too many upload attempts. Please try again after a minute." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // Configure multer to use memory storage instead of disk storage
 const storage = multer.memoryStorage();
@@ -114,7 +124,7 @@ router.get("/auth-test", protect, admin, (req, res) => {
 // @route   POST /api/uploads
 // @desc    Upload an image to Cloudinary
 // @access  Private/Admin/Vendor
-router.post("/", protect, enforceUploadRole, (req, res, next) => {
+router.post("/", uploadLimiter, protect, enforceUploadRole, (req, res, next) => {
   upload.single("image")(req, res, (err) => {
     if (err instanceof multer.MulterError) {
       console.error('âŒ Multer error:', err);

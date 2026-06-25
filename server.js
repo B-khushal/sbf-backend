@@ -2,6 +2,8 @@ const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
 const morgan = require('morgan');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const connectDB = require('./config/db');
 const path = require('path');
 const fs = require('fs');
@@ -340,6 +342,31 @@ const startServer = async () => {
 
     app.use(cors(corsOptions));
     app.options('*', cors(corsOptions));
+
+    // Security headers via helmet
+    app.use(helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'", "https:", "http:"],
+          scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://checkout.razorpay.com", "https://accounts.google.com"],
+          styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+          imgSrc: ["'self'", "data:", "https://res.cloudinary.com", "https://images.unsplash.com", "https:", "http:"],
+          frameSrc: ["'self'", "https://checkout.razorpay.com", "https://player.vimeo.com", "https://accounts.google.com"],
+          connectSrc: ["'self'", "https:", "http:", "wss:", "ws:"],
+        }
+      },
+      frameguard: { action: 'deny' },
+    }));
+
+    // Global Rate Limiter: 60 requests per minute
+    const globalLimiter = rateLimit({
+      windowMs: 60 * 1000,
+      max: 60,
+      message: { message: 'Too many requests. Please try again in a minute.' },
+      standardHeaders: true,
+      legacyHeaders: false,
+    });
+    app.use('/api/', globalLimiter);
 
     app.use(express.json({ limit: '50mb' }));
     app.use(express.urlencoded({ limit: '50mb', extended: true }));
