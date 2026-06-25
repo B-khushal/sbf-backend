@@ -69,13 +69,14 @@ const formatCurrency = (amount, currency = 'INR') => {
   return `${symbols[currency] || currency} ${amount.toLocaleString()}`;
 };
 
-// Format date for display
+// Format date for display (forcing Asia/Kolkata timezone to avoid UTC offset discrepancies on server)
 const formatDate = (date) => {
   return new Date(date).toLocaleDateString('en-IN', {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
-    day: 'numeric'
+    day: 'numeric',
+    timeZone: 'Asia/Kolkata'
   });
 };
 

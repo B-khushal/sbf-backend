@@ -12,10 +12,10 @@ const {
 } = require('../controllers/authController');
 const { protect } = require('../middleware/authMiddleware');
 
-// Rate limiter for auth endpoints (5 requests per 15 minutes)
+// Rate limiter for auth endpoints (50 requests per 15 minutes)
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: 50,
   message: { message: 'Too many auth attempts. Please try again after 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
