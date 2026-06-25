@@ -273,7 +273,8 @@ const globalSettingsSchema = new mongoose.Schema({
   maintenanceMode: { type: Boolean, default: false },
   customHeadCode: { type: String, default: '' },
   customBodyCode: { type: String, default: '' },
-  maxVideoUploadSize: { type: Number, default: 50 } // Maximum video upload size in MB
+  maxVideoUploadSize: { type: Number, default: 50 }, // Maximum video upload size in MB
+  showAdminLogsInUserActivity: { type: Boolean, default: false }
 });
 
 const deliverySettingsSchema = new mongoose.Schema({

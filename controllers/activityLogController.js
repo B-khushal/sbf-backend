@@ -63,6 +63,7 @@ const getAdminLogs = async (req, res) => {
       dateTo,
       sortBy = 'timestamp',
       sortOrder = 'desc',
+      userType = 'all',
     } = req.query;
 
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
@@ -109,6 +110,17 @@ const getAdminLogs = async (req, res) => {
 
     const searchRegex = search ? new RegExp(String(search), 'i') : null;
 
+    // Fetch system settings to check if admin logs should be visible
+    const Settings = require('../models/settings');
+    const settingsDoc = await Settings.findOne();
+    const showAdminLogsInUserActivity = settingsDoc?.globalSettings?.showAdminLogsInUserActivity ?? false;
+
+    // If toggle is OFF, force userType to only show customer logs
+    let effectiveUserType = userType;
+    if (!showAdminLogsInUserActivity) {
+      effectiveUserType = 'customer';
+    }
+
     const pipeline = [
       { $match: baseMatch },
       {
@@ -127,6 +139,25 @@ const getAdminLogs = async (req, res) => {
       },
     ];
 
+    // Filter by customer/admin type after unwinding the looked up user
+    if (effectiveUserType === 'customer') {
+      pipeline.push({
+        $match: {
+          $or: [
+            { 'user._id': { $exists: false } },
+            { 'user.role': 'user' },
+          ],
+        },
+      });
+    } else if (effectiveUserType === 'admin') {
+      pipeline.push({
+        $match: {
+          'user._id': { $exists: true },
+          'user.role': { $in: ['admin', 'vendor'] },
+        },
+      });
+    }
+
     if (searchRegex) {
       pipeline.push({
         $match: {
@@ -136,6 +167,10 @@ const getAdminLogs = async (req, res) => {
             { 'user.email': { $regex: searchRegex } },
             { email: { $regex: searchRegex } },
             { sessionId: { $regex: searchRegex } },
+            { actionType: { $regex: searchRegex } },
+            { url: { $regex: searchRegex } },
+            { ipAddress: { $regex: searchRegex } },
+            { device: { $regex: searchRegex } },
           ],
         },
       });
@@ -164,6 +199,7 @@ const getAdminLogs = async (req, res) => {
                 },
                 userName: '$resolvedUserName',
                 email: '$resolvedEmail',
+                role: { $ifNull: ['$user.role', 'user'] },
                 actionType: 1,
                 url: 1,
                 method: 1,
