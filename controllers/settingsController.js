@@ -116,6 +116,12 @@ exports.getAllSettings = async (req, res) => {
       settings = await Settings.findOne();
     }
 
+    if (settings && settings.footerSettings && settings.footerSettings.contactInfo && settings.footerSettings.contactInfo.email === '2006sbf@gmail.com') {
+      settings.footerSettings.contactInfo.email = 'contact@sbflorist.in';
+      settings.markModified('footerSettings');
+      await settings.save();
+    }
+
     const Category = require('../models/Category');
     const dbCategories = await Category.find({ status: 'active' }).sort({ sortOrder: 1, name: 1 });
     
@@ -471,6 +477,12 @@ exports.getFooterSettings = async (req, res) => {
   try {
     let settings = await Settings.findOne();
     
+    if (settings && settings.footerSettings && settings.footerSettings.contactInfo && settings.footerSettings.contactInfo.email === '2006sbf@gmail.com') {
+      settings.footerSettings.contactInfo.email = 'contact@sbflorist.in';
+      settings.markModified('footerSettings');
+      await settings.save();
+    }
+
     if (!settings || !settings.footerSettings) {
       // Return default footer settings
       const defaultFooter = {
@@ -482,7 +494,7 @@ exports.getFooterSettings = async (req, res) => {
           { platform: "Twitter", url: "#", enabled: true },
         ],
         contactInfo: {
-          email: "2006sbf@gmail.com",
+          email: "contact@sbflorist.in",
           phone: "+91 9949683222",
           address: "Door No. 12-2-786/A & B, Najam Centre, Pillar No. 32,Rethi Bowli, Mehdipatnam, Hyderabad, Telangana 500028"
         },

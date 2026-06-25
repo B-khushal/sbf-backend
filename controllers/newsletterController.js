@@ -1,5 +1,5 @@
 const Newsletter = require('../models/Newsletter');
-const { sendEmail } = require('../services/emailNotificationService');
+const { sendEmail } = require('../services/emailService');
 
 // Subscribe to newsletter
 exports.subscribe = async (req, res) => {
@@ -44,19 +44,32 @@ exports.subscribe = async (req, res) => {
         to: email,
         subject: 'Welcome to Spring Blossoms Florist Newsletter!',
         html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #e11d48;">Welcome to Spring Blossoms Florist! 🌸</h2>
-            <p>Thank you for subscribing to our newsletter. You'll be the first to know about:</p>
-            <ul>
-              <li>New flower collections</li>
-              <li>Seasonal offers and discounts</li>
-              <li>Special event decorations</li>
-              <li>Floral arrangement tips</li>
-            </ul>
-            <p>Stay blooming!</p>
-            <p>Best regards,<br>Spring Blossoms Florist Team</p>
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+            <div style="text-align: center; background: linear-gradient(135deg, #ec4899 0%, #be185d 100%); color: white; padding: 30px;">
+              <h1 style="margin: 0; font-size: 28px;">Spring Blossoms Florist</h1>
+              <p style="font-style: italic; font-size: 14px; opacity: 0.9; margin: 5px 0 0;">A Reason to Express</p>
+            </div>
+            <div style="padding: 30px; background-color: #fdf2f8; color: #374151;">
+              <h2 style="color: #be185d; margin-top: 0;">Welcome to our Newsletter! 🌸</h2>
+              <p>Thank you for subscribing to our newsletter. You'll be the first to know about:</p>
+              <ul style="line-height: 1.8;">
+                <li>New flower collections</li>
+                <li>Seasonal offers and discounts</li>
+                <li>Special event decorations</li>
+                <li>Floral arrangement tips</li>
+              </ul>
+              <p>Stay blooming!</p>
+              <p style="margin-bottom: 0;">Best regards,<br><strong>Spring Blossoms Florist Team</strong></p>
+            </div>
+            <div style="text-align: center; padding: 20px; background-color: #f9fafb; border-top: 1px solid #e5e7eb; color: #6b7280; font-size: 14px;">
+              <p style="margin: 0 0 5px 0;">Spring Blossoms Florist</p>
+              <p style="margin: 0 0 5px 0;">Website: <a href="https://sbflorist.in" style="color: #ec4899; text-decoration: none;">https://sbflorist.in</a> | Email: <a href="mailto:contact@sbflorist.in" style="color: #ec4899; text-decoration: none;">contact@sbflorist.in</a></p>
+              <p style="margin: 0;">Thank you for choosing Spring Blossoms Florist.</p>
+            </div>
           </div>
-        `
+        `,
+        text: `Welcome to Spring Blossoms Florist!\n\nThank you for subscribing to our newsletter. You will be the first to know about our new flower collections, seasonal offers, event decorations, and floral arrangement tips.\n\nBest regards,\nSpring Blossoms Florist Team`,
+        type: 'newsletter_subscription'
       });
     } catch (emailError) {
       console.error('Error sending welcome email:', emailError);

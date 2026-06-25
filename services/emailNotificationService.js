@@ -3,6 +3,7 @@ const pdf = require('html-pdf');
 const fs = require('fs');
 const path = require('path');
 const { getPdfOptions } = require('../utils/pdfHelper');
+const { sendEmail } = require('./emailService');
 
 // Initialize email service
 let emailTransporter = null;
@@ -424,7 +425,7 @@ const generateOrderConfirmationEmail = (orderData) => {
           
           <div class="contact-info">
             <p><strong>Need help?</strong></p>
-            <p>📧 Email: 2006sbf@gmail.com</p>
+            <p>📧 Email: contact@sbflorist.in</p>
             <p>📞 Phone: 9949683222</p>
             <p>🌐 Website: <a href="${getFrontendUrl()}">${getFrontendUrl().replace(/^https?:\/\//, '')}</a></p>
           </div>
@@ -879,7 +880,7 @@ const generateInvoiceHTML = (orderData) => {
           <div style="font-weight: 700; color: #064e3b; margin-bottom: 4px; font-size: 12px;">Thank you for choosing Spring Blossoms Florist.</div>
           <div style="color: #94a3b8; font-size: 9px; line-height: 1.4;">
             We design premium floral arrangements and curated gift solutions to make your moments unforgettable.<br>
-            For any queries or modifications to your delivery, please contact +91 9949683222 or email 2006sbf@gmail.com.<br>
+            For any queries or modifications to your delivery, please contact +91 9949683222 or email contact@sbflorist.in.<br>
             This is a computer-generated invoice and requires no signature.
           </div>
         </div>
@@ -1268,7 +1269,7 @@ const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
             <div class="invoice-head">
               <p class="invoice-title">Invoice</p>
               <p class="invoice-sub">Spring Blossoms Florist • Door No. 12-2-786/A & B, Najam Centre, Pillar No. 32, Rethi Bowli, Mehdipatnam, Hyderabad, Telangana 500028</p>
-              <p class="invoice-sub">Phone: 9949683222 • Email: 2006sbf@gmail.com • ${getFrontendUrl().replace(/^https?:\/\//, '')}</p>
+              <p class="invoice-sub">Phone: 9949683222 • Email: contact@sbflorist.in • ${getFrontendUrl().replace(/^https?:\/\//, '')}</p>
             </div>
 
             <table class="meta-grid section" role="presentation">
@@ -1342,7 +1343,7 @@ const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
             <div class="footer">
               <h3>Thank you for your order</h3>
               <p>We appreciate your trust in Spring Blossoms Florist and hope your arrangement made the moment special.</p>
-              <p class="contact">2006sbf@gmail.com • 9949683222 • Monday - Saturday, 9 AM - 6 PM IST</p>
+              <p class="contact">contact@sbflorist.in • 9949683222 • Monday - Saturday, 9 AM - 6 PM IST</p>
               <p class="small">Terms and conditions apply. Return and refund policy: www.sbflorist.in/returns</p>
             </div>
           </div>
@@ -1355,15 +1356,6 @@ const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
 // Send delivery confirmation email with invoice
 const sendDeliveryConfirmationWithInvoice = async (orderData) => {
   try {
-    // Use delivery confirmation transporter, fallback to legacy transporter
-    const activeTransporter = deliveryConfirmationTransporter || emailTransporter;
-    const senderEmail = deliveryConfirmationTransporter ? 'sbfdeliveryconfirmation@gmail.com' : '2006sbf@gmail.com';
-
-    if (!activeTransporter) {
-      console.log('⚠️  Email service not available, skipping delivery confirmation email');
-      return { success: false, error: 'Email service not configured' };
-    }
-
     const { customer, order } = orderData;
 
     if (!customer.email) {
@@ -1383,15 +1375,12 @@ const sendDeliveryConfirmationWithInvoice = async (orderData) => {
 
     console.log('✅ PDF invoice generated successfully');
 
-    const mailOptions = {
-      from: {
-        name: 'Spring Blossoms Florist',
-        address: senderEmail
-      },
+    const result = await sendEmail({
       to: customer.email,
       cc: '2006sbf@gmail.com', // Send copy to business email
       subject: `🎉 Order Delivered & Invoice #INV-${order.orderNumber} - Spring Blossoms Florist`,
       html: htmlContent,
+      type: 'delivered',
       attachments: [
         {
           filename: `Invoice-${order.orderNumber}.pdf`,
@@ -1420,16 +1409,19 @@ const sendDeliveryConfirmationWithInvoice = async (orderData) => {
 
         Please find your detailed invoice attached as a PDF.
 
-        For any questions, please contact us at 2006sbf@gmail.com or call 9949683222.
+        For any questions, please contact us at contact@sbflorist.in or call 9949683222.
 
         Best regards,
         Spring Blossoms Florist Team`
-    };
+    });
 
-    const result = await activeTransporter.sendMail(mailOptions);
-    console.log('✅ Delivery confirmation email with PDF invoice sent successfully:', result.messageId);
+    if (result.success) {
+      console.log('✅ Delivery confirmation email with PDF invoice sent successfully:', result.messageId);
+    } else {
+      console.error('❌ Failed to send delivery confirmation email:', result.error);
+    }
 
-    return { success: true, messageId: result.messageId };
+    return result;
   } catch (error) {
     console.error('❌ Failed to send delivery confirmation email:', error);
     return { success: false, error: error.message };
@@ -1441,28 +1433,16 @@ const sendEmailNotification = async (orderData) => {
   const results = [];
 
   try {
-    // Use order confirmation transporter for customer emails, fallback to legacy transporter
-    const activeTransporter = orderConfirmationTransporter || emailTransporter;
-    const senderEmail = orderConfirmationTransporter ? 'sbforderconfirmation@gmail.com' : '2006sbf@gmail.com';
-
-    if (!activeTransporter) {
-      console.log('⚠️  Email service not available, skipping email notification');
-      return { success: false, error: 'Email service not configured' };
-    }
-
     const { customer, order } = orderData;
 
     // Send email to customer
     if (customer.email) {
       try {
-        const customerMailOptions = {
-          from: {
-            name: 'Spring Blossoms Florist',
-            address: senderEmail
-          },
+        const customerResult = await sendEmail({
           to: customer.email,
           subject: `🎉 Order Confirmed #${order.orderNumber} - Spring Blossoms Florist`,
           html: generateOrderConfirmationEmail(orderData),
+          type: 'order_confirmation',
           text: `Order Confirmation - Spring Blossoms Florist
 
         Hi ${customer.name},
@@ -1486,18 +1466,19 @@ const sendEmailNotification = async (orderData) => {
 
         Best regards,
         Spring Blossoms Florist Team`
-        };
-
-        const customerResult = await activeTransporter.sendMail(customerMailOptions);
-        console.log('✅ Customer email sent successfully to:', customer.email);
-        console.log('📧 Customer email Message ID:', customerResult.messageId);
-
-        results.push({
-          type: 'customer',
-          success: true,
-          messageId: customerResult.messageId,
-          recipient: customer.email
         });
+
+        if (customerResult.success) {
+          console.log('✅ Customer email sent successfully to:', customer.email);
+          results.push({
+            type: 'customer',
+            success: true,
+            messageId: customerResult.messageId,
+            recipient: customer.email
+          });
+        } else {
+          throw new Error(customerResult.error);
+        }
       } catch (customerError) {
         console.error('❌ Failed to send customer email:', customerError);
         results.push({
@@ -1520,14 +1501,12 @@ const sendEmailNotification = async (orderData) => {
     // Send email to admin
     const adminEmail = '2006sbf@gmail.com';
     try {
-      const adminMailOptions = {
-        from: {
-          name: 'Spring Blossoms Florist Order System',
-          address: '2006sbf@gmail.com'
-        },
+      const adminResult = await sendEmail({
         to: adminEmail,
         subject: `🚨 New Order Alert #${order.orderNumber} - ${formatCurrency(order.totalAmount, order.currency)}`,
         html: generateAdminOrderNotificationEmail(orderData),
+        type: 'order_confirmation',
+        fromNameOverride: 'Spring Blossoms Florist Order System',
         text: `New Order Alert - Spring Blossoms Florist Admin
 
         Order #${order.orderNumber} has been placed!
@@ -1548,18 +1527,19 @@ const sendEmailNotification = async (orderData) => {
         Please process this order promptly.
 
         Spring Blossoms Florist Order Management System`
-      };
-
-      const adminResult = await activeTransporter.sendMail(adminMailOptions);
-      console.log('✅ Admin email sent successfully to:', adminEmail);
-      console.log('📧 Admin email Message ID:', adminResult.messageId);
-
-      results.push({
-        type: 'admin',
-        success: true,
-        messageId: adminResult.messageId,
-        recipient: adminEmail
       });
+
+      if (adminResult.success) {
+        console.log('✅ Admin email sent successfully to:', adminEmail);
+        results.push({
+          type: 'admin',
+          success: true,
+          messageId: adminResult.messageId,
+          recipient: adminEmail
+        });
+      } else {
+        throw new Error(adminResult.error);
+      }
     } catch (adminError) {
       console.error('❌ Failed to send admin email:', adminError);
       results.push({
@@ -1592,152 +1572,148 @@ const sendEmailNotification = async (orderData) => {
 };
 
 // Test email service
-const testEmailService = async () => {
+const testEmailService = async (req, res) => {
   console.log('🧪 Testing email services...');
-
-  const testResults = {
-    legacy: { success: false },
-    orderConfirmation: { success: false },
-    deliveryConfirmation: { success: false }
-  };
-
-  // Test legacy email service
   try {
-    if (emailTransporter) {
-      await emailTransporter.verify();
-      console.log('✅ Legacy email service is working correctly');
-      testResults.legacy = { success: true, message: 'Legacy email service is working' };
-    } else {
-      console.log('⚠️  Legacy email service not configured');
-      testResults.legacy = { success: false, error: 'Legacy email service not configured' };
-    }
+    const transporter = require('./emailService').getTransporter();
+    await transporter.verify();
+    res.json({
+      success: true,
+      message: 'SMTP connection verified successfully.'
+    });
   } catch (error) {
-    console.log('❌ Legacy email service test failed:', error.message);
-    testResults.legacy = { success: false, error: error.message };
+    console.error('❌ SMTP verification failed:', error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
-
-  // Test order confirmation email service
-  try {
-    if (orderConfirmationTransporter) {
-      await orderConfirmationTransporter.verify();
-      console.log('✅ Order confirmation email service is working correctly');
-      testResults.orderConfirmation = { success: true, message: 'Order confirmation email service is working' };
-    } else {
-      console.log('❌ Order confirmation email service not configured');
-      testResults.orderConfirmation = { success: false, error: 'Order confirmation email service not configured' };
-    }
-  } catch (error) {
-    console.log('❌ Order confirmation email service test failed:', error.message);
-    testResults.orderConfirmation = { success: false, error: error.message };
-  }
-
-  // Test delivery confirmation email service
-  try {
-    if (deliveryConfirmationTransporter) {
-      await deliveryConfirmationTransporter.verify();
-      console.log('✅ Delivery confirmation email service is working correctly');
-      testResults.deliveryConfirmation = { success: true, message: 'Delivery confirmation email service is working' };
-    } else {
-      console.log('❌ Delivery confirmation email service not configured');
-      testResults.deliveryConfirmation = { success: false, error: 'Delivery confirmation email service not configured' };
-    }
-  } catch (error) {
-    console.log('❌ Delivery confirmation email service test failed:', error.message);
-    testResults.deliveryConfirmation = { success: false, error: error.message };
-  }
-
-  const overallSuccess = testResults.orderConfirmation.success && testResults.deliveryConfirmation.success;
-
-  return {
-    success: overallSuccess,
-    details: testResults,
-    message: overallSuccess ? 'All email services are working' : 'Some email services have issues'
-  };
 };
 
 // Send test email
-const sendTestEmail = async (testEmail = 'test@example.com') => {
-  const sampleOrderData = {
-    order: {
-      orderNumber: `TEST-${Date.now()}`,
-      totalAmount: 1299.50,
-      currency: 'INR',
-      createdAt: new Date(),
-      shippingDetails: {
-        fullName: 'Test Customer',
-        phone: '+919876543210',
-        address: '123 Test Street, Test Area',
-        apartment: 'Apartment 4B',
-        city: 'Mumbai',
-        state: 'Maharashtra',
-        zipCode: '400001',
-        deliveryDate: new Date(Date.now() + 24 * 60 * 60 * 1000), // Tomorrow
-        timeSlot: '10:00 AM - 2:00 PM',
-        notes: 'This is a test order for email notification system verification.'
-      },
-      giftDetails: {
-        message: 'Happy Birthday! Hope you enjoy this gift.',
-        recipientName: 'Gift Recipient'
-      }
-    },
-    customer: {
-      name: 'Test Customer',
-      email: testEmail
-    },
-    items: [
-      {
-        product: {
-          name: 'Premium Test Product',
-          title: 'Premium Test Product',
-          sku: 'TEST-001'
-        },
-        quantity: 2,
-        price: 599.99,
-        finalPrice: 549.99
-      },
-      {
-        product: {
-          name: 'Sample Item',
-          title: 'Sample Item',
-          sku: 'TEST-002'
-        },
-        quantity: 1,
-        price: 199.52,
-        finalPrice: 199.52
-      }
-    ]
-  };
+const sendTestEmail = async (req, res) => {
+  try {
+    const { email, type } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, error: 'Recipient email is required' });
+    }
 
-  return await sendEmailNotification(sampleOrderData);
+    const testType = type || 'order'; // 'order', 'delivery', 'review', 'contact'
+    let subject = '';
+    let html = '';
+    let text = '';
+    let emailTypeKey = 'order_confirmation';
+
+    if (testType === 'delivery') {
+      emailTypeKey = 'delivered';
+      subject = '🚚 [Test] Out for Delivery - Spring Blossoms Florist';
+      html = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+          <div style="text-align: center; border-bottom: 2px solid #0f8b69; padding-bottom: 10px; margin-bottom: 20px;">
+            <h1 style="color: #0f8b69; margin: 0;">Spring Blossoms Florist</h1>
+            <p style="margin: 5px 0 0; font-style: italic; color: #666; font-size: 14px;">A Reason to Express</p>
+          </div>
+          <h2>Test Delivery Notification</h2>
+          <p>This is a test notification for the delivery flow. Your delivery configuration is working correctly.</p>
+          <div style="text-align: center; border-top: 1px solid #eee; padding-top: 15px; margin-top: 20px; font-size: 12px; color: #888;">
+            <p>Spring Blossoms Florist</p>
+            <p>Website: <a href="https://sbflorist.in" style="color: #0f8b69; text-decoration: none;">https://sbflorist.in</a> | Email: <a href="mailto:contact@sbflorist.in" style="color: #0f8b69; text-decoration: none;">contact@sbflorist.in</a></p>
+            <p>Thank you for choosing Spring Blossoms Florist.</p>
+          </div>
+        </div>
+      `;
+      text = 'Test Delivery Notification from Spring Blossoms Florist';
+    } else if (testType === 'review') {
+      emailTypeKey = 'review_request';
+      subject = '⭐ [Test] Share your review - Spring Blossoms Florist';
+      html = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+          <div style="text-align: center; border-bottom: 2px solid #bd7260; padding-bottom: 10px; margin-bottom: 20px;">
+            <h1 style="color: #bd7260; margin: 0;">Spring Blossoms Florist</h1>
+            <p style="margin: 5px 0 0; font-style: italic; color: #666; font-size: 14px;">A Reason to Express</p>
+          </div>
+          <h2>Test Review Request</h2>
+          <p>This is a test notification for the review request flow. Your review configuration is working correctly.</p>
+          <div style="text-align: center; border-top: 1px solid #eee; padding-top: 15px; margin-top: 20px; font-size: 12px; color: #888;">
+            <p>Spring Blossoms Florist</p>
+            <p>Website: <a href="https://sbflorist.in" style="color: #bd7260; text-decoration: none;">https://sbflorist.in</a> | Email: <a href="mailto:contact@sbflorist.in" style="color: #bd7260; text-decoration: none;">contact@sbflorist.in</a></p>
+            <p>Thank you for choosing Spring Blossoms Florist.</p>
+          </div>
+        </div>
+      `;
+      text = 'Test Review Request from Spring Blossoms Florist';
+    } else if (testType === 'contact') {
+      emailTypeKey = 'contact_form_reply';
+      subject = '✉️ [Test] Contact Us Reply - Spring Blossoms Florist';
+      html = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+          <div style="text-align: center; border-bottom: 2px solid #8a5a51; padding-bottom: 10px; margin-bottom: 20px;">
+            <h1 style="color: #8a5a51; margin: 0;">Spring Blossoms Florist</h1>
+            <p style="margin: 5px 0 0; font-style: italic; color: #666; font-size: 14px;">A Reason to Express</p>
+          </div>
+          <h2>Test Contact Us Reply</h2>
+          <p>This is a test notification for the contact flow. Your contact configuration is working correctly.</p>
+          <div style="text-align: center; border-top: 1px solid #eee; padding-top: 15px; margin-top: 20px; font-size: 12px; color: #888;">
+            <p>Spring Blossoms Florist</p>
+            <p>Website: <a href="https://sbflorist.in" style="color: #8a5a51; text-decoration: none;">https://sbflorist.in</a> | Email: <a href="mailto:contact@sbflorist.in" style="color: #8a5a51; text-decoration: none;">contact@sbflorist.in</a></p>
+            <p>Thank you for choosing Spring Blossoms Florist.</p>
+          </div>
+        </div>
+      `;
+      text = 'Test Contact Us Reply from Spring Blossoms Florist';
+    } else {
+      // order
+      emailTypeKey = 'order_confirmation';
+      subject = '🎉 [Test] Order Confirmation - Spring Blossoms Florist';
+      html = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+          <div style="text-align: center; border-bottom: 2px solid #667eea; padding-bottom: 10px; margin-bottom: 20px;">
+            <h1 style="color: #667eea; margin: 0;">Spring Blossoms Florist</h1>
+            <p style="margin: 5px 0 0; font-style: italic; color: #666; font-size: 14px;">A Reason to Express</p>
+          </div>
+          <h2>Test Order Confirmation</h2>
+          <p>This is a test notification for the order placement flow. Your order confirmation configuration is working correctly.</p>
+          <div style="text-align: center; border-top: 1px solid #eee; padding-top: 15px; margin-top: 20px; font-size: 12px; color: #888;">
+            <p>Spring Blossoms Florist</p>
+            <p>Website: <a href="https://sbflorist.in" style="color: #667eea; text-decoration: none;">https://sbflorist.in</a> | Email: <a href="mailto:contact@sbflorist.in" style="color: #667eea; text-decoration: none;">contact@sbflorist.in</a></p>
+            <p>Thank you for choosing Spring Blossoms Florist.</p>
+          </div>
+        </div>
+      `;
+      text = 'Test Order Confirmation from Spring Blossoms Florist';
+    }
+
+    const result = await sendEmail({
+      to: email,
+      subject,
+      html,
+      text,
+      type: emailTypeKey
+    });
+
+    if (result.success) {
+      res.json({ success: true, messageId: result.messageId, response: result.response });
+    } else {
+      res.status(500).json({ success: false, error: result.error });
+    }
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
 };
 
 // Get email configuration status
-const getEmailConfig = () => {
-  return {
-    legacy: {
-      configured: !!(EMAIL_CONFIG.auth.user && EMAIL_CONFIG.auth.pass),
-      host: EMAIL_CONFIG.host,
-      port: EMAIL_CONFIG.port,
-      user: EMAIL_CONFIG.auth.user ?
-        EMAIL_CONFIG.auth.user.replace(/(.{3}).*@/, '$1***@') :
-        'Not configured',
-      status: emailTransporter ? 'Ready' : 'Not configured'
-    },
-    orderConfirmation: {
-      configured: true,
-      host: ORDER_CONFIRMATION_EMAIL_CONFIG.host,
-      port: ORDER_CONFIRMATION_EMAIL_CONFIG.port,
-      user: ORDER_CONFIRMATION_EMAIL_CONFIG.auth.user.replace(/(.{3}).*@/, '$1***@'),
-      status: orderConfirmationTransporter ? 'Ready' : 'Not configured'
-    },
-    deliveryConfirmation: {
-      configured: true,
-      host: DELIVERY_CONFIRMATION_EMAIL_CONFIG.host,
-      port: DELIVERY_CONFIRMATION_EMAIL_CONFIG.port,
-      user: DELIVERY_CONFIRMATION_EMAIL_CONFIG.auth.user.replace(/(.{3}).*@/, '$1***@'),
-      status: deliveryConfirmationTransporter ? 'Ready' : 'Not configured'
+const getEmailConfig = (req, res) => {
+  res.json({
+    smtpHost: process.env.SMTP_HOST || 'smtp.gmail.com',
+    smtpPort: parseInt(process.env.SMTP_PORT || '587', 10),
+    smtpUser: (process.env.SMTP_USER || '2006sbf@gmail.com').replace(/(.{3}).*@/, '$1***@'),
+    senderAddresses: {
+      orders: process.env.MAIL_FROM_ORDER || 'orderconfirmation@sbflorist.in',
+      delivery: process.env.MAIL_FROM_DELIVERY || 'deliveryconfirmation@sbflorist.in',
+      reviews: process.env.MAIL_FROM_REVIEW || 'review@sbflorist.in',
+      contact: process.env.MAIL_FROM_CONTACT || 'contact@sbflorist.in'
     }
-  };
+  });
 };
 
 // Initialize email services on module load

@@ -804,7 +804,7 @@ settingsSchema.statics.initializeDefaultSettings = async function() {
         { platform: "Twitter", url: "#", enabled: true }
       ],
       contactInfo: {
-        email: "2006sbf@gmail.com",
+        email: "contact@sbflorist.in",
         phone: "+91 9949683222",
         address: "Door No. 12-2-786/A & B, Najam Centre, Pillar No. 32, Rethi Bowli, Mehdipatnam, Hyderabad, Telangana 500028"
       },

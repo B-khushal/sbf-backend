@@ -1,32 +1,12 @@
-const nodemailer = require("nodemailer");
+const { sendEmail } = require("./emailService");
 const { buildReviewPublicUrl } = require("./reviewDomainService");
 
 const REVIEW_EMAIL_USER =
-  process.env.REVIEW_EMAIL_USER || process.env.EMAIL_USER || "2006sbf@gmail.com";
-const REVIEW_EMAIL_PASS =
-  process.env.REVIEW_EMAIL_PASS || process.env.EMAIL_PASS || "";
-
-let transporter = null;
+  process.env.MAIL_FROM_REVIEW || "review@sbflorist.in";
+const REVIEW_EMAIL_PASS = "";
 
 const initReviewEmailTransporter = () => {
-  if (!REVIEW_EMAIL_USER || !REVIEW_EMAIL_PASS) {
-    return null;
-  }
-
-  if (!transporter) {
-    transporter = nodemailer.createTransport({
-      service: "gmail",
-      host: "smtp.gmail.com",
-      port: 587,
-      secure: false,
-      auth: {
-        user: REVIEW_EMAIL_USER,
-        pass: REVIEW_EMAIL_PASS,
-      },
-    });
-  }
-
-  return transporter;
+  return require("./emailService").getTransporter();
 };
 
 const floralShell = ({ preheader, heading, eyebrow, body, ctaHtml }) => `<!DOCTYPE html>
@@ -70,6 +50,7 @@ const floralShell = ({ preheader, heading, eyebrow, body, ctaHtml }) => `<!DOCTY
       <div class="card">
         <div class="hero">
           <div class="brand">Spring Blossoms Florist</div>
+          <div style="font-size: 10px; color: #8a5a51; font-style: italic; margin-top: -12px; margin-bottom: 12px; letter-spacing: 0.1em; text-transform: uppercase;">A Reason to Express</div>
           <div class="pill">${eyebrow}</div>
           <h1 class="heading">${heading}</h1>
           <p class="sub">${body}</p>
@@ -80,8 +61,9 @@ const floralShell = ({ preheader, heading, eyebrow, body, ctaHtml }) => `<!DOCTY
         <div class="divider"></div>
         <div class="footer">
           <strong>Spring Blossoms Florist</strong><br />
-          Door No. 12-2-786/A &amp; B, Najam Centre, Rethi Bowli, Mehdipatnam, Hyderabad<br />
-          Email: 2006sbf@gmail.com &bull; Phone: 9949683222
+          Website: <a href="https://sbflorist.in" style="color: #816760; text-decoration: underline;">https://sbflorist.in</a><br />
+          Email: <a href="mailto:contact@sbflorist.in" style="color: #816760; text-decoration: underline;">contact@sbflorist.in</a><br />
+          Thank you for choosing Spring Blossoms Florist.
         </div>
       </div>
     </div>
@@ -109,32 +91,17 @@ const productCardHtml = ({ image, title, orderNumber, reviewUrl }) => `
 `;
 
 const sendMail = async ({ to, subject, html, text, cc }) => {
-  const activeTransporter = initReviewEmailTransporter();
-
-  if (!activeTransporter) {
-    return {
-      success: false,
-      error: "Review email transporter is not configured.",
-    };
-  }
-
   try {
-    const result = await activeTransporter.sendMail({
-      from: {
-        name: "Spring Blossoms Florist",
-        address: REVIEW_EMAIL_USER,
-      },
+    const result = await sendEmail({
       to,
       cc,
       subject,
       html,
       text,
+      type: "review_request"
     });
 
-    return {
-      success: true,
-      messageId: result.messageId,
-    };
+    return result;
   } catch (error) {
     return {
       success: false,
