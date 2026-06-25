@@ -492,6 +492,19 @@ exports.applyPromoCode = async (req, res) => {
     // Increment usage count
     await promoCode.incrementUsage();
     
+    // Associate with Order
+    const Order = require('../models/Order');
+    const order = await Order.findById(orderId);
+    if (order) {
+      order.promoCode = {
+        code: promoCode.code,
+        discountAmount: order.discount || 0,
+        promoCodeId: promoCode._id
+      };
+      await order.save();
+      console.log(`🎟️ Promo code ${code} linked to Order ${order.orderNumber}`);
+    }
+    
     console.log(`🎟️ Promo code applied: ${code} for order ${orderId}`);
     
     res.json({

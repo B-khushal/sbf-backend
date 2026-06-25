@@ -129,6 +129,21 @@ const orderSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  promoCode: {
+    code: {
+      type: String,
+      uppercase: true,
+      trim: true
+    },
+    discountAmount: {
+      type: Number,
+      default: 0
+    },
+    promoCodeId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'PromoCode'
+    }
+  },
   currency: {
     type: String,
     enum: ['INR', 'USD', 'AED', 'EUR', 'GBP'],
@@ -177,6 +192,7 @@ orderSchema.index({ createdAt: -1 });
 orderSchema.index({ 'shippingDetails.phone': 1 });
 orderSchema.index({ 'shippingDetails.fullName': 1 });
 orderSchema.index({ 'shippingDetails.email': 1 });
+orderSchema.index({ 'shippingDetails.deliveryDate': 1 });
 
 // Add pre-save hook for order number generation
 orderSchema.pre('save', async function(next) {
