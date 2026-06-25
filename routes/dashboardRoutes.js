@@ -21,4 +21,7 @@ router.get('/notifications', protect, admin, dashboardController.getNotification
 // Real-time user activity
 router.get('/user-activity', protect, admin, dashboardController.getUserActivity);
 
+// Activity timeline
+router.get('/activity-timeline', protect, admin, dashboardController.getActivityTimeline);
+
 module.exports = router;
