@@ -23,6 +23,27 @@ const protect = async (req, res, next) => {
         return res.status(401).json({ message: 'Not authorized, user not found' });
       }
 
+      // Check if session has been revoked
+      const session = req.user.login_history.find(s => s.token === token);
+      if (session && session.status === 'revoked') {
+        return res.status(401).json({ message: 'Not authorized, session has been revoked' });
+      }
+
+      // Compile permissions by merging role and custom permissions
+      let mergedPermissions = [...(req.user.permissions || [])];
+      if (req.user.role) {
+        try {
+          const Role = require('../models/Role');
+          const roleDoc = await Role.findOne({ code: req.user.role });
+          if (roleDoc && roleDoc.permissions) {
+            mergedPermissions = [...new Set([...mergedPermissions, ...roleDoc.permissions])];
+          }
+        } catch (roleError) {
+          console.error('Error loading role permissions in auth middleware:', roleError);
+        }
+      }
+      req.user.permissions = mergedPermissions;
+
       next();
     } catch (error) {
       console.error('Auth Middleware Error:', error);
@@ -37,7 +58,8 @@ const protect = async (req, res, next) => {
 
 // Admin-only middleware
 const admin = (req, res, next) => {
-  if (req.user && req.user.role === 'admin') {
+  const allowedAdminRoles = ['platform_admin', 'store_owner', 'store_manager', 'delivery_manager', 'support_staff', 'inventory_staff', 'finance_staff', 'admin'];
+  if (req.user && allowedAdminRoles.includes(req.user.role)) {
     next();
   } else {
     res.status(403).json({ message: 'Not authorized as an admin' });
@@ -46,7 +68,8 @@ const admin = (req, res, next) => {
 
 // Admin or Vendor middleware
 const adminOrVendor = (req, res, next) => {
-  if (req.user && (req.user.role === 'admin' || req.user.role === 'vendor')) {
+  const allowedAdminRoles = ['platform_admin', 'store_owner', 'store_manager', 'delivery_manager', 'support_staff', 'inventory_staff', 'finance_staff', 'admin'];
+  if (req.user && (allowedAdminRoles.includes(req.user.role) || req.user.role === 'vendor')) {
     next();
   } else {
     res.status(403).json({ message: 'Not authorized. Admin or vendor access required.' });

@@ -17,14 +17,49 @@ const userSchema = new mongoose.Schema({
     },
     role: {
         type: String,
-        enum: ['user', 'admin', 'vendor'],
+        enum: ['user', 'platform_admin', 'store_owner', 'store_manager', 'delivery_manager', 'delivery_partner', 'support_staff', 'inventory_staff', 'finance_staff', 'vendor', 'admin'],
         default: 'user'
     },
+    permissions: [{
+        type: String
+    }],
     status: {
         type: String,
         enum: ['active', 'inactive', 'suspended'],
         default: 'active'
     },
+    assigned_store: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Store'
+    },
+    assigned_zone: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'DeliveryZone'
+    },
+    created_by: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    },
+    employeeId: {
+        type: String,
+        unique: true,
+        sparse: true
+    },
+    staffCode: {
+        type: String,
+        unique: true,
+        sparse: true
+    },
+    login_history: [{
+        loginTime: { type: Date, default: Date.now },
+        logoutTime: { type: Date },
+        device: String,
+        browser: String,
+        location: String,
+        ipAddress: String,
+        token: String,
+        status: { type: String, enum: ['active', 'expired', 'revoked'], default: 'active' }
+    }],
     vendorStatus: {
         type: String,
         enum: ['pending', 'approved', 'suspended', 'rejected'],

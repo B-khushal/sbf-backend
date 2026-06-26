@@ -75,6 +75,37 @@ const startServer = async () => {
       console.error('⚠️ Seasonal Campaign seeding failed:', campaignSeedErr);
     }
 
+    // Initialize default delivery settings and zones
+    try {
+      const DeliverySetting = require('./models/DeliverySetting');
+      await DeliverySetting.getSettings();
+      
+      const DeliveryZone = require('./models/DeliveryZone');
+      const zoneCount = await DeliveryZone.countDocuments();
+      if (zoneCount === 0) {
+        console.log('🌱 Seeding default delivery zones...');
+        await DeliveryZone.create({
+          name: 'Mehdipatnam Core',
+          city: 'Hyderabad',
+          boundary: {
+            type: 'Polygon',
+            coordinates: [[
+              [78.4200, 17.3850],
+              [78.4500, 17.3850],
+              [78.4500, 17.4050],
+              [78.4200, 17.4050],
+              [78.4200, 17.3850]
+            ]]
+          },
+          baseDeliveryCharge: 150,
+          isActive: true
+        });
+        console.log('✅ Default delivery zone seeded successfully');
+      }
+    } catch (deliverySeedErr) {
+      console.error('⚠️ Delivery settings seeding failed:', deliverySeedErr.message);
+    }
+
     // Initialize default categories if none exist in Category collection
     try {
       const Category = require('./models/Category');
@@ -402,6 +433,8 @@ const startServer = async () => {
     app.use('/api/valentine', require('./routes/valentineRoutes'));
     app.use('/api/seasonal-campaigns', require('./routes/seasonalCampaignRoutes'));
     app.use('/api/admin', require('./routes/adminRoutes'));
+    app.use('/api/delivery', require('./routes/deliveryRoutes'));
+    app.use('/api/staff', require('./routes/staffRoutes'));
     app.use('/wake-up', require('./routes/wakeUpRoutes'));
     app.use('/api/settings', settingsRoutes);
     app.use('/api/newsletter', newsletterRoutes);

@@ -894,7 +894,7 @@ const generateInvoiceHTML = (orderData) => {
 
 // Generate delivery confirmation email template with invoice
 const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
-  const { order, customer } = orderData;
+  const { order, customer, partner, proofImageUrl } = orderData;
   const items = order.items || [];
 
   // Calculate proper subtotal from items
@@ -1239,6 +1239,24 @@ const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
             <div class="status-card">
               <p class="status-title">Delivery Completed</p>
               <p class="status-sub">Your order was delivered on ${formatDate(new Date())}. We hope your flowers brought joy.</p>
+            </div>
+
+            ${partner ? `
+            <div style="margin: 16px 30px 0; border: 1px solid #ccece6; border-radius: 12px; background-color: #f2fbf9; padding: 14px 16px; font-size: 13px;">
+              <h4 style="margin: 0 0 6px; font-size: 15px; color: #0b5e47;">Delivery Partner Information</h4>
+              <p style="margin: 3px 0; color: #1e3d35;"><strong>Name:</strong> ${partner.name}</p>
+              ${partner.vehicleType ? `<p style="margin: 3px 0; color: #1e3d35;"><strong>Vehicle:</strong> ${partner.vehicleType.toUpperCase()}</p>` : ''}
+              ${proofImageUrl ? `
+                <div style="margin-top: 10px; border-top: 1px dashed #ccece6; padding-top: 10px;">
+                  <strong style="font-size: 13px; color: #0b5e47; display: block; margin-bottom: 8px;">Delivery Proof Photo:</strong>
+                  <img src="${proofImageUrl}" alt="Delivery Proof" style="max-width: 100%; max-height: 250px; border-radius: 8px; border: 1px solid #ccece6;" />
+                </div>
+              ` : ''}
+            </div>
+            ` : ''}
+
+            <div style="margin: 20px 30px 0; text-align: center;">
+              <a href="${getFrontendUrl()}/profile?tab=orders" style="display: inline-block; background-color: #0f8b69; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14px;">Rate Your Experience</a>
             </div>
 
             <table class="meta-grid section" role="presentation">
