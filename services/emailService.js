@@ -151,6 +151,60 @@ const sendEmail = async ({
       response: smtpResponse,
     };
   } catch (error) {
+    // Check if it's a network/connection error that warrants fallback
+    const isNetworkError = error.code === 'ETIMEDOUT' || 
+                           error.code === 'ECONNREFUSED' || 
+                           error.code === 'ENOTFOUND' || 
+                           error.code === 'EHOSTUNREACH' ||
+                           error.message.includes('timeout') ||
+                           error.message.includes('connect') ||
+                           error.message.includes('Greeting never received');
+                           
+    const primaryPort = parseInt(process.env.SMTP_PORT || "587", 10);
+    
+    if (isNetworkError) {
+      const fallbackPort = primaryPort === 587 ? 465 : 587;
+      const fallbackSecure = fallbackPort === 465;
+      
+      console.warn(`[Email Service] ⚠️ Primary SMTP Connection on Port ${primaryPort} failed: ${error.message}`);
+      console.warn(`[Email Service] 🔄 Attempting automatic fallback to SMTP Port ${fallbackPort} (Secure=${fallbackSecure})...`);
+      
+      try {
+        const host = process.env.SMTP_HOST || "smtp.gmail.com";
+        const user = process.env.SMTP_USER || "2006sbf@gmail.com";
+        const pass = process.env.SMTP_PASS || process.env.EMAIL_PASS || "";
+        
+        const fallbackTransporter = nodemailer.createTransport({
+          host,
+          port: fallbackPort,
+          secure: fallbackSecure,
+          auth: {
+            user,
+            pass,
+          },
+        });
+        
+        console.log(`[Email Service] ⚡ Calling fallbackTransporter.sendMail on Port ${fallbackPort}...`);
+        const result = await fallbackTransporter.sendMail(mailOptions);
+        
+        status = "success";
+        smtpResponse = result.response || "Sent successfully via fallback";
+        messageId = result.messageId || "";
+        
+        // Cache the fallback transporter so future email sends use it immediately
+        transporter = fallbackTransporter;
+        
+        console.log(`[Email Service] ✅ Fallback Email Sent Successfully on Port ${fallbackPort}! Message ID="${messageId}", Response="${smtpResponse}"`);
+        return {
+          success: true,
+          messageId,
+          response: smtpResponse,
+        };
+      } catch (fallbackError) {
+        console.error(`[Email Service] ❌ Fallback SMTP Attempt on Port ${fallbackPort} also failed:`, fallbackError);
+      }
+    }
+
     status = "failed";
     errorMessage = error.message || "Unknown error";
     console.error(`[Email Service] ❌ Email Send Failed for To="${to}":`, error);

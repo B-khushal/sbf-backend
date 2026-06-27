@@ -68,20 +68,20 @@ const runSMTPDiagnostics = async () => {
   console.log('📧 ===================================================');
 
   // Verify SMTP Connection
+  let primarySuccess = false;
   try {
     const { getTransporter } = require('./services/emailService');
-    console.log('🔌 Verifying SMTP transporter connection...');
+    console.log(`🔌 Verifying SMTP transporter connection on configured Port ${port}...`);
     const transporter = getTransporter();
     
     await new Promise((resolve) => {
       transporter.verify((error, success) => {
         if (error) {
-          console.error('❌ SMTP Connection Failed during startup verification:', error.message);
-          if (error.stack) {
-            console.error('❌ SMTP Connection Error Stack:', error.stack);
-          }
+          console.error(`❌ SMTP Connection Failed on primary configured Port ${port} during startup verification:`, error.message);
+          primarySuccess = false;
         } else {
-          console.log('✅ SMTP Server Ready & verified successfully!');
+          console.log(`✅ SMTP Server Ready on primary configured Port ${port} & verified successfully!`);
+          primarySuccess = true;
         }
         resolve();
       });
@@ -89,6 +89,40 @@ const runSMTPDiagnostics = async () => {
   } catch (err) {
     console.error('❌ Failed to initialize/verify SMTP transporter during startup:', err);
     console.error('Error stack:', err.stack);
+  }
+
+  // If primary verification failed, test fallback port immediately to help developers configure production VPS correctly
+  if (!primarySuccess) {
+    const fallbackPort = port === 587 ? 465 : 587;
+    const fallbackSecure = fallbackPort === 465;
+    console.log(`\n🔌 Primary Port ${port} failed. Auto-testing fallback Port ${fallbackPort} (Secure=${fallbackSecure})...`);
+    
+    try {
+      const nodemailer = require('nodemailer');
+      const fallbackTransporter = nodemailer.createTransport({
+        host,
+        port: fallbackPort,
+        secure: fallbackSecure,
+        auth: {
+          user,
+          pass: pass || ""
+        }
+      });
+      
+      await new Promise((resolve) => {
+        fallbackTransporter.verify((error, success) => {
+          if (error) {
+            console.error(`❌ Fallback SMTP Connection on Port ${fallbackPort} also failed:`, error.message);
+          } else {
+            console.log(`💡 SUCCESS! Fallback SMTP connection succeeded on Port ${fallbackPort}!`);
+            console.log(`💡 RECOMMENDATION: Set VPS environment variables to SMTP_PORT=${fallbackPort} and SMTP_SECURE=${fallbackSecure}\n`);
+          }
+          resolve();
+        });
+      });
+    } catch (err) {
+      console.error(`❌ Failed to test fallback SMTP Port ${fallbackPort}:`, err.message);
+    }
   }
 
   // Firewall Test on Ports 465, 587, 2525
