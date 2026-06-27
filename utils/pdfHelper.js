@@ -82,6 +82,82 @@ const getPdfFooter = () => {
 };
 
 /**
+ * Ensures PhantomJS binary is present in production environments.
+ * If not present, downloads it dynamically from a fast, reliable mirror.
+ */
+const ensurePhantomJS = async () => {
+    // Only download on Linux production/VPS environments
+    if (process.platform !== 'linux') {
+        return;
+    }
+
+    const targetBinDir = path.join(__dirname, '..', 'node_modules', 'phantomjs-prebuilt', 'lib', 'phantom', 'bin');
+    const phantomPath = path.join(targetBinDir, 'phantomjs');
+
+    if (fs.existsSync(phantomPath)) {
+        console.log('[PDF Helper] ✅ PhantomJS binary already exists at:', phantomPath);
+        return;
+    }
+
+    console.log('[PDF Helper] 🔍 PhantomJS binary not found. Initiating dynamic runtime download...');
+    
+    // Ensure target directory exists
+    fs.mkdirSync(targetBinDir, { recursive: true });
+
+    const archiveUrl = 'https://npmmirror.com/mirrors/phantomjs/phantomjs-2.1.1-linux-x86_64.tar.bz2';
+    const tempArchive = path.join(__dirname, '..', 'scratch', 'phantomjs.tar.bz2');
+    
+    // Ensure scratch directory exists
+    fs.mkdirSync(path.dirname(tempArchive), { recursive: true });
+
+    console.log(`[PDF Helper] 📥 Downloading PhantomJS from mirror: ${archiveUrl}`);
+    
+    try {
+        await new Promise((resolve, reject) => {
+            const file = fs.createWriteStream(tempArchive);
+            const https = require('https');
+            
+            https.get(archiveUrl, (response) => {
+                if (response.statusCode !== 200) {
+                    reject(new Error(`Failed to download PhantomJS: Status ${response.statusCode}`));
+                    return;
+                }
+                response.pipe(file);
+                file.on('finish', () => {
+                    file.close();
+                    resolve();
+                });
+            }).on('error', (err) => {
+                fs.unlink(tempArchive, () => {});
+                reject(err);
+            });
+        });
+
+        console.log('[PDF Helper] 📦 Extracting PhantomJS binary archive...');
+        const { execSync } = require('child_process');
+        
+        // Extract only the bin/phantomjs executable directly into the target directory
+        execSync(`tar -xjf "${tempArchive}" -C "${targetBinDir}" --strip-components=2 "phantomjs-2.1.1-linux-x86_64/bin/phantomjs"`);
+        console.log('[PDF Helper] 🗑️ Cleaning up archive file...');
+        fs.unlinkSync(tempArchive);
+        
+        if (fs.existsSync(phantomPath)) {
+            fs.chmodSync(phantomPath, '755');
+            console.log('[PDF Helper] 🎉 PhantomJS successfully downloaded, extracted, and configured at:', phantomPath);
+        } else {
+            throw new Error('phantomjs binary not found after extraction');
+        }
+    } catch (err) {
+        console.error('[PDF Helper] ❌ Failed to dynamically retrieve PhantomJS:', err.message);
+        // Clean up temp file on failure
+        if (fs.existsSync(tempArchive)) {
+            try { fs.unlinkSync(tempArchive); } catch (e) {}
+        }
+        throw err;
+    }
+};
+
+/**
  * Returns standardized options for html-pdf, injecting the professional letterhead.
  * @param {Object} options Config object { documentTitle, ...additionalOptions }
  */
@@ -123,5 +199,6 @@ module.exports = {
     getPdfHeader,
     getPdfFooter,
     getPdfOptions,
-    getLogoBase64
+    getLogoBase64,
+    ensurePhantomJS
 };

@@ -141,7 +141,15 @@ const formatTime = (timeSlot) => {
 };
 
 // Generate PDF from HTML
-const generateInvoicePDF = (htmlContent, orderNumber) => {
+const generateInvoicePDF = async (htmlContent, orderNumber) => {
+  // Ensure PhantomJS binary is present (self-healing runtime check)
+  const { ensurePhantomJS } = require('../utils/pdfHelper');
+  try {
+    await ensurePhantomJS();
+  } catch (err) {
+    console.error('❌ Failed to ensure PhantomJS binary on startup check:', err.message);
+  }
+
   return new Promise((resolve, reject) => {
     const options = getPdfOptions({ documentTitle: 'Tax Invoice' });
 

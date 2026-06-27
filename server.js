@@ -530,6 +530,7 @@ const startServer = async () => {
     initEmailService();
 
     const app = express();
+    app.set('trust proxy', 1);
 
     const corsOptions = {
       origin(origin, callback) {
