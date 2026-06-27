@@ -203,8 +203,11 @@ const getPdfOptions = ({ documentTitle, ...additionalOptions } = {}) => {
         ...additionalOptions
     };
 
-    // If PHANTOM_PATH is explicitly configured in environment variables, use it.
-    if (process.env.PHANTOM_PATH) {
+    // Resolve the locally downloaded phantomjs binary path (used by ensurePhantomJS)
+    const localPhantomPath = path.join(__dirname, '..', 'node_modules', 'phantomjs-prebuilt', 'lib', 'phantom', 'bin', 'phantomjs');
+    if (fs.existsSync(localPhantomPath)) {
+        pdfOptions.phantomPath = localPhantomPath;
+    } else if (process.env.PHANTOM_PATH) {
         pdfOptions.phantomPath = process.env.PHANTOM_PATH;
     }
 
