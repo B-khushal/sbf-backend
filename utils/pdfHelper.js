@@ -86,7 +86,7 @@ const getPdfFooter = () => {
  * @param {Object} options Config object { documentTitle, ...additionalOptions }
  */
 const getPdfOptions = ({ documentTitle, ...additionalOptions } = {}) => {
-    return {
+    const pdfOptions = {
         format: 'A4',
         orientation: 'portrait',
         border: {
@@ -110,6 +110,14 @@ const getPdfOptions = ({ documentTitle, ...additionalOptions } = {}) => {
         },
         ...additionalOptions
     };
+
+    // In production (VPS Nixpacks), if phantomjs-prebuilt module is missing,
+    // we use the system-wide phantomjs binary installed via aptPkgs.
+    if (process.env.NODE_ENV === 'production' || process.env.PHANTOM_PATH) {
+        pdfOptions.phantomPath = process.env.PHANTOM_PATH || 'phantomjs';
+    }
+
+    return pdfOptions;
 };
 
 module.exports = {
