@@ -111,10 +111,9 @@ const getPdfOptions = ({ documentTitle, ...additionalOptions } = {}) => {
         ...additionalOptions
     };
 
-    // In production (VPS Nixpacks), if phantomjs-prebuilt module is missing,
-    // we use the system-wide phantomjs binary installed via aptPkgs.
-    if (process.env.NODE_ENV === 'production' || process.env.PHANTOM_PATH) {
-        pdfOptions.phantomPath = process.env.PHANTOM_PATH || 'phantomjs';
+    // If PHANTOM_PATH is explicitly configured in environment variables, use it.
+    if (process.env.PHANTOM_PATH) {
+        pdfOptions.phantomPath = process.env.PHANTOM_PATH;
     }
 
     return pdfOptions;

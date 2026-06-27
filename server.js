@@ -20,6 +20,18 @@ if (process.env.NODE_ENV !== 'production') {
   console.log('🌐 Production environment (VPS) detected: reading environment variables directly from system/process env.');
 }
 
+// Global Safety Nets to prevent background library errors from crashing the Express server
+process.on('uncaughtException', (err) => {
+  console.error('🔥 Uncaught Exception caught to prevent server crash:', err.message);
+  if (err.stack) {
+    console.error(err.stack);
+  }
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('🔥 Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 const checkPort = (host, port, timeout = 1500) => {
   return new Promise((resolve) => {
     const socket = new net.Socket();
