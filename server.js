@@ -136,6 +136,7 @@ const runSMTPDiagnostics = async () => {
     } else {
       console.warn(`🛡️ Port ${portToCheck}: ❌ CLOSED or BLOCKED (${result.status})`);
     }
+  }
   console.log('📧 ===================================================\n');
 };
 
