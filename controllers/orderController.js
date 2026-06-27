@@ -669,7 +669,7 @@ const updateOrderToPaid = async (req, res) => {
 // @access  Private/Admin
 const updateOrderToDelivered = async (req, res) => {
   try {
-    console.log('🚚 updateOrderToDelivered called for order ID:', req.params.id);
+    console.log(`[Order Controller] 🚚 updateOrderToDelivered status update request received for order ID: ${req.params.id}`);
 
     const order = await Order.findById(req.params.id).populate({
       path: 'items.product',
@@ -829,18 +829,19 @@ const updateOrderToDelivered = async (req, res) => {
             items: populatedOrder.items
           };
 
-          console.log('📤 Sending delivery confirmation email to:', customer.email);
+          console.log(`[Order Controller] 👤 Customer details resolved: Name="${customer.name}", Email="${customer.email}"`);
+          console.log(`[Order Controller] 📤 Triggering sendDeliveryConfirmationWithInvoice for order #${order.orderNumber}`);
 
           // Send delivery confirmation email with invoice
           const { sendDeliveryConfirmationWithInvoice } = require('../services/emailNotificationService');
           const emailResult = await sendDeliveryConfirmationWithInvoice(deliveryNotificationData);
 
-          console.log('📧 Email sending result:', emailResult);
+          console.log(`[Order Controller] 📧 sendDeliveryConfirmationWithInvoice output for order #${order.orderNumber}:`, emailResult);
 
           if (emailResult.success) {
-            console.log('✅ Delivery confirmation email with invoice sent successfully to:', customer.email);
+            console.log(`[Order Controller] ✅ Delivery confirmation email with invoice sent successfully to: ${customer.email}`);
           } else {
-            console.error('❌ Failed to send delivery confirmation email:', emailResult.error);
+            console.error(`[Order Controller] ❌ Failed to send delivery confirmation email:`, emailResult.error);
           }
         } else {
           console.warn('⚠️  No customer email found for delivery confirmation');
@@ -1141,7 +1142,7 @@ const getTodayOrders = async (req, res) => {
 const updateOrderStatus = async (req, res) => {
   try {
     const { status } = req.body;
-    console.log('🔄 updateOrderStatus called for order ID:', req.params.id, 'New status:', status);
+    console.log(`[Order Controller] 🔄 updateOrderStatus status update request received for order ID: ${req.params.id}, New status: "${status}"`);
     console.log('📝 Request body:', req.body);
 
     const order = await Order.findById(req.params.id).populate({
@@ -1373,18 +1374,19 @@ const updateOrderStatus = async (req, res) => {
             items: populatedOrder.items
           };
 
-          console.log('📤 Sending delivery confirmation email to:', customerEmail);
+          console.log(`[Order Controller] 👤 Customer details resolved: Name="${customerName || order.shippingDetails.fullName}", Email="${customerEmail}"`);
+          console.log(`[Order Controller] 📤 Triggering sendDeliveryConfirmationWithInvoice for order #${order.orderNumber}`);
 
           // Send delivery confirmation email with invoice
           const { sendDeliveryConfirmationWithInvoice } = require('../services/emailNotificationService');
           const emailResult = await sendDeliveryConfirmationWithInvoice(deliveryNotificationData);
 
-          console.log('📧 Email sending result:', emailResult);
+          console.log(`[Order Controller] 📧 sendDeliveryConfirmationWithInvoice output for order #${order.orderNumber}:`, emailResult);
 
           if (emailResult.success) {
-            console.log('✅ Delivery confirmation email with invoice sent successfully to:', customerEmail);
+            console.log(`[Order Controller] ✅ Delivery confirmation email with invoice sent successfully to: ${customerEmail}`);
           } else {
-            console.error('❌ Failed to send delivery confirmation email:', emailResult.error);
+            console.error(`[Order Controller] ❌ Failed to send delivery confirmation email:`, emailResult.error);
           }
         } else {
           console.warn('⚠️  No customer email found for delivery confirmation');
@@ -2019,6 +2021,7 @@ const getDeliveryCalendar = async (req, res) => {
 const testDeliveryEmail = async (req, res) => {
   try {
     const { orderId } = req.body;
+    console.log(`[Order Controller] 🧪 testDeliveryEmail trigger request received for order ID: ${orderId}`);
 
     if (!orderId) {
       return res.status(400).json({ message: 'Order ID is required' });
@@ -2080,11 +2083,14 @@ const testDeliveryEmail = async (req, res) => {
       items: order.items
     };
 
+    console.log(`[Order Controller] 👤 Resolved customer for test: Name="${customerName || order.shippingDetails.fullName}", Email="${customerEmail}"`);
+    console.log(`[Order Controller] 📤 Triggering sendDeliveryConfirmationWithInvoice for test order #${order.orderNumber}`);
+
     // Send delivery confirmation email with invoice
     const { sendDeliveryConfirmationWithInvoice } = require('../services/emailNotificationService');
     const emailResult = await sendDeliveryConfirmationWithInvoice(deliveryNotificationData);
 
-    console.log('🧪 Test email result:', emailResult);
+    console.log(`[Order Controller] 🧪 sendDeliveryConfirmationWithInvoice output for test order #${order.orderNumber}:`, emailResult);
 
     if (emailResult.success) {
       res.json({

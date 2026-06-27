@@ -11,15 +11,25 @@ const getTransporter = () => {
     const user = process.env.SMTP_USER || "2006sbf@gmail.com";
     const pass = process.env.SMTP_PASS || process.env.EMAIL_PASS || "";
 
-    transporter = nodemailer.createTransport({
-      host,
-      port,
-      secure,
-      auth: {
-        user,
-        pass,
-      },
-    });
+    console.log(`[SMTP Transporter Creation] 🛠️ Initializing Nodemailer SMTP transporter...`);
+    console.log(`[SMTP Transporter Creation] Configuration: Host=${host}, Port=${port}, Secure=${secure}, User=${user}`);
+
+    try {
+      transporter = nodemailer.createTransport({
+        host,
+        port,
+        secure,
+        auth: {
+          user,
+          pass,
+        },
+      });
+      console.log(`[SMTP Transporter Creation] ✅ Nodemailer SMTP transporter successfully created`);
+    } catch (err) {
+      console.error(`[SMTP Transporter Creation] ❌ Failed to create SMTP transporter:`, err);
+      console.error(err.stack);
+      throw err;
+    }
   }
   return transporter;
 };
@@ -50,11 +60,13 @@ const sendEmail = async ({
   fromOverride,
   fromNameOverride,
 }) => {
+  console.log(`\n[Email Service] 📤 getTransporter() called to retrieve SMTP transporter`);
   const activeTransporter = getTransporter();
   
   // Resolve correct From address based on email type
   let fromAddress = "";
   let fromName = fromNameOverride || "Spring Blossoms Florist";
+  const emailFromEnv = process.env.EMAIL_FROM;
 
   if (fromOverride) {
     fromAddress = fromOverride;
@@ -66,7 +78,7 @@ const sendEmail = async ({
       case "payment_success":
       case "payment_failure":
       case "refund_notification":
-        fromAddress = process.env.MAIL_FROM_ORDER || "orderconfirmation@sbflorist.in";
+        fromAddress = process.env.MAIL_FROM_ORDER || emailFromEnv || "orderconfirmation@sbflorist.in";
         if (type === "invoice") {
           fromName = fromNameOverride || "Spring Blossoms Florist Billing";
         }
@@ -76,21 +88,21 @@ const sendEmail = async ({
       case "delivered":
       case "delivery_delay":
       case "delivery_reschedule":
-        fromAddress = process.env.MAIL_FROM_DELIVERY || "deliveryconfirmation@sbflorist.in";
+        fromAddress = process.env.MAIL_FROM_DELIVERY || emailFromEnv || "deliveryconfirmation@sbflorist.in";
         fromName = fromNameOverride || "Spring Blossoms Delivery";
         break;
       case "review_request":
       case "review_reminder":
-        fromAddress = process.env.MAIL_FROM_REVIEW || "review@sbflorist.in";
+        fromAddress = process.env.MAIL_FROM_REVIEW || emailFromEnv || "review@sbflorist.in";
         fromName = fromNameOverride || "Spring Blossoms Reviews";
         break;
       case "contact_form_reply":
       case "contact_form_enquiry":
-        fromAddress = process.env.MAIL_FROM_CONTACT || "contact@sbflorist.in";
+        fromAddress = process.env.MAIL_FROM_CONTACT || emailFromEnv || "contact@sbflorist.in";
         fromName = fromNameOverride || "Spring Blossoms Support";
         break;
       default:
-        fromAddress = process.env.MAIL_FROM_CONTACT || "contact@sbflorist.in";
+        fromAddress = process.env.MAIL_FROM_CONTACT || emailFromEnv || "contact@sbflorist.in";
         break;
     }
   }
@@ -112,16 +124,27 @@ const sendEmail = async ({
   if (cc) mailOptions.cc = cc;
   if (replyTo) mailOptions.replyTo = replyTo;
 
+  console.log(`[Email Service] 📧 Send Attempt details: Type="${type}", To="${to}", Subject="${subject}", CC="${cc || 'none'}"`);
+  console.log(`[Email Service] Sender Address Resolved: "${from.name} <${from.address}>"`);
+  if (attachments && attachments.length > 0) {
+    console.log(`[Email Service] Attachments: ${attachments.length} file(s) present`);
+    attachments.forEach((att, idx) => {
+      console.log(`[Email Service]   Attachment #${idx + 1}: filename="${att.filename}", contentType="${att.contentType}", size=${att.content ? att.content.length : 0} bytes`);
+    });
+  }
+
   let status = "failed";
   let smtpResponse = "";
   let errorMessage = "";
   let messageId = "";
 
   try {
+    console.log(`[Email Service] ⚡ Calling activeTransporter.sendMail...`);
     const result = await activeTransporter.sendMail(mailOptions);
     status = "success";
     smtpResponse = result.response || "Sent successfully";
     messageId = result.messageId || "";
+    console.log(`[Email Service] ✅ Email Sent Successfully! Message ID="${messageId}", Response="${smtpResponse}"`);
     return {
       success: true,
       messageId,
@@ -130,6 +153,10 @@ const sendEmail = async ({
   } catch (error) {
     status = "failed";
     errorMessage = error.message || "Unknown error";
+    console.error(`[Email Service] ❌ Email Send Failed for To="${to}":`, error);
+    if (error.stack) {
+      console.error(`[Email Service] Full Error Stack:`, error.stack);
+    }
     return {
       success: false,
       error: errorMessage,

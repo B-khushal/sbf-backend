@@ -1373,25 +1373,45 @@ const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
 
 // Send delivery confirmation email with invoice
 const sendDeliveryConfirmationWithInvoice = async (orderData) => {
+  console.log(`\n[Delivery Confirmation Email Trigger] 🚚 Triggered sendDeliveryConfirmationWithInvoice`);
   try {
     const { customer, order } = orderData;
+    
+    if (!customer) {
+      console.error(`[Delivery Confirmation Email Trigger] ❌ Customer object is missing in orderData`);
+      return { success: false, error: 'No customer data provided' };
+    }
+    if (!order) {
+      console.error(`[Delivery Confirmation Email Trigger] ❌ Order object is missing in orderData`);
+      return { success: false, error: 'No order data provided' };
+    }
+
+    console.log(`[Delivery Confirmation Email Trigger]   Order Number: ${order.orderNumber}`);
+    console.log(`[Delivery Confirmation Email Trigger]   Customer Name: ${customer.name}`);
+    console.log(`[Delivery Confirmation Email Trigger]   Customer Email: ${customer.email}`);
+    console.log(`[Delivery Confirmation Email Trigger]   Customer Phone: ${customer.phone}`);
 
     if (!customer.email) {
+      console.warn(`[Delivery Confirmation Email Trigger] ⚠️ Skipping delivery email: No customer email address provided`);
       return { success: false, error: 'No customer email address provided' };
     }
 
     console.log('📄 Generating PDF invoice...');
-
+    
     // Generate HTML for email body (delivery confirmation wrapper + invoice)
+    console.log('[Delivery Confirmation Email Trigger] Generating HTML body template...');
     const htmlContent = generateDeliveryConfirmationWithInvoiceEmail(orderData);
 
     // Generate standalone invoice HTML for the PDF attachment (uses the new unified template)
+    console.log('[Delivery Confirmation Email Trigger] Generating standalone Invoice HTML template...');
     const invoiceHTML = generateInvoiceHTML(orderData);
 
     // Generate PDF from the standalone invoice template
+    console.log('[Delivery Confirmation Email Trigger] Rendering PDF buffer via generateInvoicePDF...');
     const pdfBuffer = await generateInvoicePDF(invoiceHTML, order.orderNumber);
 
     console.log('✅ PDF invoice generated successfully');
+    console.log('[Delivery Confirmation Email Trigger] Attempting to send email via sendEmail...');
 
     const result = await sendEmail({
       to: customer.email,
@@ -1442,6 +1462,9 @@ const sendDeliveryConfirmationWithInvoice = async (orderData) => {
     return result;
   } catch (error) {
     console.error('❌ Failed to send delivery confirmation email:', error);
+    if (error.stack) {
+      console.error('❌ Error stack:', error.stack);
+    }
     return { success: false, error: error.message };
   }
 };
@@ -1724,7 +1747,10 @@ const getEmailConfig = (req, res) => {
   res.json({
     smtpHost: process.env.SMTP_HOST || 'smtp.gmail.com',
     smtpPort: parseInt(process.env.SMTP_PORT || '587', 10),
+    smtpSecure: process.env.SMTP_SECURE === 'true',
     smtpUser: (process.env.SMTP_USER || '2006sbf@gmail.com').replace(/(.{3}).*@/, '$1***@'),
+    emailFrom: process.env.EMAIL_FROM ? process.env.EMAIL_FROM.replace(/(.{3}).*@/, '$1***@') : 'NOT CONFIGURED',
+    frontendUrl: process.env.FRONTEND_URL || 'https://sbflorist.in',
     senderAddresses: {
       orders: process.env.MAIL_FROM_ORDER || 'orderconfirmation@sbflorist.in',
       delivery: process.env.MAIL_FROM_DELIVERY || 'deliveryconfirmation@sbflorist.in',

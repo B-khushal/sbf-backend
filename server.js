@@ -10,8 +10,101 @@ const fs = require('fs');
 const http = require('http');
 const https = require('https');
 
+const net = require('net');
+
 // Load environment variables
-dotenv.config({ path: path.join(__dirname, '.env') });
+if (process.env.NODE_ENV !== 'production') {
+  dotenv.config({ path: path.join(__dirname, '.env') });
+  console.log('📝 Development environment detected: loaded local .env file.');
+} else {
+  console.log('🌐 Production environment (VPS) detected: reading environment variables directly from system/process env.');
+}
+
+const checkPort = (host, port, timeout = 1500) => {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    let status = 'closed';
+    
+    socket.setTimeout(timeout);
+    
+    socket.connect(port, host, () => {
+      status = 'open';
+      socket.end();
+    });
+    
+    socket.on('timeout', () => {
+      status = 'timeout (possibly blocked by firewall)';
+      socket.destroy();
+    });
+    
+    socket.on('error', (err) => {
+      status = `error: ${err.message}`;
+      socket.destroy();
+    });
+    
+    socket.on('close', () => {
+      resolve({ port, status });
+    });
+  });
+};
+
+const runSMTPDiagnostics = async () => {
+  const host = process.env.SMTP_HOST || 'smtp.gmail.com';
+  const port = parseInt(process.env.SMTP_PORT || '587', 10);
+  const secure = process.env.SMTP_SECURE === 'true';
+  const user = process.env.SMTP_USER || '2006sbf@gmail.com';
+  const pass = process.env.SMTP_PASS || process.env.EMAIL_PASS;
+  
+  console.log('\n📧 ===================================================');
+  console.log('📧 SMTP CONFIGURATION DIAGNOSTICS & AUDIT');
+  console.log('📧 ===================================================');
+  console.log(`📧 Host: ${host}`);
+  console.log(`📧 Port: ${port}`);
+  console.log(`📧 Secure: ${secure}`);
+  console.log(`📧 User: ${user}`);
+  console.log(`📧 Password: ${pass ? '******** (configured)' : 'NOT CONFIGURED'}`);
+  console.log(`📧 Email From: ${process.env.EMAIL_FROM || 'NOT CONFIGURED'}`);
+  console.log(`📧 Frontend URL: ${process.env.FRONTEND_URL || 'NOT CONFIGURED'}`);
+  console.log('📧 ===================================================');
+
+  // Verify SMTP Connection
+  try {
+    const { getTransporter } = require('./services/emailService');
+    console.log('🔌 Verifying SMTP transporter connection...');
+    const transporter = getTransporter();
+    
+    await new Promise((resolve) => {
+      transporter.verify((error, success) => {
+        if (error) {
+          console.error('❌ SMTP Connection Failed during startup verification:', error.message);
+          if (error.stack) {
+            console.error('❌ SMTP Connection Error Stack:', error.stack);
+          }
+        } else {
+          console.log('✅ SMTP Server Ready & verified successfully!');
+        }
+        resolve();
+      });
+    });
+  } catch (err) {
+    console.error('❌ Failed to initialize/verify SMTP transporter during startup:', err);
+    console.error('Error stack:', err.stack);
+  }
+
+  // Firewall Test on Ports 465, 587, 2525
+  console.log('🛡️ Testing firewall connectivity to SMTP host:', host);
+  const testPorts = [465, 587, 2525];
+  for (const portToCheck of testPorts) {
+    console.log(`🛡️ Checking port ${portToCheck}...`);
+    const result = await checkPort(host, portToCheck);
+    if (result.status === 'open') {
+      console.log(`🛡️ Port ${portToCheck}: ✅ OPEN`);
+    } else {
+      console.warn(`🛡️ Port ${portToCheck}: ❌ CLOSED or BLOCKED (${result.status})`);
+    }
+  }
+  console.log('📧 ===================================================\n');
+};
 
 // Initialize email service
 const { initEmailService } = require('./services/emailNotificationService');
@@ -66,6 +159,13 @@ const startServer = async () => {
   try {
     await connectDB();
     console.log('Database connected successfully');
+
+    // Run SMTP Diagnostics & Firewall check
+    try {
+      await runSMTPDiagnostics();
+    } catch (smtpDiagErr) {
+      console.error('❌ Failed to run SMTP diagnostics:', smtpDiagErr);
+    }
 
     // Initialize default seasonal campaigns
     try {

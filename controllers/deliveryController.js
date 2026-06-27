@@ -231,6 +231,7 @@ exports.updateOrderDeliveryState = async (req, res) => {
   try {
     const { assignmentId } = req.params;
     const { status, failReason } = req.body;
+    console.log(`[Delivery Controller] 🚚 updateOrderDeliveryState status update request received: AssignmentID=${assignmentId}, TargetStatus="${status}"`);
     const assignment = await DeliveryAssignment.findById(assignmentId).populate('orderId');
 
     if (!assignment) {
@@ -320,8 +321,12 @@ exports.updateOrderDeliveryState = async (req, res) => {
 
       // Trigger Delivered email notification with invoice PDF attachment (using the user's matrix)
       try {
+        console.log(`[Delivery Controller] 🚚 Order updated to delivered! Retrieving delivery proof & preparing invoice email...`);
         const proofDoc = await DeliveryProof.findOne({ assignmentId: assignment._id });
-        await sendDeliveryConfirmationWithInvoice({
+        console.log(`[Delivery Controller]   Proof photo found: ${proofDoc ? 'Yes (' + proofDoc.imageUrl + ')' : 'No'}`);
+        
+        console.log(`[Delivery Controller] 📤 Triggering sendDeliveryConfirmationWithInvoice for order #${order.orderNumber}`);
+        const emailResult = await sendDeliveryConfirmationWithInvoice({
           customer: {
             name: order.shippingDetails?.fullName,
             email: order.shippingDetails?.email,
@@ -331,8 +336,12 @@ exports.updateOrderDeliveryState = async (req, res) => {
           partner,
           proofImageUrl: proofDoc ? proofDoc.imageUrl : null
         });
+        console.log(`[Delivery Controller] 📧 sendDeliveryConfirmationWithInvoice output for order #${order.orderNumber}:`, emailResult);
       } catch (invoiceErr) {
-        console.error('Invoice Delivery Email Error:', invoiceErr);
+        console.error('[Delivery Controller] ❌ Invoice Delivery Email Error:', invoiceErr);
+        if (invoiceErr.stack) {
+          console.error('[Delivery Controller] Error Stack:', invoiceErr.stack);
+        }
       }
     }
 

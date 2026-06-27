@@ -50,10 +50,12 @@ const getOrderById = asyncHandler(async (req, res) => {
 });
 
 const sendDeliveredEmailIfApplicable = async ({ orderId, changed, nextStatus }) => {
+  console.log(`[External Orders] 🔄 sendDeliveredEmailIfApplicable check: OrderID=${orderId}, Changed=${changed}, NextStatus="${nextStatus}"`);
   if (!changed || nextStatus !== 'DELIVERED') {
     return;
   }
 
+  console.log(`[External Orders] 🚚 External order status updated to DELIVERED. Initializing delivery confirmation email flow for OrderID=${orderId}...`);
   try {
     const populatedOrder = await Order.findById(orderId)
       .populate({
@@ -63,7 +65,7 @@ const sendDeliveredEmailIfApplicable = async ({ orderId, changed, nextStatus }) 
       .exec();
 
     if (!populatedOrder) {
-      console.warn(`[external-orders] skipped delivery email: order not found (${orderId})`);
+      console.warn(`[External Orders] ⚠️ Skipped delivery email: order not found (${orderId})`);
       return;
     }
 
@@ -85,9 +87,12 @@ const sendDeliveredEmailIfApplicable = async ({ orderId, changed, nextStatus }) 
     }
 
     if (!customerEmail) {
-      console.warn(`[external-orders] skipped delivery email: no customer email (${orderId})`);
+      console.warn(`[External Orders] ⚠️ Skipped delivery email: no customer email (${orderId})`);
       return;
     }
+
+    console.log(`[External Orders] 👤 Resolved customer: Name="${customerName}", Email="${customerEmail}"`);
+    console.log(`[External Orders] 📤 Triggering sendDeliveryConfirmationWithInvoice for external order #${populatedOrder.orderNumber}`);
 
     const emailResult = await sendDeliveryConfirmationWithInvoice({
       order: populatedOrder,
@@ -99,11 +104,18 @@ const sendDeliveredEmailIfApplicable = async ({ orderId, changed, nextStatus }) 
       items: populatedOrder.items,
     });
 
+    console.log(`[External Orders] 📧 sendDeliveryConfirmationWithInvoice output for external order #${populatedOrder.orderNumber}:`, emailResult);
+
     if (!emailResult?.success) {
-      console.error(`[external-orders] delivery email failed for ${orderId}:`, emailResult?.error || 'Unknown error');
+      console.error(`[External Orders] ❌ Delivery email failed for ${orderId}:`, emailResult?.error || 'Unknown error');
+    } else {
+      console.log(`[External Orders] ✅ Delivery email sent successfully for ${orderId}`);
     }
   } catch (error) {
-    console.error(`[external-orders] delivery email exception for ${orderId}:`, error.message);
+    console.error(`[External Orders] ❌ Delivery email exception for ${orderId}:`, error.message);
+    if (error.stack) {
+      console.error(`[External Orders] Error stack:`, error.stack);
+    }
   }
 };
 
