@@ -24,8 +24,8 @@ LABEL maintainer="B-khushal"
 LABEL description="SBF Florist Backend API"
 LABEL version="1.0.2"
 
-# Install curl for healthcheck, dumb-init, fontconfig and gcompat for phantomjs PDF rendering on Alpine
-RUN apk add --no-cache curl dumb-init fontconfig gcompat
+# Install curl for healthcheck, dumb-init, fontconfig, gcompat, libc6-compat and libstdc++ for phantomjs PDF rendering on Alpine
+RUN apk add --no-cache curl dumb-init fontconfig gcompat libc6-compat libstdc++
 
 # Set production environment
 ENV NODE_ENV=production

@@ -136,8 +136,35 @@ const runSMTPDiagnostics = async () => {
     } else {
       console.warn(`🛡️ Port ${portToCheck}: ❌ CLOSED or BLOCKED (${result.status})`);
     }
-  }
   console.log('📧 ===================================================\n');
+};
+
+const testPDFGenerationOnStartup = async () => {
+  console.log('📄 Testing PDF invoice generation functionality...');
+  try {
+    const { generateInvoiceHTML, generateInvoicePDF } = require('./services/emailNotificationService');
+    const sampleOrderData = {
+      order: {
+        orderNumber: 'TEST-STARTUP',
+        totalAmount: 100,
+        currency: 'INR',
+        createdAt: new Date(),
+        items: []
+      },
+      customer: {
+        name: 'Startup Test',
+        email: 'test@example.com'
+      }
+    };
+    const html = generateInvoiceHTML(sampleOrderData);
+    await generateInvoicePDF(html, 'TEST-STARTUP');
+    console.log('✅ PDF invoice generation verified successfully on this machine!');
+  } catch (err) {
+    console.error('❌ PDF invoice generation FAILED on startup check:', err.message);
+    if (err.stack) {
+      console.error('❌ PDF Error Stack:', err.stack);
+    }
+  }
 };
 
 // Initialize email service
@@ -199,6 +226,13 @@ const startServer = async () => {
       await runSMTPDiagnostics();
     } catch (smtpDiagErr) {
       console.error('❌ Failed to run SMTP diagnostics:', smtpDiagErr);
+    }
+
+    // Run PDF Generation Test
+    try {
+      await testPDFGenerationOnStartup();
+    } catch (pdfTestErr) {
+      console.error('❌ Failed to run startup PDF check:', pdfTestErr);
     }
 
     // Initialize default seasonal campaigns
