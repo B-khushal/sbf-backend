@@ -13,6 +13,42 @@ const {
 } = require('../controllers/notificationController');
 const { testEmailService, sendTestEmail, getEmailConfig } = require('../services/emailNotificationService');
 
+// Public endpoint to test PDF generation errors on VPS
+router.get('/public/test-pdf-error', async (req, res) => {
+  try {
+    const { generateInvoiceHTML, generateInvoicePDF } = require('../services/emailNotificationService');
+    const sampleOrderData = {
+      order: {
+        orderNumber: 'TEST-ROUTE-DIAGNOSTICS',
+        totalAmount: 100,
+        currency: 'INR',
+        createdAt: new Date(),
+        items: []
+      },
+      customer: {
+        name: 'Route Test',
+        email: 'test@example.com'
+      }
+    };
+    const html = generateInvoiceHTML(sampleOrderData);
+    const pdfBuffer = await generateInvoicePDF(html, 'TEST-ROUTE-DIAGNOSTICS');
+    
+    // If it succeeded, send the PDF
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline; filename="test.pdf"');
+    return res.send(pdfBuffer);
+  } catch (err) {
+    console.error('❌ test-pdf-error route failed:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'PDF Invoice Generation Failed on this machine.',
+      error: err.message,
+      code: err.code,
+      stack: err.stack
+    });
+  }
+});
+
 // All routes are protected and require authentication
 router.use(protect);
 
