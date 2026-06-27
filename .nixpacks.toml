@@ -1,7 +1,8 @@
 providers = ["node"]
 
 [phases.setup]
-nixPkgs = ["nodejs_20"]
+nixPkgs = ["nodejs_20", "fontconfig", "freetype", "zlib"]
+nixLibs = ["fontconfig", "freetype", "zlib"]
 aptPkgs = ["fontconfig", "libfreetype6", "libssl-dev", "bzip2"]
 
 [phases.install]
