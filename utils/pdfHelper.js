@@ -182,18 +182,10 @@ const getPdfOptions = ({ documentTitle, ...additionalOptions } = {}) => {
         format: 'A4',
         orientation: 'portrait',
         border: {
-            top: '8mm',
-            right: '15mm',
-            bottom: '8mm',
-            left: '15mm'
-        },
-        header: {
-            height: documentTitle ? '50mm' : '40mm', // Adjust height based on whether title is present
-            contents: getPdfHeader(documentTitle)
-        },
-        footer: {
-            height: '25mm', // Tighter footer
-            contents: getPdfFooter()
+            top: '12mm',
+            right: '12mm',
+            bottom: '12mm',
+            left: '12mm'
         },
         type: 'pdf',
         quality: '75',

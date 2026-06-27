@@ -656,14 +656,14 @@ const generateInvoiceHTML = (orderData) => {
     
     return `
       <tr style="border-bottom: 1px solid #e2e8f0;">
-        <td style="padding: 12px 14px; color: #1e293b; font-size: 12px; font-weight: 500;">
+        <td style="padding: 10px 12px; color: #1e293b; font-size: 11px; font-weight: 500; word-break: break-word;">
           <div style="font-weight: 700; color: #0f172a;">${title}</div>
           <div style="font-size: 10px; color: #64748b; margin-top: 2px;">${variantText}</div>
           ${customText ? `<div style="font-size: 9px; color: #b45309; font-weight: 600; margin-top: 1px;">✨ ${customText}</div>` : ''}
         </td>
-        <td style="padding: 12px 14px; text-align: center; color: #475569; font-size: 12px;">${item.quantity}</td>
-        <td style="padding: 12px 14px; text-align: right; color: #475569; font-size: 12px;">${formatCurrency(item.finalPrice || item.price, order.currency)}</td>
-        <td style="padding: 12px 14px; text-align: right; color: #1e293b; font-size: 12px; font-weight: 700;">${formatCurrency((item.finalPrice || item.price) * item.quantity, order.currency)}</td>
+        <td style="padding: 10px 12px; text-align: center; color: #475569; font-size: 11px; vertical-align: middle;">${item.quantity}</td>
+        <td style="padding: 10px 12px; text-align: right; color: #475569; font-size: 11px; vertical-align: middle; white-space: nowrap;">${formatCurrency(item.finalPrice || item.price, order.currency)}</td>
+        <td style="padding: 10px 12px; text-align: right; color: #1e293b; font-size: 11px; font-weight: 700; vertical-align: middle; white-space: nowrap;">${formatCurrency((item.finalPrice || item.price) * item.quantity, order.currency)}</td>
       </tr>
     `;
   }).join('');
@@ -676,62 +676,81 @@ const generateInvoiceHTML = (orderData) => {
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>Invoice ${invoiceNumber}</title>
       <style>
+        @page {
+          size: A4;
+          margin: 12mm;
+        }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
           font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-          font-size: 13px;
+          font-size: 11px;
           color: #334155;
           background: #fff;
-          line-height: 1.5;
+          line-height: 1.4;
+          zoom: 1;
+          transform: none;
+          -webkit-print-color-adjust: exact;
         }
-        .invoice-page {
-          max-width: 750px;
+        .invoice-container {
+          width: 186mm;
+          min-height: 273mm;
           margin: 0 auto;
-          padding: 20px 25px;
+          box-sizing: border-box;
+          position: relative;
+          background-color: #fff;
+          padding-bottom: 25mm; /* Allocate space for absolute positioned footer */
         }
-        table { border-collapse: collapse; width: 100%; }
+        table {
+          width: 100%;
+          border-collapse: collapse;
+        }
         .details-card {
           border: 1px solid #e2e8f0;
-          border-radius: 8px;
+          border-radius: 6px;
           background: #f8fafc;
-          padding: 14px 16px;
-          margin-bottom: 15px;
+          padding: 10px 12px;
+          margin-bottom: 12px;
         }
         .card-title {
-          font-size: 11px;
+          font-size: 12px; /* Section Titles: 12-14px bold uppercase */
           font-weight: 700;
           color: #064e3b;
           text-transform: uppercase;
-          letter-spacing: 1px;
-          margin-bottom: 8px;
+          letter-spacing: 0.8px;
+          margin-bottom: 6px;
           border-bottom: 1px solid #e2e8f0;
           padding-bottom: 4px;
         }
-        .text-primary {
-          color: #064e3b;
+        .invoice-footer {
+          position: absolute;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          text-align: center;
+          border-top: 1px solid #e2e8f0;
+          padding-top: 10px;
         }
-        .text-gold {
-          color: #c5a880;
-        }
-        .font-serif {
-          font-family: 'Playfair Display', Georgia, serif;
+        .footer-text {
+          font-size: 8.5px; /* Footer Text: 8-9px */
+          color: #94a3b8;
+          line-height: 1.4;
         }
       </style>
     </head>
     <body>
-      <div class="invoice-page">
+      <div class="invoice-container">
 
         <!-- BRAND HEADER -->
-        <table style="width: 100%; margin-bottom: 25px; border-collapse: collapse;">
+        <table style="margin-bottom: 15px;">
           <tr>
             <td style="vertical-align: top; width: 60%;">
-              <table style="width: 100%; border-collapse: collapse;">
+              <table>
                 <tr>
-                  <td style="vertical-align: middle; width: 50px; font-size: 38px; padding-right: 12px; line-height: 1;">🌸</td>
+                  ${logoBase64 ? `<td style="vertical-align: middle; width: 55px; padding-right: 12px;"><img src="${logoBase64}" alt="Logo" style="height: 50px; object-fit: contain;" /></td>` : ''}
                   <td style="vertical-align: top;">
-                    <h1 style="font-size: 24px; font-weight: 800; color: #064e3b; line-height: 1.1; margin: 0 0 4px 0; letter-spacing: -0.5px;">Spring Blossoms Florist</h1>
-                    <p style="font-size: 12px; color: #c5a880; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; margin: 0 0 6px 0;">A Reason to Express</p>
-                    <p style="font-size: 10px; color: #64748b; line-height: 1.4; margin: 0; font-weight: 500;">
+                    <h1 style="font-size: 26px; font-weight: 800; color: #064e3b; line-height: 1.1; margin: 0 0 2px 0;">Spring Blossoms Florist</h1>
+                    <p style="font-size: 10px; color: #c5a880; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 4px 0;">A Reason to Express</p>
+                    <p style="font-size: 10px; color: #64748b; line-height: 1.3; margin: 0;">
                       Door No. 12-2-786/A & B, Najam Centre, Pillar No. 32,<br>
                       Rethi Bowli, Mehdipatnam, Hyderabad, Telangana 500028<br>
                       <strong>GSTIN:</strong> 36AABFS1234Z1Z5 | <strong>Ph:</strong> +91 9949683222
@@ -741,20 +760,20 @@ const generateInvoiceHTML = (orderData) => {
               </table>
             </td>
             <td style="vertical-align: top; text-align: right; width: 40%;">
-              <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px 16px; display: inline-block; text-align: left; min-width: 220px;">
-                <h2 style="font-size: 14px; font-weight: 850; color: #064e3b; text-transform: uppercase; letter-spacing: 1.5px; border-bottom: 2px solid #064e3b; padding-bottom: 6px; margin-bottom: 8px; text-align: right;">TAX INVOICE</h2>
-                <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+              <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 10px 12px; display: inline-block; text-align: left; width: 65mm;">
+                <h2 style="font-size: 28px; font-weight: 850; color: #064e3b; text-transform: uppercase; letter-spacing: 1px; border-bottom: 2px solid #064e3b; padding-bottom: 4px; margin-bottom: 6px; text-align: right;">TAX INVOICE</h2>
+                <table style="font-size: 10px; line-height: 1.3;">
                   <tr>
-                    <td style="padding: 2px 0; color: #64748b; font-weight: 600;">Invoice No:</td>
-                    <td style="padding: 2px 0; font-weight: 700; color: #064e3b; text-align: right;">${invoiceNumber}</td>
+                    <td style="color: #64748b; font-weight: 600; padding: 1px 0;">Invoice No:</td>
+                    <td style="font-weight: 700; color: #064e3b; text-align: right; padding: 1px 0;">${invoiceNumber}</td>
                   </tr>
                   <tr>
-                    <td style="padding: 2px 0; color: #64748b; font-weight: 600;">Order Date:</td>
-                    <td style="padding: 2px 0; color: #334155; font-weight: 600; text-align: right;">${orderDate}</td>
+                    <td style="color: #64748b; font-weight: 600; padding: 1px 0;">Order Date:</td>
+                    <td style="color: #334155; font-weight: 600; text-align: right; padding: 1px 0;">${orderDate}</td>
                   </tr>
                   <tr>
-                    <td style="padding: 2px 0; color: #64748b; font-weight: 600;">Delivery Date:</td>
-                    <td style="padding: 2px 0; color: #334155; font-weight: 600; text-align: right;">${deliveryDate}</td>
+                    <td style="color: #64748b; font-weight: 600; padding: 1px 0;">Delivery Date:</td>
+                    <td style="color: #334155; font-weight: 600; text-align: right; padding: 1px 0;">${deliveryDate}</td>
                   </tr>
                 </table>
               </div>
@@ -764,18 +783,18 @@ const generateInvoiceHTML = (orderData) => {
 
         <!-- DOUBLE DECORATIVE BORDER -->
         <div style="height: 3px; background: #064e3b; margin-bottom: 2px; border-radius: 2px;"></div>
-        <div style="height: 1px; background: #c5a880; margin-bottom: 20px;"></div>
+        <div style="height: 1px; background: #c5a880; margin-bottom: 12px;"></div>
 
         <!-- CUSTOMER & SHIPPING CARDS ROW -->
-        <table style="width: 100%; margin-bottom: 20px; border-collapse: collapse;">
+        <table style="margin-bottom: 12px;">
           <tr>
             <td style="width: 48%; vertical-align: top;">
-              <div class="details-card" style="margin-bottom: 0; height: 165px; border-left: 3px solid #064e3b;">
+              <div class="details-card" style="margin-bottom: 0; min-height: 48mm; border-left: 3px solid #064e3b;">
                 <div class="card-title">Billing Details</div>
-                <div style="font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">
+                <div style="font-size: 11px; font-weight: 700; color: #0f172a; margin-bottom: 4px;">
                   ${order.shippingDetails?.fullName || customer.name || 'Valued Customer'}
                 </div>
-                <div style="font-size: 11px; color: #475569; line-height: 1.5; margin-top: 6px;">
+                <div style="font-size: 10px; color: #475569; line-height: 1.4; margin-top: 4px;">
                   <strong>Email:</strong> ${customer.email || 'N/A'}<br>
                   <strong>Phone:</strong> ${customer.phone || 'N/A'}<br>
                   <strong>Billing Address:</strong> Same as Shipping Address
@@ -784,12 +803,12 @@ const generateInvoiceHTML = (orderData) => {
             </td>
             <td style="width: 4%;"></td>
             <td style="width: 48%; vertical-align: top;">
-              <div class="details-card" style="margin-bottom: 0; height: 165px; border-left: 3px solid #c5a880;">
+              <div class="details-card" style="margin-bottom: 0; min-height: 48mm; border-left: 3px solid #c5a880;">
                 <div class="card-title">${isGift ? 'Delivery Recipient (Gift)' : 'Delivery Address'}</div>
-                <div style="font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">
+                <div style="font-size: 11px; font-weight: 700; color: #0f172a; margin-bottom: 4px;">
                   ${recipientName}
                 </div>
-                <div style="font-size: 11px; color: #475569; line-height: 1.4; margin-top: 6px;">
+                <div style="font-size: 10px; color: #475569; line-height: 1.4; margin-top: 4px;">
                   <strong>Phone:</strong> ${recipientPhone}<br>
                   <strong>Address:</strong> ${recipientAddress}${recipientApartment ? ', ' + recipientApartment : ''}, ${recipientCity}${recipientState ? ', ' + recipientState : ''} ${recipientZip}
                 </div>
@@ -799,13 +818,13 @@ const generateInvoiceHTML = (orderData) => {
         </table>
 
         <!-- ITEMS TABLE -->
-        <table style="width: 100%; margin-bottom: 20px; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; border-collapse: collapse;">
+        <table style="margin-bottom: 12px; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; table-layout: auto;">
           <thead>
             <tr style="background-color: #f0fdf4; border-bottom: 2px solid #064e3b;">
-              <th style="padding: 12px 14px; text-align: left; font-weight: 700; color: #064e3b; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">Item Description</th>
-              <th style="padding: 12px 14px; text-align: center; font-weight: 700; color: #064e3b; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; width: 80px;">Qty</th>
-              <th style="padding: 12px 14px; text-align: right; font-weight: 700; color: #064e3b; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; width: 120px;">Unit Price</th>
-              <th style="padding: 12px 14px; text-align: right; font-weight: 700; color: #064e3b; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; width: 120px;">Total</th>
+              <th style="padding: 10px 12px; text-align: left; font-weight: 700; color: #064e3b; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">Item Description</th>
+              <th style="padding: 10px 12px; text-align: center; font-weight: 700; color: #064e3b; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; width: 12%;">Qty</th>
+              <th style="padding: 10px 12px; text-align: right; font-weight: 700; color: #064e3b; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; width: 18%;">Unit Price</th>
+              <th style="padding: 10px 12px; text-align: right; font-weight: 700; color: #064e3b; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; width: 18%;">Total</th>
             </tr>
           </thead>
           <tbody>
@@ -814,29 +833,28 @@ const generateInvoiceHTML = (orderData) => {
         </table>
 
         <!-- TOTALS & METADATA GRID ROW -->
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+        <table style="margin-bottom: 12px;">
           <tr>
             <td style="width: 55%; vertical-align: top;">
               <!-- PAYMENT & LOGISTICS -->
-              <table style="width: 100%; border-collapse: collapse;">
+              <table style="margin-bottom: 8px;">
                 <tr>
-                  <td style="padding-right: 15px; vertical-align: top; width: 50%;">
-                    <div class="details-card" style="padding: 10px 12px; min-height: 90px; margin-bottom: 10px; border-left: 2px solid #3b82f6;">
-                      <div class="card-title" style="color: #3b82f6; border-bottom: 1px solid #eff6ff;">Payment Status</div>
-                      <div style="font-size: 11px; color: #334155; line-height: 1.5; margin-top: 4px;">
+                  <td style="padding-right: 10px; vertical-align: top; width: 50%;">
+                    <div class="details-card" style="padding: 8px 10px; min-height: 28mm; border-left: 2px solid #3b82f6; margin-bottom: 0;">
+                      <div class="card-title" style="font-size: 10px; color: #3b82f6; border-bottom: 1px solid #eff6ff; margin-bottom: 4px; padding-bottom: 2px;">Payment Status</div>
+                      <div style="font-size: 10px; color: #334155; line-height: 1.4;">
                         <strong>Method:</strong> ${paymentMethod}<br>
                         <strong>Status:</strong> <span style="color: #059669; font-weight: 700;">● ${paymentStatus}</span>
-                        ${transactionId ? '<br><strong style="font-size: 9px; color: #64748b;">TxID: ' + transactionId + '</strong>' : ''}
+                        ${transactionId ? '<br><strong style="font-size: 8.5px; color: #64748b;">TxID: ' + transactionId + '</strong>' : ''}
                       </div>
                     </div>
                   </td>
                   <td style="vertical-align: top; width: 50%;">
-                    <div class="details-card" style="padding: 10px 12px; min-height: 90px; margin-bottom: 10px; border-left: 2px solid #8b5cf6;">
-                      <div class="card-title" style="color: #8b5cf6; border-bottom: 1px solid #f5f3ff;">Delivery Logistics</div>
-                      <div style="font-size: 11px; color: #334155; line-height: 1.5; margin-top: 4px;">
+                    <div class="details-card" style="padding: 8px 10px; min-height: 28mm; border-left: 2px solid #8b5cf6; margin-bottom: 0;">
+                      <div class="card-title" style="font-size: 10px; color: #8b5cf6; border-bottom: 1px solid #f5f3ff; margin-bottom: 4px; padding-bottom: 2px;">Delivery Logistics</div>
+                      <div style="font-size: 10px; color: #334155; line-height: 1.4;">
                         <strong>Date:</strong> ${deliveryDate}<br>
                         <strong>Slot:</strong> ${shipping.timeSlot || 'Standard Delivery'}
-                        ${(shipping.deliverySpecialInstructions || shipping.notes) ? `<br><strong style="font-size: 10px; color: #64748b;">Instructions:</strong> ` + (shipping.deliverySpecialInstructions || shipping.notes) : ''}
                       </div>
                     </div>
                   </td>
@@ -844,9 +862,9 @@ const generateInvoiceHTML = (orderData) => {
               </table>
 
               ${(shipping.cardMessage || shipping.giftMessage) ? `
-                <div class="details-card" style="border: 1px dashed #c5a880; background: #fffdf5; padding: 10px 12px;">
-                  <div class="card-title" style="color: #c5a880; border-bottom: 1px dashed #fed7aa; margin-bottom: 4px;">💌 Card Message</div>
-                  <div style="font-size: 11px; font-style: italic; color: #475569; line-height: 1.4; margin-top: 4px;">
+                <div class="details-card" style="border: 1px dashed #c5a880; background: #fffdf5; padding: 8px 10px; margin-bottom: 0;">
+                  <div class="card-title" style="font-size: 10px; color: #c5a880; border-bottom: 1px dashed #fed7aa; margin-bottom: 4px;">💌 Card Message</div>
+                  <div style="font-size: 10px; font-style: italic; color: #475569; line-height: 1.3;">
                     "${shipping.cardMessage || shipping.giftMessage}"
                   </div>
                 </div>
@@ -855,14 +873,14 @@ const generateInvoiceHTML = (orderData) => {
             <td style="width: 5%;"></td>
             <td style="width: 40%; vertical-align: top;">
               <!-- PRICING SUMMARY -->
-              <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+              <table style="font-size: 11px; line-height: 1.5;">
                 <tr>
-                  <td style="padding: 6px 0; color: #64748b; font-weight: 500;">Subtotal:</td>
-                  <td style="padding: 6px 0; text-align: right; color: #1e293b; font-weight: 600;">${formatCurrency(itemsSubtotal, order.currency)}</td>
+                  <td style="padding: 4px 0; color: #64748b; font-weight: 500;">Subtotal:</td>
+                  <td style="padding: 4px 0; text-align: right; color: #1e293b; font-weight: 600;">${formatCurrency(itemsSubtotal, order.currency)}</td>
                 </tr>
                 <tr>
-                  <td style="padding: 6px 0; color: #64748b; font-weight: 500;">Delivery Fee:</td>
-                  <td style="padding: 6px 0; text-align: right; color: #1e293b; font-weight: 600;">
+                  <td style="padding: 4px 0; color: #64748b; font-weight: 500;">Delivery Fee:</td>
+                  <td style="padding: 4px 0; text-align: right; color: #1e293b; font-weight: 600;">
                     ${order.isFirstOrderFreeDelivery 
                       ? `FREE (${formatCurrency((order.shippingDetails?.timeSlot === 'midnight' ? 300 : 150) * (order.currencyRate || 1), order.currency)} waived)` 
                       : (hasDeliveryFee ? formatCurrency(deliveryFee, order.currency) : 'FREE')}
@@ -870,13 +888,13 @@ const generateInvoiceHTML = (orderData) => {
                 </tr>
                 ${hasPromo ? `
                 <tr>
-                  <td style="padding: 6px 0; color: #64748b; font-weight: 500;">Promo Discount${order.promoCode?.code ? ' (' + order.promoCode.code + ')' : ''}:</td>
-                  <td style="padding: 6px 0; text-align: right; color: #dc2626; font-weight: 600;">-${formatCurrency(promoDiscount, order.currency)}</td>
+                  <td style="padding: 4px 0; color: #64748b; font-weight: 500;">Promo Discount${order.promoCode?.code ? ' (' + order.promoCode.code + ')' : ''}:</td>
+                  <td style="padding: 4px 0; text-align: right; color: #dc2626; font-weight: 600;">-${formatCurrency(promoDiscount, order.currency)}</td>
                 </tr>
                 ` : ''}
                 <tr style="border-top: 2px solid #064e3b;">
-                  <td style="padding: 10px 0; font-weight: 700; font-size: 14px; color: #064e3b;">Grand Total:</td>
-                  <td style="padding: 10px 0; text-align: right; font-weight: 700; font-size: 14px; color: #064e3b;">${formatCurrency(grandTotal, order.currency)}</td>
+                  <td style="padding: 8px 0; font-weight: 700; font-size: 13px; color: #064e3b;">Grand Total:</td>
+                  <td style="padding: 8px 0; text-align: right; font-weight: 700; font-size: 13px; color: #064e3b;">${formatCurrency(grandTotal, order.currency)}</td>
                 </tr>
               </table>
             </td>
@@ -884,9 +902,9 @@ const generateInvoiceHTML = (orderData) => {
         </table>
 
         <!-- FOOTER -->
-        <div style="text-align: center; font-size: 11px; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 15px; margin-top: 25px;">
-          <div style="font-weight: 700; color: #064e3b; margin-bottom: 4px; font-size: 12px;">Thank you for choosing Spring Blossoms Florist.</div>
-          <div style="color: #94a3b8; font-size: 9px; line-height: 1.4;">
+        <div class="invoice-footer">
+          <div style="font-weight: 700; color: #064e3b; margin-bottom: 2px; font-size: 11px;">Thank you for choosing Spring Blossoms Florist.</div>
+          <div class="footer-text">
             We design premium floral arrangements and curated gift solutions to make your moments unforgettable.<br>
             For any queries or modifications to your delivery, please contact +91 9949683222 or email contact@sbflorist.in.<br>
             This is a computer-generated invoice and requires no signature.
