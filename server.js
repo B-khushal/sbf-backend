@@ -20,6 +20,12 @@ if (process.env.NODE_ENV !== 'production') {
   console.log('🌐 Production environment (VPS) detected: reading environment variables directly from system/process env.');
 }
 
+// OpenSSL 3 compatibility bypass for legacy PhantomJS on Linux systems
+if (process.platform === 'linux') {
+  process.env.OPENSSL_CONF = '/dev/null';
+  console.log('🛡️ OpenSSL 3 compatibility bypass applied (OPENSSL_CONF=/dev/null)');
+}
+
 // Global Safety Nets to prevent background library errors from crashing the Express server
 process.on('uncaughtException', (err) => {
   console.error('🔥 Uncaught Exception caught to prevent server crash:', err.message);
