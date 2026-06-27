@@ -1402,30 +1402,31 @@ const sendDeliveryConfirmationWithInvoice = async (orderData) => {
     console.log('[Delivery Confirmation Email Trigger] Generating HTML body template...');
     const htmlContent = generateDeliveryConfirmationWithInvoiceEmail(orderData);
 
-    // Generate standalone invoice HTML for the PDF attachment (uses the new unified template)
-    console.log('[Delivery Confirmation Email Trigger] Generating standalone Invoice HTML template...');
-    const invoiceHTML = generateInvoiceHTML(orderData);
+    let pdfBuffer = null;
+    try {
+      // Generate standalone invoice HTML for the PDF attachment (uses the new unified template)
+      console.log('[Delivery Confirmation Email Trigger] Generating standalone Invoice HTML template...');
+      const invoiceHTML = generateInvoiceHTML(orderData);
 
-    // Generate PDF from the standalone invoice template
-    console.log('[Delivery Confirmation Email Trigger] Rendering PDF buffer via generateInvoicePDF...');
-    const pdfBuffer = await generateInvoicePDF(invoiceHTML, order.orderNumber);
+      // Generate PDF from the standalone invoice template
+      console.log('[Delivery Confirmation Email Trigger] Rendering PDF buffer via generateInvoicePDF...');
+      pdfBuffer = await generateInvoicePDF(invoiceHTML, order.orderNumber);
+      console.log('✅ PDF invoice generated successfully');
+    } catch (pdfErr) {
+      console.error('[Delivery Confirmation Email Trigger] ❌ PDF Invoice generation failed, falling back to sending email without attachment:', pdfErr.message);
+      if (pdfErr.stack) {
+        console.error('[Delivery Confirmation Email Trigger] PDF Error Stack:', pdfErr.stack);
+      }
+    }
 
-    console.log('✅ PDF invoice generated successfully');
     console.log('[Delivery Confirmation Email Trigger] Attempting to send email via sendEmail...');
 
-    const result = await sendEmail({
+    const emailOptions = {
       to: customer.email,
       cc: '2006sbf@gmail.com', // Send copy to business email
       subject: `🎉 Order Delivered & Invoice #INV-${order.orderNumber} - Spring Blossoms Florist`,
       html: htmlContent,
       type: 'delivered',
-      attachments: [
-        {
-          filename: `Invoice-${order.orderNumber}.pdf`,
-          content: pdfBuffer,
-          contentType: 'application/pdf'
-        }
-      ],
       text: `Delivery Confirmation & Invoice - Spring Blossoms Florist
 
         Dear ${customer.name},
@@ -1445,16 +1446,34 @@ const sendDeliveryConfirmationWithInvoice = async (orderData) => {
 
         Thank you for choosing Spring Blossoms Florist! We hope you love your beautiful arrangement.
 
-        Please find your detailed invoice attached as a PDF.
+        ${pdfBuffer ? 'Please find your detailed invoice attached as a PDF.' : ''}
 
         For any questions, please contact us at contact@sbflorist.in or call 9949683222.
 
         Best regards,
         Spring Blossoms Florist Team`
-    });
+    };
+
+    if (pdfBuffer) {
+      emailOptions.attachments = [
+        {
+          filename: `Invoice-${order.orderNumber}.pdf`,
+          content: pdfBuffer,
+          contentType: 'application/pdf'
+        }
+      ];
+    } else {
+      emailOptions.subject = `🎉 Order Delivered #INV-${order.orderNumber} - Spring Blossoms Florist`;
+    }
+
+    const result = await sendEmail(emailOptions);
 
     if (result.success) {
-      console.log('✅ Delivery confirmation email with PDF invoice sent successfully:', result.messageId);
+      if (pdfBuffer) {
+        console.log('✅ Delivery confirmation email with PDF invoice sent successfully:', result.messageId);
+      } else {
+        console.log('✅ Delivery confirmation email sent successfully (fallback, without PDF invoice):', result.messageId);
+      }
     } else {
       console.error('❌ Failed to send delivery confirmation email:', result.error);
     }
