@@ -2,6 +2,7 @@ providers = ["node"]
 
 [phases.setup]
 nixPkgs = ["nodejs_20"]
+aptPkgs = ["fontconfig", "libfreetype6", "libssl-dev", "bzip2"]
 
 [phases.install]
 cmds = ["npm install"]
