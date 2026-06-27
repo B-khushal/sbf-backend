@@ -722,7 +722,7 @@ const generateInvoiceHTML = (orderData) => {
                   <td style="vertical-align: middle; width: 50px; font-size: 38px; padding-right: 12px; line-height: 1;">🌸</td>
                   <td style="vertical-align: top;">
                     <h1 style="font-size: 24px; font-weight: 800; color: #064e3b; line-height: 1.1; margin: 0 0 4px 0; letter-spacing: -0.5px;">Spring Blossoms Florist</h1>
-                    <p style="font-size: 12px; color: #c5a880; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; margin: 0 0 6px 0;">Premium Floral Arrangements & Gifts</p>
+                    <p style="font-size: 12px; color: #c5a880; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; margin: 0 0 6px 0;">A Reason to Express</p>
                     <p style="font-size: 10px; color: #64748b; line-height: 1.4; margin: 0; font-weight: 500;">
                       Door No. 12-2-786/A & B, Najam Centre, Pillar No. 32,<br>
                       Rethi Bowli, Mehdipatnam, Hyderabad, Telangana 500028<br>
