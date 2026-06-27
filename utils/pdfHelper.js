@@ -114,23 +114,39 @@ const ensurePhantomJS = async () => {
     
     try {
         await new Promise((resolve, reject) => {
-            const file = fs.createWriteStream(tempArchive);
             const https = require('https');
+            const http = require('http');
             
-            https.get(archiveUrl, (response) => {
-                if (response.statusCode !== 200) {
-                    reject(new Error(`Failed to download PhantomJS: Status ${response.statusCode}`));
-                    return;
-                }
-                response.pipe(file);
-                file.on('finish', () => {
-                    file.close();
-                    resolve();
+            const download = (currentUrl) => {
+                const client = currentUrl.startsWith('https') ? https : http;
+                
+                client.get(currentUrl, (response) => {
+                    // Handle redirects (status codes 300-399)
+                    if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+                        const redirectUrl = new URL(response.headers.location, currentUrl).href;
+                        console.log(`[PDF Helper] 🔄 Following redirect to: ${redirectUrl}`);
+                        download(redirectUrl);
+                        return;
+                    }
+                    
+                    if (response.statusCode !== 200) {
+                        reject(new Error(`Failed to download PhantomJS: Status ${response.statusCode}`));
+                        return;
+                    }
+                    
+                    const file = fs.createWriteStream(tempArchive);
+                    response.pipe(file);
+                    file.on('finish', () => {
+                        file.close();
+                        resolve();
+                    });
+                }).on('error', (err) => {
+                    fs.unlink(tempArchive, () => {});
+                    reject(err);
                 });
-            }).on('error', (err) => {
-                fs.unlink(tempArchive, () => {});
-                reject(err);
-            });
+            };
+            
+            download(archiveUrl);
         });
 
         console.log('[PDF Helper] 📦 Extracting PhantomJS binary archive...');
