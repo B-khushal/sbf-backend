@@ -48,6 +48,17 @@ router.put('/partner/orders/:assignmentId/state', protectDriver, deliveryControl
 router.post('/partner/orders/:assignmentId/verify-otp', protectDriver, deliveryController.verifyCustomerOtp);
 router.post('/partner/orders/:assignmentId/proof', protectDriver, deliveryController.uploadDeliveryProof);
 
+// --- DRIVER FCM & ASSIGNMENTS ---
+router.post('/delivery/register-fcm-token', protectDriver, deliveryController.registerFcmToken);
+router.post('/delivery/update-fcm-token', protectDriver, deliveryController.updateFcmToken);
+router.post('/delivery/accept-assignment', protectDriver, deliveryController.acceptAssignment);
+router.post('/delivery/reject-assignment', protectDriver, deliveryController.rejectAssignment);
+router.post('/delivery/update-status', protectDriver, deliveryController.updateDeliveryStatusNew);
+router.post('/delivery/verify-otp', protectDriver, deliveryController.verifyCustomerOtpNew);
+
+// --- DRIVER PROFILE ---
+router.get('/auth/me', protectDriver, deliveryController.getMe);
+
 // --- ADMIN CONTROLS (PROTECTED + ADMIN ROLE) ---
 router.get('/admin/partners', protect, admin, deliveryController.getAdminDeliveryPartners);
 router.get('/admin/partners/:partnerId', protect, admin, deliveryController.getAdminDeliveryPartnerDetails);

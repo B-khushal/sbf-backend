@@ -1402,6 +1402,13 @@ const sendDeliveryConfirmationWithInvoice = async (orderData) => {
   console.log(`\n[Delivery Confirmation Email Trigger] 🚚 Triggered sendDeliveryConfirmationWithInvoice`);
   try {
     const { customer, order } = orderData;
+
+    const { checkIsPlaceholderCustomer } = require('../utils/testCustomerHelper');
+    const check = checkIsPlaceholderCustomer(orderData);
+    if (check.isPlaceholder) {
+      console.log(`Customer notifications skipped:\nReason: ${check.reason}\nOrder: ${order?.orderNumber || 'Unknown'}\nEmail: ${customer?.email || 'N/A'}`);
+      return { success: true, message: 'Skipped delivery confirmation email for placeholder customer.' };
+    }
     
     if (!customer) {
       console.error(`[Delivery Confirmation Email Trigger] ❌ Customer object is missing in orderData`);
@@ -1522,7 +1529,18 @@ const sendEmailNotification = async (orderData) => {
     const { customer, order } = orderData;
 
     // Send email to customer
-    if (customer.email) {
+    const { checkIsPlaceholderCustomer } = require('../utils/testCustomerHelper');
+    const check = checkIsPlaceholderCustomer(orderData);
+    
+    if (check.isPlaceholder) {
+      console.log(`Customer notifications skipped:\nReason: ${check.reason}\nOrder: ${order.orderNumber}\nEmail: ${customer.email || 'N/A'}`);
+      results.push({
+        type: 'customer',
+        success: true,
+        message: 'Skipped customer confirmation email for placeholder customer.',
+        recipient: customer.email
+      });
+    } else if (customer.email) {
       try {
         const customerResult = await sendEmail({
           to: customer.email,

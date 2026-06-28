@@ -622,6 +622,10 @@ const startServer = async () => {
     app.use('/api/seasonal-campaigns', require('./routes/seasonalCampaignRoutes'));
     app.use('/api/admin', require('./routes/adminRoutes'));
     app.use('/api/delivery', require('./routes/deliveryRoutes'));
+    if (process.env.NODE_ENV !== 'production') {
+      app.use('/api/testing', require('./routes/testingRoutes'));
+      console.log('🧪 Testing utility routes mounted under /api/testing');
+    }
     app.use('/api/staff', require('./routes/staffRoutes'));
     app.use('/wake-up', require('./routes/wakeUpRoutes'));
     app.use('/api/settings', settingsRoutes);

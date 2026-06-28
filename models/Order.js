@@ -30,7 +30,19 @@ const orderSchema = new mongoose.Schema({
       maxlength: [250, 'Delivery special instructions cannot exceed 250 characters']
     },
     deliveryDate: Date,
-    timeSlot: String
+    timeSlot: String,
+    latitude: {
+      type: Number,
+      default: 17.3912
+    },
+    longitude: {
+      type: Number,
+      default: 78.4326
+    },
+    deliveryRequired: {
+      type: Boolean,
+      default: true
+    }
   },
   items: [{
     product: {
@@ -182,6 +194,10 @@ const orderSchema = new mongoose.Schema({
   stockUpdated: {
     type: Boolean,
     default: false
+  },
+  isTestOrder: {
+    type: Boolean,
+    default: false
   }
 }, {
   timestamps: true
@@ -196,6 +212,17 @@ orderSchema.index({ 'shippingDetails.deliveryDate': 1 });
 
 // Add pre-save hook for order number generation
 orderSchema.pre('save', async function(next) {
+  // Set isTestOrder flag automatically if placeholder/test customer details are found
+  try {
+    const { checkIsPlaceholderCustomer } = require('../utils/testCustomerHelper');
+    const check = checkIsPlaceholderCustomer(this);
+    if (check.isPlaceholder) {
+      this.isTestOrder = true;
+    }
+  } catch (err) {
+    console.error('Error checking placeholder customer in pre-save hook:', err);
+  }
+
   if (!this.orderNumber) {
     const count = await this.constructor.countDocuments();
     const date = new Date();

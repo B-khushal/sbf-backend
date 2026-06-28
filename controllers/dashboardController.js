@@ -457,7 +457,8 @@ const getRecentOrders = async (req, res) => {
         paymentMethod: order.paymentDetails?.method || 'N/A',
         originalCurrency: order.currency || 'INR',
         originalAmount: order.totalAmount,
-        assignedWorker
+        assignedWorker,
+        isTestOrder: order.isTestOrder || false
       };
     });
 

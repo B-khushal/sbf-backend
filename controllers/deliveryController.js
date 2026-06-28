@@ -1,4 +1,6 @@
+const mongoose = require('mongoose');
 const DeliveryPartner = require('../models/DeliveryPartner');
+const DeviceToken = require('../models/DeviceToken');
 const DeliveryAssignment = require('../models/DeliveryAssignment');
 const DeliveryLocation = require('../models/DeliveryLocation');
 const DeliveryProof = require('../models/DeliveryProof');
@@ -181,6 +183,21 @@ exports.getPartnerOrders = async (req, res) => {
       partnerId: req.partner._id,
       status: { $nin: ['delivered', 'failed_delivery', 'cancelled'] }
     }).populate('orderId');
+
+    if (active && active.status === 'assigned') {
+      const hasAppOpened = active.history.some(h => h.status === 'app_opened');
+      if (!hasAppOpened) {
+        active.history.push({
+          status: 'app_opened',
+          remarks: 'Driver application active order list fetched. App is in foreground.'
+        });
+        active.history.push({
+          status: 'bottom_sheet_displayed',
+          remarks: 'New Order Request bottom sheet is displayed in driver app.'
+        });
+        await active.save();
+      }
+    }
 
     const history = await DeliveryAssignment.find({
       partnerId: req.partner._id,
@@ -742,3 +759,324 @@ exports.getCustomerTrackingDetails = async (req, res) => {
     res.status(500).json({ message: 'Error fetching customer tracking details', error: error.message });
   }
 };
+
+// --- DRIVER EXTENSION ACTIONS ---
+
+exports.registerFcmToken = async (req, res) => {
+  try {
+    const { userId, fcmToken, deviceType, deviceName, appVersion } = req.body;
+    
+    if (!fcmToken) {
+      return res.status(400).json({ success: false, message: 'FCM Token is required' });
+    }
+
+    const partnerId = req.partner._id;
+    console.log(`📱 Registering FCM token for partner: ${partnerId}`);
+
+    // Register token using partnerId
+    const result = await DeviceToken.findOrCreate(
+      partnerId,
+      fcmToken,
+      deviceType || 'android',
+      { model: deviceName, appVersion }
+    );
+
+    res.json({
+      success: true,
+      message: 'FCM Token registered successfully'
+    });
+  } catch (error) {
+    console.error('Error registering FCM token:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.updateFcmToken = async (req, res) => {
+  try {
+    const { fcmToken } = req.body;
+    
+    if (!fcmToken) {
+      return res.status(400).json({ success: false, message: 'FCM Token is required' });
+    }
+
+    const partnerId = req.partner._id;
+    console.log(`📱 Updating FCM token for partner: ${partnerId}`);
+
+    const result = await DeviceToken.findOrCreate(
+      partnerId,
+      fcmToken,
+      'android',
+      {}
+    );
+
+    res.json({
+      success: true,
+      message: 'FCM Token updated successfully'
+    });
+  } catch (error) {
+    console.error('Error updating FCM token:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.acceptAssignment = async (req, res) => {
+  try {
+    const { assignmentId } = req.body;
+    if (!assignmentId) {
+      return res.status(400).json({ message: 'Assignment ID is required' });
+    }
+    
+    req.params.assignmentId = assignmentId;
+    return exports.acceptOrder(req, res);
+  } catch (error) {
+    res.status(500).json({ message: 'Error accepting assignment', error: error.message });
+  }
+};
+
+exports.rejectAssignment = async (req, res) => {
+  try {
+    const { assignmentId } = req.body;
+    if (!assignmentId) {
+      return res.status(400).json({ message: 'Assignment ID is required' });
+    }
+
+    const assignment = await DeliveryAssignment.findById(assignmentId);
+    if (!assignment) {
+      return res.status(404).json({ success: false, message: 'Assignment not found' });
+    }
+
+    // Verify ownership
+    if (assignment.partnerId.toString() !== req.partner._id.toString()) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+
+    await deliveryService.rejectOrTimeoutAssignment(assignmentId, 'reject');
+    res.json({ success: true, message: 'Assignment rejected successfully' });
+  } catch (error) {
+    console.error('Error rejecting assignment:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.getMe = async (req, res) => {
+  try {
+    const partner = await DeliveryPartner.findById(req.partner._id);
+    if (!partner) {
+      return res.status(404).json({ success: false, message: 'Partner profile not found' });
+    }
+
+    res.json({
+      success: true,
+      partner: {
+        _id: partner._id,
+        name: partner.name,
+        email: partner.email,
+        phone: partner.phone,
+        vehicleType: partner.vehicleType,
+        status: partner.status,
+        availability: partner.availability,
+        rating: partner.rating || 5.0,
+        totalEarnings: partner.totalEarnings || 0,
+        todayEarnings: partner.todayEarnings || 0,
+        approvalStatus: partner.approvalStatus || 'approved'
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.updateDeliveryStatusNew = async (req, res) => {
+  try {
+    const { orderId, status, timestamp, latitude, longitude } = req.body;
+    console.log(`[Delivery Controller] updateDeliveryStatusNew: OrderID=${orderId}, Status=${status}, Lat=${latitude}, Lng=${longitude}`);
+
+    // Try finding by assignment _id first, then by orderId _id
+    let assignment = await DeliveryAssignment.findOne({
+      _id: mongoose.Types.ObjectId.isValid(orderId) ? orderId : new mongoose.Types.ObjectId(),
+      partnerId: req.partner._id
+    }).populate('orderId');
+
+    if (!assignment) {
+      assignment = await DeliveryAssignment.findOne({
+        orderId: mongoose.Types.ObjectId.isValid(orderId) ? orderId : new mongoose.Types.ObjectId(),
+        partnerId: req.partner._id
+      }).populate('orderId');
+    }
+
+    if (!assignment) {
+      return res.status(404).json({ message: 'Delivery assignment not found' });
+    }
+
+    const partner = await DeliveryPartner.findById(req.partner._id);
+
+    // Normalize status
+    const normalizedStatus = status.trim().toLowerCase().replace(/[-\s]/g, '_');
+    const validStates = ['accepted', 'reached_store', 'picked_up', 'out_for_delivery', 'reached_customer', 'delivered', 'failed_delivery'];
+    if (!validStates.includes(normalizedStatus)) {
+      return res.status(400).json({ message: `Invalid delivery status state request: ${normalizedStatus}` });
+    }
+
+    // Custom guards
+    if (normalizedStatus === 'delivered') {
+      if (!assignment.otpVerified) {
+        const proofExists = await DeliveryProof.findOne({ assignmentId: assignment._id });
+        if (!proofExists) {
+          return res.status(400).json({ message: 'Delivered state requires customer OTP verification or delivery proof photo' });
+        }
+      }
+      assignment.deliveryTime = new Date();
+    }
+
+    if (normalizedStatus === 'picked_up') {
+      assignment.pickupTime = new Date();
+    }
+
+    assignment.status = normalizedStatus;
+    assignment.history.push({
+      status: normalizedStatus,
+      updatedBy: 'partner',
+      remarks: `Delivery status updated to: ${normalizedStatus.replace(/_/g, ' ')} via new API`
+    });
+
+    // Update location details if provided
+    if (latitude !== undefined && longitude !== undefined) {
+      partner.currentLatitude = latitude;
+      partner.currentLongitude = longitude;
+      partner.lastActiveTime = new Date();
+      
+      await DeliveryLocation.create({
+        partnerId: partner._id,
+        assignmentId: assignment._id,
+        coordinates: {
+          type: 'Point',
+          coordinates: [longitude, latitude]
+        }
+      });
+
+      if (['accepted', 'reached_store', 'picked_up', 'out_for_delivery', 'reached_customer'].includes(assignment.status)) {
+        assignment.routeHistory.push({ latitude, longitude });
+        if (assignment.status === 'out_for_delivery') {
+          const storeLat = 17.3912;
+          const storeLng = 78.4326;
+          const currentDist = deliveryService.calculateHaversineDistance(latitude, longitude, storeLat, storeLng);
+          assignment.eta = Math.max(2, Math.round(currentDist * 3));
+        }
+      }
+    }
+    
+    await partner.save();
+    await assignment.save();
+
+    // Sync order state
+    const order = await Order.findById(assignment.orderId._id);
+    if (order) {
+      if (normalizedStatus === 'out_for_delivery' || normalizedStatus === 'picked_up') {
+        order.status = 'out_for_delivery';
+      } else if (normalizedStatus === 'delivered') {
+        order.status = 'delivered';
+      } else if (normalizedStatus === 'failed_delivery') {
+        order.status = 'received';
+      }
+      await order.save();
+    }
+
+    // Calculations on Delivered
+    if (normalizedStatus === 'delivered') {
+      const config = await DeliverySetting.getSettings();
+      const earningsAmount = config.baseDeliveryEarning + (assignment.distance * config.earningPerKm) * config.peakHourMultiplier;
+      
+      assignment.earnings = parseFloat(earningsAmount.toFixed(2));
+      await assignment.save();
+
+      // Log earnings record
+      await DeliveryEarning.create({
+        partnerId: partner._id,
+        assignmentId: assignment._id,
+        orderId: order._id,
+        amount: parseFloat(earningsAmount.toFixed(2)),
+        basePay: config.baseDeliveryEarning,
+        deliveryChargeShare: order.deliveryCharge || 0
+      });
+
+      // Update partner metrics
+      partner.activeOrders = Math.max(0, partner.activeOrders - 1);
+      partner.availability = 'available';
+      partner.totalDeliveries += 1;
+      partner.todayDeliveries += 1;
+      partner.todayEarnings += parseFloat(earningsAmount.toFixed(2));
+      partner.totalEarnings += parseFloat(earningsAmount.toFixed(2));
+      await partner.save();
+
+      // Trigger Delivered email notification
+      try {
+        const proofDoc = await DeliveryProof.findOne({ assignmentId: assignment._id });
+        await sendDeliveryConfirmationWithInvoice({
+          customer: {
+            name: order.shippingDetails?.fullName,
+            email: order.shippingDetails?.email,
+            phone: order.shippingDetails?.phone
+          },
+          order,
+          partner,
+          proofImageUrl: proofDoc ? proofDoc.imageUrl : null
+        });
+      } catch (invoiceErr) {
+        console.error('[Delivery Controller] Invoice Email Error (New Route):', invoiceErr);
+      }
+    }
+
+    if (normalizedStatus === 'failed_delivery') {
+      partner.activeOrders = Math.max(0, partner.activeOrders - 1);
+      partner.availability = 'available';
+      await partner.save();
+    }
+
+    // Trigger customer notification matrix
+    await deliveryNotificationService.sendDeliveryNotification(normalizedStatus, assignment, order, partner);
+
+    res.json({ success: true, assignment });
+  } catch (error) {
+    console.error('Error in updateDeliveryStatusNew:', error);
+    res.status(500).json({ message: 'Error updating delivery status', error: error.message });
+  }
+};
+
+exports.verifyCustomerOtpNew = async (req, res) => {
+  try {
+    const { orderId, otp } = req.body;
+    console.log(`[Delivery Controller] verifyCustomerOtpNew: OrderID=${orderId}, OTP=${otp}`);
+
+    let assignment = await DeliveryAssignment.findOne({
+      _id: mongoose.Types.ObjectId.isValid(orderId) ? orderId : new mongoose.Types.ObjectId(),
+      partnerId: req.partner._id
+    });
+
+    if (!assignment) {
+      assignment = await DeliveryAssignment.findOne({
+        orderId: mongoose.Types.ObjectId.isValid(orderId) ? orderId : new mongoose.Types.ObjectId(),
+        partnerId: req.partner._id
+      });
+    }
+
+    if (!assignment) {
+      return res.status(404).json({ message: 'Assignment not found' });
+    }
+
+    if (assignment.customerOtp === otp.trim()) {
+      assignment.otpVerified = true;
+      assignment.history.push({
+        status: assignment.status,
+        updatedBy: 'partner',
+        remarks: 'Customer OTP verified successfully via new API'
+      });
+      await assignment.save();
+      res.json({ success: true, message: 'OTP verified successfully' });
+    } else {
+      res.status(400).json({ success: false, message: 'Invalid OTP code' });
+    }
+  } catch (error) {
+    res.status(500).json({ message: 'Error verifying OTP', error: error.message });
+  }
+};
+

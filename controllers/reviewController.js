@@ -1068,6 +1068,16 @@ const sendReviewRequestEmailForOrder = async (req, res) => {
       return res.status(404).json({ message: "Order not found." });
     }
 
+    const { checkIsPlaceholderCustomer } = require('../utils/testCustomerHelper');
+    const check = checkIsPlaceholderCustomer(order);
+    if (check.isPlaceholder) {
+      console.log(`Customer notifications skipped:\nReason: ${check.reason}\nOrder: ${order.orderNumber}\nEmail: ${order.shippingDetails?.email || 'N/A'}`);
+      return res.status(200).json({
+        success: true,
+        message: "Skipped review email request for placeholder customer."
+      });
+    }
+
     if (order.status !== "delivered") {
       return res.status(400).json({
         message: "Review request emails can only be sent after delivery.",

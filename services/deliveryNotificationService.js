@@ -104,6 +104,35 @@ const sendPushNotification = async (userId, title, body, data = {}) => {
         }
       })
     );
+
+    const successResult = results.find(r => r && r.success);
+    if (data.assignmentId) {
+      try {
+        const DeliveryAssignment = require('../models/DeliveryAssignment');
+        const assignment = await DeliveryAssignment.findById(data.assignmentId);
+        if (assignment) {
+          assignment.history.push({
+            status: 'fcm_sent',
+            remarks: `FCM push notification sent to ${tokens.length} device token(s).`
+          });
+          if (successResult) {
+            assignment.history.push({
+              status: 'notification_delivered',
+              remarks: `FCM message delivered. Message ID: ${successResult.messageId}`
+            });
+          } else {
+            assignment.history.push({
+              status: 'fcm_failed',
+              remarks: `FCM push notification failed for all tokens.`
+            });
+          }
+          await assignment.save();
+        }
+      } catch (err) {
+        console.error('Failed to log FCM history:', err);
+      }
+    }
+
     return { success: true, results };
   } catch (error) {
     console.error('[FCM] Send error:', error);
@@ -120,6 +149,14 @@ const sendPushNotification = async (userId, title, body, data = {}) => {
  */
 const sendDeliveryNotification = async (event, assignment, order, partner = null) => {
   try {
+    const { checkIsPlaceholderCustomer } = require('../utils/testCustomerHelper');
+    const check = checkIsPlaceholderCustomer(order);
+    if (check.isPlaceholder && event !== 'order_assigned') {
+      const email = order.shippingDetails?.email || order.giftDetails?.recipientEmail || 'N/A';
+      console.log(`Customer notifications skipped:\nReason: ${check.reason}\nOrder: ${order.orderNumber}\nEmail: ${email}`);
+      return;
+    }
+
     const customerName = order.shippingDetails?.fullName || 'Customer';
     const customerPhone = order.shippingDetails?.phone || order.giftDetails?.recipientPhone;
     const customerEmail = order.shippingDetails?.email || order.giftDetails?.recipientEmail;
@@ -137,9 +174,14 @@ const sendDeliveryNotification = async (event, assignment, order, partner = null
             'New Order Request 🌸',
             `Order #${orderNumber} is available for pickup. Open app to accept.`,
             {
-              type: 'new_request',
+              type: 'NEW_ASSIGNMENT',
               assignmentId: assignment._id.toString(),
-              orderId: order._id.toString()
+              orderId: order._id.toString(),
+              customerName: order.shippingDetails?.fullName || 'Rahul Sharma',
+              deliveryAddress: order.shippingDetails?.address || 'Road No 36, Jubilee Hills, Hyderabad',
+              distance: String(assignment.distance || '1.5') + ' km',
+              estimatedTime: String(assignment.eta || '20') + ' mins',
+              expiresIn: '60'
             }
           );
         }
