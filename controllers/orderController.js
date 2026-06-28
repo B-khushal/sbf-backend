@@ -11,6 +11,52 @@ const { sendEmailNotification, sendDeliveryConfirmationWithInvoice } = require('
 const { sendOrderNotificationToAdmins, sendToAllAdmins } = require('../services/fcmService');
 const { logActivity } = require('../utils/activityLogger');
 const { calculateDeliveryFee } = require('../services/deliveryService');
+const Offer = require('../models/Offer');
+
+// Helper to increment offer conversion if order has promo code
+const trackPromoCodeConversion = async (promoCodeObj) => {
+  try {
+    if (!promoCodeObj || !promoCodeObj.code) return;
+    const promoCode = promoCodeObj.code.trim().toUpperCase();
+    
+    const currentDate = new Date();
+    // Find active offer with matching coupon code
+    const offer = await Offer.findOne({
+      isActive: true,
+      code: promoCode,
+      startDate: { $lte: currentDate },
+      endDate: { $gte: currentDate }
+    });
+
+    if (offer) {
+      offer.conversions = (offer.conversions || 0) + 1;
+      await offer.save();
+      console.log(`🎉 Campaign conversion tracked for offer: ${offer.title} (ID: ${offer._id})`);
+    } else {
+      // Check if it's an A/B test variant
+      const offerWithVariant = await Offer.findOne({
+        isActive: true,
+        startDate: { $lte: currentDate },
+        endDate: { $gte: currentDate },
+        'variants.code': promoCode
+      });
+
+      if (offerWithVariant) {
+        // Find which variant matches
+        const variant = offerWithVariant.variants.find(v => v.code === promoCode);
+        if (variant) {
+          variant.conversions = (variant.conversions || 0) + 1;
+          offerWithVariant.conversions = (offerWithVariant.conversions || 0) + 1;
+          await offerWithVariant.save();
+          console.log(`🎉 Variant campaign conversion tracked for offer: ${offerWithVariant.title}, variant: ${variant.title}`);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error tracking promo code conversion:', error);
+  }
+};
+
 
 // Helper function to recursively flatten arrays and extract strings
 const flattenToStrings = (value) => {
@@ -420,7 +466,8 @@ const createOrder = async (req, res) => {
       currency: currency || 'INR',
       currencyRate: currencyRate || 1,
       originalCurrency: originalCurrency || currency || 'INR',
-      status: 'order_placed'
+      status: 'order_placed',
+      promoCode: req.body.promoCode || undefined
     };
 
     // Add gift details if present
@@ -432,6 +479,11 @@ const createOrder = async (req, res) => {
 
     const order = new Order(orderData);
     const savedOrder = await order.save();
+
+    // Track campaign conversion if promo code is used
+    if (savedOrder.promoCode) {
+      await trackPromoCodeConversion(savedOrder.promoCode);
+    }
 
     await logActivity({
       req,
@@ -1674,7 +1726,8 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
         currency: orderData.currency || 'INR',
         currencyRate: orderData.currencyRate || 1,
         originalCurrency: orderData.originalCurrency || orderData.currency || 'INR',
-        status: 'order_placed'
+        status: 'order_placed',
+        promoCode: orderData.promoCode || undefined
       };
 
       // Add gift details if present
@@ -1686,6 +1739,11 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
 
       const order = new Order(orderDbData);
       const savedOrder = await order.save();
+
+      // Track campaign conversion if promo code is used
+      if (savedOrder.promoCode) {
+        await trackPromoCodeConversion(savedOrder.promoCode);
+      }
 
       console.log('Order saved successfully after payment verification:', JSON.stringify(savedOrder, null, 2));
 

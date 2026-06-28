@@ -96,8 +96,17 @@ const trackOfferImpression = async (req, res) => {
     
     // Increment impressions count
     offer.impressions = (offer.impressions || 0) + 1;
-    await offer.save();
     
+    // Increment variant metrics if matching variantId is provided
+    const { variantId } = req.body;
+    if (variantId && offer.variants && offer.variants.length > 0) {
+      const variant = offer.variants.id(variantId);
+      if (variant) {
+        variant.impressions = (variant.impressions || 0) + 1;
+      }
+    }
+    
+    await offer.save();
     res.json({ success: true, impressions: offer.impressions });
   } catch (error) {
     console.error('Error tracking offer impression:', error);
@@ -115,11 +124,98 @@ const trackOfferClose = async (req, res) => {
     
     // Increment closes count
     offer.closes = (offer.closes || 0) + 1;
-    await offer.save();
     
+    // Increment variant metrics if matching variantId is provided
+    const { variantId } = req.body;
+    if (variantId && offer.variants && offer.variants.length > 0) {
+      const variant = offer.variants.id(variantId);
+      if (variant) {
+        variant.closes = (variant.closes || 0) + 1;
+      }
+    }
+    
+    await offer.save();
     res.json({ success: true, closes: offer.closes });
   } catch (error) {
     console.error('Error tracking offer close:', error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Track offer CTA click
+const trackOfferCtaClick = async (req, res) => {
+  try {
+    const offer = await Offer.findById(req.params.id);
+    if (!offer) {
+      return res.status(404).json({ message: 'Offer not found' });
+    }
+    
+    offer.ctaClicks = (offer.ctaClicks || 0) + 1;
+    
+    const { variantId } = req.body;
+    if (variantId && offer.variants && offer.variants.length > 0) {
+      const variant = offer.variants.id(variantId);
+      if (variant) {
+        variant.ctaClicks = (variant.ctaClicks || 0) + 1;
+      }
+    }
+    
+    await offer.save();
+    res.json({ success: true, ctaClicks: offer.ctaClicks });
+  } catch (error) {
+    console.error('Error tracking offer CTA click:', error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Track offer coupon copy
+const trackOfferCouponCopy = async (req, res) => {
+  try {
+    const offer = await Offer.findById(req.params.id);
+    if (!offer) {
+      return res.status(404).json({ message: 'Offer not found' });
+    }
+    
+    offer.couponCopies = (offer.couponCopies || 0) + 1;
+    
+    const { variantId } = req.body;
+    if (variantId && offer.variants && offer.variants.length > 0) {
+      const variant = offer.variants.id(variantId);
+      if (variant) {
+        variant.couponCopies = (variant.couponCopies || 0) + 1;
+      }
+    }
+    
+    await offer.save();
+    res.json({ success: true, couponCopies: offer.couponCopies });
+  } catch (error) {
+    console.error('Error tracking offer coupon copy:', error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Track offer conversion
+const trackOfferConversion = async (req, res) => {
+  try {
+    const offer = await Offer.findById(req.params.id);
+    if (!offer) {
+      return res.status(404).json({ message: 'Offer not found' });
+    }
+    
+    offer.conversions = (offer.conversions || 0) + 1;
+    
+    const { variantId } = req.body;
+    if (variantId && offer.variants && offer.variants.length > 0) {
+      const variant = offer.variants.id(variantId);
+      if (variant) {
+        variant.conversions = (variant.conversions || 0) + 1;
+      }
+    }
+    
+    await offer.save();
+    res.json({ success: true, conversions: offer.conversions });
+  } catch (error) {
+    console.error('Error tracking offer conversion:', error);
     res.status(500).json({ message: error.message });
   }
 };
@@ -133,5 +229,8 @@ module.exports = {
   deleteOffer,
   toggleOfferStatus,
   trackOfferImpression,
-  trackOfferClose
+  trackOfferClose,
+  trackOfferCtaClick,
+  trackOfferCouponCopy,
+  trackOfferConversion
 }; 

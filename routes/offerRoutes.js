@@ -13,7 +13,10 @@ const {
   deleteOffer,
   toggleOfferStatus,
   trackOfferImpression,
-  trackOfferClose
+  trackOfferClose,
+  trackOfferCtaClick,
+  trackOfferCouponCopy,
+  trackOfferConversion
 } = require('../controllers/offerController');
 
 // Debug logging for controller functions
@@ -32,6 +35,9 @@ router.get('/active', getActiveOffers);
 // Tracking routes (public)
 router.post('/:id/impression', trackOfferImpression);
 router.post('/:id/close', trackOfferClose);
+router.post('/:id/cta-click', trackOfferCtaClick);
+router.post('/:id/coupon-copy', trackOfferCouponCopy);
+router.post('/:id/conversion', trackOfferConversion);
 
 // Admin routes (protected)
 router.get('/all', protect, admin, getAllOffers);
