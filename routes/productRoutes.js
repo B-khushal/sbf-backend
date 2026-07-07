@@ -27,6 +27,7 @@ const {
   bulkUpdateSectionProducts,
   resetSectionProductsOrder,
   getSharePreview,
+  getVideoSitemap,
 } = require('../controllers/productController');
 
 const {
@@ -100,6 +101,7 @@ router.get('/featured', getFeaturedProducts);
 router.get('/new', getNewProducts);
 router.get('/categories', getProductCategories);
 router.get('/categories-with-counts', getCategoriesWithCounts);
+router.get('/seo/video-sitemap', getVideoSitemap);
 
 router.get('/share-preview/:type/:idOrSlug', getSharePreview);
 

@@ -237,13 +237,13 @@ const getEnhancedProductImageUrl = (publicId, options = {}) => {
 };
 
 // Delete image from Cloudinary
-const deleteFromCloudinary = async (publicId) => {
+const deleteFromCloudinary = async (publicId, resourceType = 'image') => {
   try {
-    const result = await cloudinary.uploader.destroy(publicId);
-    console.log('🗑️ Cloudinary delete result:', result);
+    const result = await cloudinary.uploader.destroy(publicId, { resource_type: resourceType });
+    console.log(`🗑️ Cloudinary delete result (${resourceType}):`, result);
     return result;
   } catch (error) {
-    console.error('❌ Cloudinary delete error:', error);
+    console.error(`❌ Cloudinary delete error (${resourceType}):`, error);
     throw error;
   }
 };

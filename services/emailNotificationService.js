@@ -169,22 +169,56 @@ const generateInvoicePDF = async (htmlContent, orderNumber) => {
 const generateOrderConfirmationEmail = (orderData) => {
   const { order, customer, items } = orderData;
 
-  const itemsList = items.map(item => `
-    <tr style="border-bottom: 1px solid #e5e7eb;">
-      <td style="padding: 12px; text-align: left;">
-        <div style="font-weight: 600; color: #374151;">
-          ${item.product.name || item.product.title}
-        </div>
-        ${item.product.sku ? `<div style="font-size: 12px; color: #6b7280;">SKU: ${item.product.sku}</div>` : ''}
-      </td>
-      <td style="padding: 12px; text-align: center; font-weight: 500;">
-        ${item.quantity}
-      </td>
-      <td style="padding: 12px; text-align: right; font-weight: 600; color: #374151;">
-        ${formatCurrency(item.finalPrice || item.price, order.currency)}
-      </td>
-    </tr>
-  `).join('');
+  const itemsList = items.map(item => {
+    let customTextParts = [];
+    if (item.customizations) {
+      if (item.customizations.number) {
+        customTextParts.push(`Number: ${item.customizations.number}`);
+      }
+      if (item.customizations.messageCard) {
+        customTextParts.push(`Message Card: "${item.customizations.messageCard}"`);
+      }
+      if (item.customizations.isGiftBundle && item.customizations.giftComponents) {
+        const comps = item.customizations.giftComponents.map(c => `${c.category.replace('_', ' ')}: ${c.name}`).join(', ');
+        customTextParts.push(`Included Items: ${comps}`);
+        if (item.customizations.customMessage) {
+          customTextParts.push(`Card Message: "${item.customizations.customMessage}"`);
+        }
+      }
+      if (item.customizations.personalization) {
+        const p = item.customizations.personalization;
+        customTextParts.push(`${p.label || 'Personalization'}: ${p.value}`);
+      }
+      if (item.customizations.selectedFlowers && item.customizations.selectedFlowers.length > 0) {
+        const fls = item.customizations.selectedFlowers.map(f => `${f.name}${f.quantity > 1 ? `×${f.quantity}` : ''}`).join(', ');
+        customTextParts.push(`Add-on Flowers: ${fls}`);
+      }
+      if (item.customizations.selectedChocolates && item.customizations.selectedChocolates.length > 0) {
+        const chocs = item.customizations.selectedChocolates.map(c => `${c.name}${c.quantity > 1 ? `×${c.quantity}` : ''}`).join(', ');
+        customTextParts.push(`Add-on Chocolates: ${chocs}`);
+      }
+    }
+    
+    const customizationsHTML = customTextParts.map(part => `<div style="font-size: 11px; color: #b45309; font-weight: bold; margin-top: 3px;">✨ ${part}</div>`).join('');
+
+    return `
+      <tr style="border-bottom: 1px solid #e5e7eb;">
+        <td style="padding: 12px; text-align: left;">
+          <div style="font-weight: 600; color: #374151;">
+            ${item.product.name || item.product.title}
+          </div>
+          ${item.product.sku ? `<div style="font-size: 12px; color: #6b7280;">SKU: ${item.product.sku}</div>` : ''}
+          ${customizationsHTML}
+        </td>
+        <td style="padding: 12px; text-align: center; font-weight: 500;">
+          ${item.quantity}
+        </td>
+        <td style="padding: 12px; text-align: right; font-weight: 600; color: #374151;">
+          ${formatCurrency(item.finalPrice || item.price, order.currency)}
+        </td>
+      </tr>
+    `;
+  }).join('');
 
   return `
     <!DOCTYPE html>
@@ -652,14 +686,44 @@ const generateInvoiceHTML = (orderData) => {
   const itemRows = items.map((item, index) => {
     const title = item.product?.title || item.title || 'Florist Arrangement';
     const variantText = item.selectedVariant?.label ? `Variant: ${item.selectedVariant.label}` : 'Premium Arrangement';
-    const customText = item.customizations?.messageCard ? `Message Card Included` : '';
+    
+    let customTextParts = [];
+    if (item.customizations) {
+      if (item.customizations.number) {
+        customTextParts.push(`Number: ${item.customizations.number}`);
+      }
+      if (item.customizations.messageCard) {
+        customTextParts.push(`Message Card: "${item.customizations.messageCard}"`);
+      }
+      if (item.customizations.isGiftBundle && item.customizations.giftComponents) {
+        const comps = item.customizations.giftComponents.map(c => `${c.category.replace('_', ' ')}: ${c.name}`).join(', ');
+        customTextParts.push(`Included Items: ${comps}`);
+        if (item.customizations.customMessage) {
+          customTextParts.push(`Card Message: "${item.customizations.customMessage}"`);
+        }
+      }
+      if (item.customizations.personalization) {
+        const p = item.customizations.personalization;
+        customTextParts.push(`${p.label || 'Personalization'}: ${p.value}`);
+      }
+      if (item.customizations.selectedFlowers && item.customizations.selectedFlowers.length > 0) {
+        const fls = item.customizations.selectedFlowers.map(f => `${f.name}${f.quantity > 1 ? `×${f.quantity}` : ''}`).join(', ');
+        customTextParts.push(`Add-on Flowers: ${fls}`);
+      }
+      if (item.customizations.selectedChocolates && item.customizations.selectedChocolates.length > 0) {
+        const chocs = item.customizations.selectedChocolates.map(c => `${c.name}${c.quantity > 1 ? `×${c.quantity}` : ''}`).join(', ');
+        customTextParts.push(`Add-on Chocolates: ${chocs}`);
+      }
+    }
+    
+    const customTextHTML = customTextParts.map(part => `<div style="font-size: 9px; color: #b45309; font-weight: 600; margin-top: 2px;">✨ ${part}</div>`).join('');
     
     return `
       <tr style="border-bottom: 1px solid #e2e8f0;">
         <td style="padding: 10px 12px; color: #1e293b; font-size: 11px; font-weight: 500; word-break: break-word;">
           <div style="font-weight: 700; color: #0f172a;">${title}</div>
           <div style="font-size: 10px; color: #64748b; margin-top: 2px;">${variantText}</div>
-          ${customText ? `<div style="font-size: 9px; color: #b45309; font-weight: 600; margin-top: 1px;">✨ ${customText}</div>` : ''}
+          ${customTextHTML}
         </td>
         <td style="padding: 10px 12px; text-align: center; color: #475569; font-size: 11px; vertical-align: middle;">${item.quantity}</td>
         <td style="padding: 10px 12px; text-align: right; color: #475569; font-size: 11px; vertical-align: middle; white-space: nowrap;">${formatCurrency(item.finalPrice || item.price, order.currency)}</td>

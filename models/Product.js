@@ -146,6 +146,46 @@ const comboItemSchema = mongoose.Schema({
   },
 });
 
+const productVideoSchema = mongoose.Schema({
+  url: {
+    type: String,
+    required: true,
+  },
+  source: {
+    type: String,
+    enum: ['upload', 'youtube', 'vimeo', 'cloudinary', 'custom'],
+    default: 'upload',
+  },
+  publicId: {
+    type: String,
+    default: '',
+  },
+  title: {
+    type: String,
+    default: '',
+  },
+  description: {
+    type: String,
+    default: '',
+  },
+  duration: {
+    type: Number,
+    default: 0,
+  },
+  thumbnailUrl: {
+    type: String,
+    default: '',
+  },
+  isFeatured: {
+    type: Boolean,
+    default: false,
+  },
+  order: {
+    type: Number,
+    default: 0,
+  }
+});
+
 const productSchema = mongoose.Schema(
   {
     user: { 
@@ -167,6 +207,69 @@ const productSchema = mongoose.Schema(
         required: true,
       },
     ],
+    videos: {
+      type: [productVideoSchema],
+      default: []
+    },
+    personalizationEnabled: {
+      type: Boolean,
+      default: false
+    },
+    personalizationType: {
+      type: String,
+      enum: ['name', 'word', 'text', 'letter-bouquet', 'custom-message'],
+      default: 'name'
+    },
+    fieldLabel: {
+      type: String,
+      default: ''
+    },
+    placeholder: {
+      type: String,
+      default: ''
+    },
+    minCharacters: {
+      type: Number,
+      default: 1
+    },
+    maxCharacters: {
+      type: Number,
+      default: 10
+    },
+    allowedCharacters: {
+      alphabets: { type: Boolean, default: true },
+      numbers: { type: Boolean, default: false },
+      spaces: { type: Boolean, default: true },
+      hyphen: { type: Boolean, default: false },
+      ampersand: { type: Boolean, default: false },
+      period: { type: Boolean, default: false },
+      emoji: { type: Boolean, default: false }
+    },
+    personalizationRequired: {
+      type: Boolean,
+      default: false
+    },
+    textTransform: {
+      type: String,
+      enum: ['original', 'uppercase', 'lowercase', 'titlecase'],
+      default: 'original'
+    },
+    helperText: {
+      type: String,
+      default: ''
+    },
+    pricePerCharacter: {
+      type: Number,
+      default: 0
+    },
+    baseIncludedCharacters: {
+      type: Number,
+      default: 0
+    },
+    maxExtraPrice: {
+      type: Number,
+      default: 0
+    },
     originalImages: [
       {
         type: String,

@@ -88,6 +88,14 @@ const orderSchema = new mongoose.Schema({
     customizations: {
       type: mongoose.Schema.Types.Mixed,
       default: null
+    },
+    customization: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null
+    },
+    characterCount: {
+      type: Number,
+      default: 0
     }
   }],
   paymentDetails: {

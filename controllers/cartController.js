@@ -53,7 +53,21 @@ const mapCartItems = (userWithCart) =>
         dateWiseStock: prod.dateWiseStock || {},
         dateWisePricing: prod.dateWisePricing || {},
         dateWiseOffers: prod.dateWiseOffers || {},
-        dateWiseDeliveryCharges: prod.dateWiseDeliveryCharges || {}
+        dateWiseDeliveryCharges: prod.dateWiseDeliveryCharges || {},
+        personalizationEnabled: prod.personalizationEnabled,
+        personalizationType: prod.personalizationType,
+        fieldLabel: prod.fieldLabel,
+        placeholder: prod.placeholder,
+        minCharacters: prod.minCharacters,
+        maxCharacters: prod.maxCharacters,
+        allowedCharacters: prod.allowedCharacters,
+        personalizationRequired: prod.personalizationRequired,
+        textTransform: prod.textTransform,
+        helperText: prod.helperText,
+        pricePerCharacter: prod.pricePerCharacter,
+        baseIncludedCharacters: prod.baseIncludedCharacters,
+        maxExtraPrice: prod.maxExtraPrice,
+        sameDay: prod.sameDay !== undefined ? prod.sameDay : true,
       };
     });
 
@@ -64,7 +78,7 @@ const getCart = async (req, res) => {
   try {
     const user = await User.findById(req.user._id).populate({
       path: 'cart.productId',
-      select: 'title name price discountedPrice images image discount category description careInstructions isNew isNewArrival isFeatured productType isValentineProduct availableDates dateWiseStock dateWisePricing dateWiseOffers dateWiseDeliveryCharges'
+      select: 'title name price discountedPrice images image discount category description careInstructions isNew isNewArrival isFeatured productType isValentineProduct availableDates dateWiseStock dateWisePricing dateWiseOffers dateWiseDeliveryCharges personalizationEnabled personalizationType fieldLabel placeholder minCharacters maxCharacters allowedCharacters personalizationRequired textTransform helperText pricePerCharacter baseIncludedCharacters maxExtraPrice sameDay'
     });
 
     if (!user) {
@@ -197,7 +211,7 @@ const addToCart = async (req, res) => {
     // Return updated cart
     const updatedUser = await User.findById(req.user._id).populate({
       path: 'cart.productId',
-      select: 'title name price discountedPrice images image discount category description careInstructions isNew isNewArrival isFeatured productType isValentineProduct availableDates dateWiseStock dateWisePricing dateWiseOffers dateWiseDeliveryCharges'
+      select: 'title name price discountedPrice images image discount category description careInstructions isNew isNewArrival isFeatured productType isValentineProduct availableDates dateWiseStock dateWisePricing dateWiseOffers dateWiseDeliveryCharges personalizationEnabled personalizationType fieldLabel placeholder minCharacters maxCharacters allowedCharacters personalizationRequired textTransform helperText pricePerCharacter baseIncludedCharacters maxExtraPrice sameDay'
     });
 
     const cartItems = mapCartItems(updatedUser);
@@ -231,11 +245,7 @@ const addToCart = async (req, res) => {
 const updateCartItem = async (req, res) => {
   try {
     const { productId } = req.params;
-    const { quantity } = req.body;
-
-    if (!quantity || quantity < 1) {
-      return res.status(400).json({ message: 'Valid quantity is required' });
-    }
+    const { quantity, customizations, customPrice } = req.body;
 
     const user = await User.findById(req.user._id);
     if (!user) {
@@ -253,13 +263,27 @@ const updateCartItem = async (req, res) => {
       return res.status(404).json({ message: 'Item not found in cart' });
     }
 
-    user.cart[itemIndex].quantity = quantity;
+    if (quantity !== undefined) {
+      if (quantity < 1) {
+        return res.status(400).json({ message: 'Valid quantity is required' });
+      }
+      user.cart[itemIndex].quantity = quantity;
+    }
+    
+    if (customizations !== undefined) {
+      user.cart[itemIndex].customizations = customizations;
+    }
+    
+    if (customPrice !== undefined) {
+      user.cart[itemIndex].customPrice = customPrice;
+    }
+    
     await user.save();
 
     // Return updated cart
     const updatedUser = await User.findById(req.user._id).populate({
       path: 'cart.productId',
-      select: 'title price images discount category description careInstructions isNew isNewArrival isFeatured productType isValentineProduct availableDates dateWiseStock dateWisePricing dateWiseOffers dateWiseDeliveryCharges'
+      select: 'title price images discount category description careInstructions isNew isNewArrival isFeatured productType isValentineProduct availableDates dateWiseStock dateWisePricing dateWiseOffers dateWiseDeliveryCharges personalizationEnabled personalizationType fieldLabel placeholder minCharacters maxCharacters allowedCharacters personalizationRequired textTransform helperText pricePerCharacter baseIncludedCharacters maxExtraPrice sameDay'
     });
 
     const cartItems = mapCartItems(updatedUser);
@@ -314,7 +338,7 @@ const removeFromCart = async (req, res) => {
     // Return updated cart
     const updatedUser = await User.findById(req.user._id).populate({
       path: 'cart.productId',
-      select: 'title price images discount category description careInstructions isNew isNewArrival isFeatured productType isValentineProduct availableDates dateWiseStock dateWisePricing dateWiseOffers dateWiseDeliveryCharges'
+      select: 'title price images discount category description careInstructions isNew isNewArrival isFeatured productType isValentineProduct availableDates dateWiseStock dateWisePricing dateWiseOffers dateWiseDeliveryCharges personalizationEnabled personalizationType fieldLabel placeholder minCharacters maxCharacters allowedCharacters personalizationRequired textTransform helperText pricePerCharacter baseIncludedCharacters maxExtraPrice sameDay'
     });
 
     const cartItems = mapCartItems(updatedUser);

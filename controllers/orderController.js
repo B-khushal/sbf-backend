@@ -449,7 +449,8 @@ const createOrder = async (req, res) => {
         quantity: item.quantity,
         price: item.price,
         finalPrice: item.finalPrice || item.price,
-        customizations: item.customizations || null
+        customizations: item.customizations || null,
+        characterCount: item.characterCount || item.customizations?.personalization?.characterCount || 0
       })),
       paymentDetails: {
         method: paymentDetails.method,
@@ -767,8 +768,12 @@ const updateOrderToDelivered = async (req, res) => {
               });
             }
           } else {
-            if (product.countInStock >= item.quantity) {
-              product.countInStock -= item.quantity;
+            const requiredStock = (product.personalizationEnabled && (item.characterCount || item.customization?.personalization?.characterCount))
+              ? (item.characterCount || item.customization?.personalization?.characterCount) * item.quantity
+              : item.quantity;
+
+            if (product.countInStock >= requiredStock) {
+              product.countInStock -= requiredStock;
 
               if (product.productType === 'valentine' || product.isValentineProduct) {
                 const d = new Date(order.shippingDetails.deliveryDate);
@@ -789,7 +794,7 @@ const updateOrderToDelivered = async (req, res) => {
                 // Clean product data before saving to prevent casting errors
                 cleanProductData(product);
                 await product.save();
-                console.log(`✅ Updated stock for product ${product.title}: ${product.countInStock + item.quantity} -> ${product.countInStock}`);
+                console.log(`✅ Updated stock for product ${product.title}: ${product.countInStock + requiredStock} -> ${product.countInStock}`);
               } catch (productSaveError) {
                 console.error(`❌ Error saving product ${product.title}:`, productSaveError);
 
@@ -797,24 +802,26 @@ const updateOrderToDelivered = async (req, res) => {
                 try {
                   // Reset any changes and just update the stock
                   const freshProduct = await Product.findById(item.product._id);
-                  if (freshProduct && freshProduct.countInStock >= item.quantity) {
-                    freshProduct.countInStock -= item.quantity;
+                  const freshRequiredStock = (freshProduct && freshProduct.personalizationEnabled && (item.characterCount || item.customization?.personalization?.characterCount))
+                    ? (item.characterCount || item.customization?.personalization?.characterCount) * item.quantity
+                    : item.quantity;
+
+                  if (freshProduct && freshProduct.countInStock >= freshRequiredStock) {
+                    freshProduct.countInStock -= freshRequiredStock;
                     // Force save without validation for malformed data
                     await freshProduct.save({ validateBeforeSave: false });
                     console.log(`⚠️  Force-updated stock for product ${freshProduct.title} (bypassed validation)`);
                   } else {
                     console.error(`❌ Could not force-update stock for product ${product.title}`);
-                    // Log error but don't fail the order status update
                   }
                 } catch (forceSaveError) {
                   console.error(`❌ Force save also failed for product ${product.title}:`, forceSaveError);
-                  // Log error but continue with order status update
                 }
               }
             } else {
-              console.log(`Warning: Insufficient stock for product ${product.title}. Available: ${product.countInStock}, Required: ${item.quantity}`);
+              console.log(`Warning: Insufficient stock for product ${product.title}. Available: ${product.countInStock}, Required: ${requiredStock}`);
               return res.status(400).json({
-                message: `Insufficient stock for product ${product.title}. Available: ${product.countInStock}, Required: ${item.quantity}`
+                message: `Insufficient stock for product ${product.title}. Available: ${product.countInStock}, Required: ${requiredStock}`
               });
             }
           }
@@ -1259,14 +1266,18 @@ const updateOrderStatus = async (req, res) => {
         const product = await Product.findById(item.product._id);
         if (product) {
           // Check if we have enough stock
-          if (product.countInStock >= item.quantity) {
-            product.countInStock -= item.quantity;
+          const requiredStock = (product.personalizationEnabled && (item.characterCount || item.customization?.personalization?.characterCount))
+            ? (item.characterCount || item.customization?.personalization?.characterCount) * item.quantity
+            : item.quantity;
+
+          if (product.countInStock >= requiredStock) {
+            product.countInStock -= requiredStock;
 
             try {
               // Clean product data before saving to prevent casting errors
               cleanProductData(product);
               await product.save();
-              console.log(`✅ Updated stock for product ${product.title}: ${product.countInStock + item.quantity} -> ${product.countInStock}`);
+              console.log(`✅ Updated stock for product ${product.title}: ${product.countInStock + requiredStock} -> ${product.countInStock}`);
             } catch (productSaveError) {
               console.error(`❌ Error saving product ${product.title}:`, productSaveError);
 
@@ -1274,24 +1285,26 @@ const updateOrderStatus = async (req, res) => {
               try {
                 // Reset any changes and just update the stock
                 const freshProduct = await Product.findById(item.product._id);
-                if (freshProduct && freshProduct.countInStock >= item.quantity) {
-                  freshProduct.countInStock -= item.quantity;
+                const freshRequiredStock = (freshProduct && freshProduct.personalizationEnabled && (item.characterCount || item.customization?.personalization?.characterCount))
+                  ? (item.characterCount || item.customization?.personalization?.characterCount) * item.quantity
+                  : item.quantity;
+
+                if (freshProduct && freshProduct.countInStock >= freshRequiredStock) {
+                  freshProduct.countInStock -= freshRequiredStock;
                   // Force save without validation for malformed data
                   await freshProduct.save({ validateBeforeSave: false });
                   console.log(`⚠️  Force-updated stock for product ${freshProduct.title} (bypassed validation)`);
                 } else {
                   console.error(`❌ Could not force-update stock for product ${product.title}`);
-                  // Log error but don't fail the order status update
                 }
               } catch (forceSaveError) {
                 console.error(`❌ Force save also failed for product ${product.title}:`, forceSaveError);
-                // Log error but continue with order status update
               }
             }
           } else {
-            console.log(`Warning: Insufficient stock for product ${product.title}. Available: ${product.countInStock}, Required: ${item.quantity}`);
+            console.log(`Warning: Insufficient stock for product ${product.title}. Available: ${product.countInStock}, Required: ${requiredStock}`);
             return res.status(400).json({
-              message: `Insufficient stock for product ${product.title}. Available: ${product.countInStock}, Required: ${item.quantity}`
+              message: `Insufficient stock for product ${product.title}. Available: ${product.countInStock}, Required: ${requiredStock}`
             });
           }
         }
@@ -1461,13 +1474,17 @@ const updateOrderStatus = async (req, res) => {
       for (const item of order.items) {
         const product = await Product.findById(item.product._id);
         if (product) {
-          product.countInStock += item.quantity;
+          const restoredStock = (product.personalizationEnabled && (item.characterCount || item.customization?.personalization?.characterCount))
+            ? (item.characterCount || item.customization?.personalization?.characterCount) * item.quantity
+            : item.quantity;
+
+          product.countInStock += restoredStock;
 
           try {
             // Clean product data before saving to prevent casting errors
             cleanProductData(product);
             await product.save();
-            console.log(`✅ Restored stock for product ${product.title}: ${product.countInStock - item.quantity} -> ${product.countInStock}`);
+            console.log(`✅ Restored stock for product ${product.title}: ${product.countInStock - restoredStock} -> ${product.countInStock}`);
           } catch (productSaveError) {
             console.error(`❌ Error saving product during stock restoration ${product.title}:`, productSaveError);
 
@@ -1476,7 +1493,11 @@ const updateOrderStatus = async (req, res) => {
               // Reset and try force save
               const freshProduct = await Product.findById(item.product._id);
               if (freshProduct) {
-                freshProduct.countInStock += item.quantity;
+                const freshRestoredStock = (freshProduct.personalizationEnabled && (item.characterCount || item.customization?.personalization?.characterCount))
+                  ? (item.characterCount || item.customization?.personalization?.characterCount) * item.quantity
+                  : item.quantity;
+
+                freshProduct.countInStock += freshRestoredStock;
                 await freshProduct.save({ validateBeforeSave: false });
                 console.log(`⚠️  Force-restored stock for product ${freshProduct.title} (bypassed validation)`);
               }

@@ -270,6 +270,7 @@ const createProduct = asyncHandler(async (req, res) => {
     categories,
     countInStock,
     images,
+    videos,
     details,
     careInstructions,
     isNewArrival,
@@ -306,6 +307,19 @@ const createProduct = asyncHandler(async (req, res) => {
     valentineSlug,
     seasonalCampaigns,
     campaignSettings,
+    personalizationEnabled,
+    personalizationType,
+    fieldLabel,
+    placeholder,
+    minCharacters,
+    maxCharacters,
+    allowedCharacters,
+    personalizationRequired,
+    textTransform,
+    helperText,
+    pricePerCharacter,
+    baseIncludedCharacters,
+    maxExtraPrice,
   } = req.body;
 
   // If user is a vendor, find their vendor profile and set it
@@ -332,6 +346,28 @@ const createProduct = asyncHandler(async (req, res) => {
     categories: categories || [],
     countInStock,
     images,
+    videos: videos || [],
+    personalizationEnabled: personalizationEnabled || false,
+    personalizationType: personalizationType || 'name',
+    fieldLabel: fieldLabel || '',
+    placeholder: placeholder || '',
+    minCharacters: minCharacters !== undefined ? Number(minCharacters) : 1,
+    maxCharacters: maxCharacters !== undefined ? Number(maxCharacters) : 10,
+    allowedCharacters: allowedCharacters || {
+      alphabets: true,
+      numbers: false,
+      spaces: true,
+      hyphen: false,
+      ampersand: false,
+      period: false,
+      emoji: false
+    },
+    personalizationRequired: personalizationRequired || false,
+    textTransform: textTransform || 'original',
+    helperText: helperText || '',
+    pricePerCharacter: pricePerCharacter !== undefined ? Number(pricePerCharacter) : 0,
+    baseIncludedCharacters: baseIncludedCharacters !== undefined ? Number(baseIncludedCharacters) : 0,
+    maxExtraPrice: maxExtraPrice !== undefined ? Number(maxExtraPrice) : 0,
     details: details || [],
     careInstructions: careInstructions || [],
     isNew: typeof isNew === 'boolean' ? isNew : Boolean(isNewArrival),
@@ -402,6 +438,7 @@ const updateProduct = asyncHandler(async (req, res) => {
     categories,
     countInStock,
     images,
+    videos,
     details,
     careInstructions,
     isNewArrival,
@@ -438,6 +475,19 @@ const updateProduct = asyncHandler(async (req, res) => {
     valentineSlug,
     seasonalCampaigns,
     campaignSettings,
+    personalizationEnabled,
+    personalizationType,
+    fieldLabel,
+    placeholder,
+    minCharacters,
+    maxCharacters,
+    allowedCharacters,
+    personalizationRequired,
+    textTransform,
+    helperText,
+    pricePerCharacter,
+    baseIncludedCharacters,
+    maxExtraPrice,
   } = req.body;
 
   const product = await Product.findById(req.params.id);
@@ -462,6 +512,28 @@ const updateProduct = asyncHandler(async (req, res) => {
       categories: categories || [],
       countInStock,
       images,
+      videos: Array.isArray(videos) ? videos : [],
+      personalizationEnabled: personalizationEnabled || false,
+      personalizationType: personalizationType || 'name',
+      fieldLabel: fieldLabel || '',
+      placeholder: placeholder || '',
+      minCharacters: minCharacters !== undefined ? Number(minCharacters) : 1,
+      maxCharacters: maxCharacters !== undefined ? Number(maxCharacters) : 10,
+      allowedCharacters: allowedCharacters || {
+        alphabets: true,
+        numbers: false,
+        spaces: true,
+        hyphen: false,
+        ampersand: false,
+        period: false,
+        emoji: false
+      },
+      personalizationRequired: personalizationRequired || false,
+      textTransform: textTransform || 'original',
+      helperText: helperText || '',
+      pricePerCharacter: pricePerCharacter !== undefined ? Number(pricePerCharacter) : 0,
+      baseIncludedCharacters: baseIncludedCharacters !== undefined ? Number(baseIncludedCharacters) : 0,
+      maxExtraPrice: maxExtraPrice !== undefined ? Number(maxExtraPrice) : 0,
       details: details || [],
       careInstructions: careInstructions || [],
       isNew: resolvedIsNew,
@@ -1842,6 +1914,72 @@ const getSharePreview = async (req, res) => {
   }
 };
 
+const getVideoSitemap = async (req, res) => {
+  try {
+    const products = await Product.find({
+      hidden: { $ne: true },
+      $or: [
+        { approvalStatus: 'approved' },
+        { approvalStatus: { $exists: false } }
+      ],
+      videos: { $exists: true, $not: { $size: 0 } }
+    });
+
+    const protocol = req.protocol;
+    const host = req.get('host');
+    const baseUrl = `${protocol}://${host}`;
+
+    let xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:video="http://www.google.com/schemas/sitemap-video/1.1">`;
+
+    for (const product of products) {
+      const loc = `${baseUrl}/product/${product._id}`;
+      for (const video of product.videos) {
+        const thumbnail = video.thumbnailUrl || (product.images && product.images[0]) || `${baseUrl}/images/placeholder.svg`;
+        const title = video.title || product.title;
+        const description = video.description || product.description || 'Watch our premium product arrangement in motion.';
+        const contentLoc = video.url;
+
+        const escapeXml = (unsafe) => {
+          if (!unsafe) return '';
+          return unsafe.replace(/[<>&'"]/g, (c) => {
+            switch (c) {
+              case '<': return '&lt;';
+              case '>': return '&gt;';
+              case '&': return '&amp;';
+              case '\'': return '&apos;';
+              case '"': return '&quot;';
+              default: return c;
+            }
+          });
+        };
+
+        xml += `
+  <url>
+    <loc>${escapeXml(loc)}</loc>
+    <video:video>
+      <video:thumbnail_loc>${escapeXml(thumbnail)}</video:thumbnail_loc>
+      <video:title>${escapeXml(title)}</video:title>
+      <video:description>${escapeXml(description.substring(0, 2048))}</video:description>
+      <video:content_loc>${escapeXml(contentLoc)}</video:content_loc>
+      <video:player_loc>${escapeXml(loc)}</video:player_loc>
+      <video:duration>${video.duration || 30}</video:duration>
+    </video:video>
+  </url>`;
+      }
+    }
+
+    xml += '\n</urlset>';
+
+    res.header('Content-Type', 'application/xml');
+    return res.status(200).send(xml);
+  } catch (error) {
+    console.error('Error generating video sitemap:', error);
+    return res.status(500).send('<?xml version="1.0" encoding="UTF-8"?><error>Internal Server Error</error>');
+  }
+};
+
 module.exports = {
   getProducts,
   getProductById,
@@ -1871,4 +2009,5 @@ module.exports = {
   resetSectionProductsOrder,
   applySavedSortingToProducts, // Exported to be reused by public endpoints
   getSharePreview,
+  getVideoSitemap,
 };
