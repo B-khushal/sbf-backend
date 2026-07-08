@@ -36,6 +36,16 @@ const ensureOccasionsSection = async (settings) => {
     settings.homeSections = list;
     settings.markModified('homeSections');
     await settings.save();
+  } else {
+    const list = [...(settings.homeSections || [])];
+    const idx = list.findIndex(s => s.type === 'occasions');
+    if (idx !== -1 && list[idx].title === 'Tailored For Your Occasions') {
+      console.log('⚡ Migrating: Renaming occasions section title from Tailored For Your Occasions to Shop by Occasion ⭐');
+      list[idx].title = 'Shop by Occasion ⭐';
+      settings.homeSections = list;
+      settings.markModified('homeSections');
+      await settings.save();
+    }
   }
 };
 

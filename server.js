@@ -585,10 +585,10 @@ const startServer = async () => {
       frameguard: { action: 'deny' },
     }));
 
-    // Global Rate Limiter: 60 requests per minute
+    // Global Rate Limiter: 120 requests per minute in production, 6000 in development
     const globalLimiter = rateLimit({
       windowMs: 60 * 1000,
-      max: 60,
+      max: process.env.NODE_ENV === 'production' ? 120 : 6000,
       message: { message: 'Too many requests. Please try again in a minute.' },
       standardHeaders: true,
       legacyHeaders: false,
