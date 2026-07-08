@@ -262,6 +262,14 @@ const startServer = async () => {
       console.error('⚠️ Seasonal Campaign seeding failed:', campaignSeedErr);
     }
 
+    // Initialize default occasions
+    try {
+      const Occasion = require('./models/Occasion');
+      await Occasion.seedDefaultOccasions();
+    } catch (occasionSeedErr) {
+      console.error('⚠️ Occasions seeding failed:', occasionSeedErr);
+    }
+
     // Initialize default delivery settings and zones
     try {
       const DeliverySetting = require('./models/DeliverySetting');
@@ -595,6 +603,7 @@ const startServer = async () => {
 
     app.use('/api/products', require('./routes/productRoutes'));
     app.use('/api/categories', require('./routes/categoryRoutes'));
+    app.use('/api/occasions', require('./routes/occasionRoutes'));
     app.use('/api/social-feed', require('./routes/socialFeedRoutes'));
     app.use('/api/homepage-videos', require('./routes/homepageVideoRoutes'));
     app.use('/api/addons', require('./routes/addonRoutes'));

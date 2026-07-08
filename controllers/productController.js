@@ -144,6 +144,33 @@ const getProducts = async (req, res) => {
       query.productType = { $ne: 'valentine' };
     }
     
+    // Filter by occasion if specified (supports both slug and occasion ObjectId)
+    if (req.query.occasion) {
+      const Occasion = require('../models/Occasion');
+      let occasionDoc;
+      if (mongoose.Types.ObjectId.isValid(req.query.occasion)) {
+        occasionDoc = await Occasion.findById(req.query.occasion);
+      } else {
+        occasionDoc = await Occasion.findOne({ slug: req.query.occasion });
+      }
+      if (occasionDoc) {
+        const occSlug = occasionDoc.slug;
+        const occRegex = new RegExp(`^${occSlug}$|^${occSlug}-|-${occSlug}-|-${occSlug}$`, 'i');
+        query.$and = query.$and || [];
+        query.$and.push({
+          $or: [
+            { occasionIds: occasionDoc._id },
+            { category: occRegex },
+            { subcategory: occRegex },
+            { categories: occRegex }
+          ]
+        });
+      } else {
+        // If an occasion was specified but not found, return empty array
+        return res.json({ products: [], total: 0 });
+      }
+    }
+    
     const count = await Product.countDocuments(query);
     // Remove pagination: fetch all products
     let products = await Product.find(query);
@@ -307,6 +334,7 @@ const createProduct = asyncHandler(async (req, res) => {
     valentineSlug,
     seasonalCampaigns,
     campaignSettings,
+    occasionIds,
     personalizationEnabled,
     personalizationType,
     fieldLabel,
@@ -321,6 +349,34 @@ const createProduct = asyncHandler(async (req, res) => {
     baseIncludedCharacters,
     maxExtraPrice,
   } = req.body;
+
+  // Auto-map category strings to occasion IDs if they match
+  let resolvedOccasionIds = Array.isArray(occasionIds) ? occasionIds : [];
+  try {
+    const Occasion = require('../models/Occasion');
+    const dbOccasions = await Occasion.find({ status: 'active' });
+    const finalOccasionIds = new Set(resolvedOccasionIds.map(id => id.toString()));
+
+    const categoryTokens = new Set([
+      (category || '').toLowerCase(),
+      (subcategory || '').toLowerCase(),
+      ...(Array.isArray(categories) ? categories : []).map(c => c.toLowerCase())
+    ]);
+
+    dbOccasions.forEach(occ => {
+      const occSlug = occ.slug.toLowerCase();
+      for (const token of categoryTokens) {
+        if (token === occSlug || token.startsWith(occSlug + '-') || token.endsWith('-' + occSlug) || token.includes('-' + occSlug + '-')) {
+          finalOccasionIds.add(occ._id.toString());
+          break;
+        }
+      }
+    });
+
+    resolvedOccasionIds = Array.from(finalOccasionIds);
+  } catch (occMatchErr) {
+    console.error('Error auto-mapping occasions inside createProduct:', occMatchErr);
+  }
 
   // If user is a vendor, find their vendor profile and set it
   let vendorId = null;
@@ -404,6 +460,7 @@ const createProduct = asyncHandler(async (req, res) => {
     valentineSlug: valentineSlug || '',
     seasonalCampaigns: seasonalCampaigns || [],
     campaignSettings: campaignSettings || {},
+    occasionIds: resolvedOccasionIds,
   });
 
   console.log('📋 Product object before save:', {
@@ -475,6 +532,7 @@ const updateProduct = asyncHandler(async (req, res) => {
     valentineSlug,
     seasonalCampaigns,
     campaignSettings,
+    occasionIds,
     personalizationEnabled,
     personalizationType,
     fieldLabel,
@@ -502,6 +560,34 @@ const updateProduct = asyncHandler(async (req, res) => {
     const resolvedIsNew = typeof isNew === 'boolean'
       ? isNew
       : (typeof isNewArrival === 'boolean' ? isNewArrival : product.isNew);
+
+    // Auto-map category strings to occasion IDs if they match
+    let resolvedOccasionIds = Array.isArray(occasionIds) ? occasionIds : (product.occasionIds || []);
+    try {
+      const Occasion = require('../models/Occasion');
+      const dbOccasions = await Occasion.find({ status: 'active' });
+      const finalOccasionIds = new Set(resolvedOccasionIds.map(id => id.toString()));
+
+      const categoryTokens = new Set([
+        (category || '').toLowerCase(),
+        (subcategory || '').toLowerCase(),
+        ...(Array.isArray(categories) ? categories : []).map(c => c.toLowerCase())
+      ]);
+
+      dbOccasions.forEach(occ => {
+        const occSlug = occ.slug.toLowerCase();
+        for (const token of categoryTokens) {
+          if (token === occSlug || token.startsWith(occSlug + '-') || token.endsWith('-' + occSlug) || token.includes('-' + occSlug + '-')) {
+            finalOccasionIds.add(occ._id.toString());
+            break;
+          }
+        }
+      });
+
+      resolvedOccasionIds = Array.from(finalOccasionIds);
+    } catch (occMatchErr) {
+      console.error('Error auto-mapping occasions inside updateProduct:', occMatchErr);
+    }
 
     const updateData = {
       title,
@@ -570,6 +656,7 @@ const updateProduct = asyncHandler(async (req, res) => {
       valentineSlug: valentineSlug || '',
       seasonalCampaigns: seasonalCampaigns || [],
       campaignSettings: campaignSettings || {},
+      occasionIds: resolvedOccasionIds,
     };
 
     // If vendor updates product, set to pending approval
@@ -1622,6 +1709,14 @@ const bulkUpdateSectionProducts = asyncHandler(async (req, res) => {
       { _id: { $in: productIds } },
       { $set: { category: value } }
     );
+  } else if (action === 'assignOccasions') {
+    if (!Array.isArray(value)) {
+      return res.status(400).json({ message: 'Occasions list must be an array' });
+    }
+    await Product.updateMany(
+      { _id: { $in: productIds } },
+      { $set: { occasionIds: value } }
+    );
   } else if (action === 'changeVisibility') {
     const hidden = value === false;
     await Product.updateMany(
@@ -1980,12 +2075,64 @@ const getVideoSitemap = async (req, res) => {
   }
 };
 
+// @desc    Get products by occasion slug
+// @route   GET /api/products/by-occasion/:slug
+// @access  Public
+const getProductsByOccasionSlug = async (req, res) => {
+  try {
+    const Occasion = require('../models/Occasion');
+    const occasion = await Occasion.findOne({ slug: req.params.slug, status: 'active' });
+    if (!occasion) {
+      return res.status(404).json({ message: 'Occasion not found' });
+    }
+
+    const occSlug = occasion.slug;
+    const occRegex = new RegExp(`^${occSlug}$|^${occSlug}-|-${occSlug}-|-${occSlug}$`, 'i');
+    const query = {
+      hidden: { $ne: true },
+      $or: [
+        { approvalStatus: 'approved' },
+        { approvalStatus: { $exists: false } }
+      ],
+      $and: [
+        {
+          $or: [
+            { occasionIds: occasion._id },
+            { category: occRegex },
+            { subcategory: occRegex },
+            { categories: occRegex }
+          ]
+        }
+      ]
+    };
+
+    const count = await Product.countDocuments(query);
+    const products = await Product.find(query);
+
+    // Apply sorting preference
+    const sortedProducts = await applySavedSortingToProducts(products, `occasion:${occasion.slug}`);
+
+    // Add review stats
+    const productsWithReviews = await addReviewStats(sortedProducts);
+
+    res.json({
+      occasion,
+      products: productsWithReviews,
+      total: count
+    });
+  } catch (error) {
+    console.error('Error fetching products by occasion:', error);
+    res.status(500).json({ message: 'Error fetching products by occasion' });
+  }
+};
+
 module.exports = {
   getProducts,
   getProductById,
   createProduct,
   updateProduct,
   deleteProduct,
+  getProductsByOccasionSlug,
   createProductReview,
   getTopProducts,
   getFeaturedProducts,

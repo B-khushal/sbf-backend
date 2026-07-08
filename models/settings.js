@@ -51,7 +51,7 @@ const homeSectionSchema = new mongoose.Schema({
     enum: [
       'hero', 'categories', 'featured', 'new', 'philosophy', 'offers', 'custom',
       'bestsellers', 'seasonal', 'testimonials', 'about', 'gallery', 'instagram',
-      'blogs', 'custom_html', 'video_section', 'countdown_banner', 'whychooseus', 'social'
+      'blogs', 'custom_html', 'video_section', 'countdown_banner', 'whychooseus', 'social', 'occasions'
     ]
   },
   enabled: { type: Boolean, default: true },
@@ -478,10 +478,33 @@ settingsSchema.statics.initializeDefaultSettings = async function() {
       { id: 'hero', type: 'hero', enabled: true, order: 0, title: 'Hero Section', subtitle: 'Main banner area' },
       { id: 'categories', type: 'categories', enabled: true, order: 1, title: 'Categories', subtitle: 'Product categories showcase' },
       {
+        id: 'occasions',
+        type: 'occasions',
+        enabled: true,
+        order: 2,
+        title: 'Shop by Occasion ⭐',
+        subtitle: 'Find the perfect flowers, cakes, plants and gifts curated specially for every celebration.',
+        content: {
+          maxProducts: 10,
+          autoplay: false,
+          autoplaySpeed: 5000,
+          arrowStyle: 'floating-semi-transparent',
+          cardStyle: 'premium',
+          showRatings: true,
+          showReviews: true,
+          showDeliveryBadge: true,
+          showDiscount: true,
+          showWishlist: true,
+          showQuickView: true,
+          productsPerRow: 4,
+          animationStyle: 'fade-upward'
+        }
+      },
+      {
         id: 'whychooseus',
         type: 'whychooseus',
         enabled: true,
-        order: 2,
+        order: 3,
         title: 'Why Discerning Gift-Givers Choose Us',
         subtitle: 'We elevate floral gifting into memorable luxury experiences, delivering beauty and joy with meticulous attention to detail.',
         content: {
@@ -517,12 +540,12 @@ settingsSchema.statics.initializeDefaultSettings = async function() {
           ]
         }
       },
-      { id: 'featured', type: 'featured', enabled: true, order: 3, title: '✨ Featured Collection', subtitle: 'Explore our most popular floral arrangements' },
+      { id: 'featured', type: 'featured', enabled: true, order: 4, title: '✨ Featured Collection', subtitle: 'Explore our most popular floral arrangements' },
       {
         id: 'offers',
         type: 'offers',
         enabled: true,
-        order: 4,
+        order: 5,
         title: 'Perfect Gifts for Cherished Moments',
         subtitle: 'Discover handpicked floral collections designed to convey every shade of sentiment.',
         content: {
@@ -580,14 +603,14 @@ settingsSchema.statics.initializeDefaultSettings = async function() {
           ]
         }
       },
-      { id: 'video_section', type: 'video_section', enabled: true, order: 4.5, title: '🎥 Premium Floral Showcase', subtitle: 'Experience the art of floristry and gifting through our vertical showcase reels' },
-      { id: 'new', type: 'new', enabled: true, order: 5, title: '🌸 New Arrivals', subtitle: 'Discover our latest seasonal additions' },
-      { id: 'philosophy', type: 'philosophy', enabled: true, order: 6, title: 'Artfully Crafted Botanical Experiences', subtitle: 'Every arrangement we create is a unique work of art, designed to bring beauty and tranquility into your everyday spaces.', content: { image: '/images/d3.jpg' } },
+      { id: 'video_section', type: 'video_section', enabled: true, order: 6, title: '🎥 Premium Floral Showcase', subtitle: 'Experience the art of floristry and gifting through our vertical showcase reels' },
+      { id: 'new', type: 'new', enabled: true, order: 7, title: '🌸 New Arrivals', subtitle: 'Discover our latest seasonal additions' },
+      { id: 'philosophy', type: 'philosophy', enabled: true, order: 8, title: 'Artfully Crafted Botanical Experiences', subtitle: 'Every arrangement we create is a unique work of art, designed to bring beauty and tranquility into your everyday spaces.', content: { image: '/images/d3.jpg' } },
       {
         id: 'social',
         type: 'social',
         enabled: true,
-        order: 7,
+        order: 9,
         title: 'Share Your Joy #SBFlorist',
         subtitle: 'See how our customers celebrate life\'s moments. Follow us on Instagram for daily bouquet inspiration.',
         content: {

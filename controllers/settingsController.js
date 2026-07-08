@@ -1,5 +1,44 @@
 const Settings = require('../models/settings');
 
+const ensureOccasionsSection = async (settings) => {
+  if (!settings) return;
+  const hasOccasions = (settings.homeSections || []).some(s => s.type === 'occasions');
+  if (!hasOccasions) {
+    console.log('⚡ Migrating: Adding occasions section to homeSections');
+    const list = [...(settings.homeSections || [])];
+    list.forEach(sec => {
+      if (sec.order >= 2) sec.order += 1;
+    });
+    list.push({
+      id: 'occasions',
+      type: 'occasions',
+      enabled: true,
+      order: 2,
+      title: 'Shop by Occasion ⭐',
+      subtitle: 'Find the perfect flowers, cakes, plants and gifts curated specially for every celebration.',
+      content: {
+        maxProducts: 10,
+        autoplay: false,
+        autoplaySpeed: 5000,
+        arrowStyle: 'floating-semi-transparent',
+        cardStyle: 'premium',
+        showRatings: true,
+        showReviews: true,
+        showDeliveryBadge: true,
+        showDiscount: true,
+        showWishlist: true,
+        showQuickView: true,
+        productsPerRow: 4,
+        animationStyle: 'fade-upward'
+      }
+    });
+    list.sort((a, b) => a.order - b.order);
+    settings.homeSections = list;
+    settings.markModified('homeSections');
+    await settings.save();
+  }
+};
+
 // Get all hero slides
 exports.getHeroSlides = async (req, res) => {
   try {
@@ -48,6 +87,8 @@ exports.getHomeSections = async (req, res) => {
       await Settings.initializeDefaultSettings();
       settings = await Settings.findOne();
     }
+
+    await ensureOccasionsSection(settings);
 
     res.json(settings.homeSections);
   } catch (error) {
@@ -115,6 +156,8 @@ exports.getAllSettings = async (req, res) => {
       await Settings.initializeDefaultSettings();
       settings = await Settings.findOne();
     }
+
+    await ensureOccasionsSection(settings);
 
     if (settings && settings.footerSettings && settings.footerSettings.contactInfo && settings.footerSettings.contactInfo.email === '2006sbf@gmail.com') {
       settings.footerSettings.contactInfo.email = 'contact@sbflorist.in';

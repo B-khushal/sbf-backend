@@ -555,6 +555,12 @@ const productSchema = mongoose.Schema(
       type: Boolean,
       default: false
     },
+    occasionIds: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Occasion"
+      }
+    ],
   },
   {
     timestamps: true,

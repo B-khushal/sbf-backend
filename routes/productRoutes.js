@@ -28,6 +28,7 @@ const {
   resetSectionProductsOrder,
   getSharePreview,
   getVideoSitemap,
+  getProductsByOccasionSlug,
 } = require('../controllers/productController');
 
 const {
@@ -153,6 +154,11 @@ router.post('/order/reset', protect, admin, resetSectionProductsOrder);
 // @desc    Get products by category
 // @access  Public
 router.get('/category/:category', getProductsByCategory);
+
+// @route   GET /api/products/by-occasion/:slug
+// @desc    Get products by occasion slug
+// @access  Public
+router.get('/by-occasion/:slug', getProductsByOccasionSlug);
 
 // @route   POST /api/products/fix-details
 // @desc    Fix malformed product details (migration endpoint)
