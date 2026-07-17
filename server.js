@@ -240,19 +240,15 @@ const startServer = async () => {
     await connectDB();
     console.log('Database connected successfully');
 
-    // Run SMTP Diagnostics & Firewall check
-    try {
-      await runSMTPDiagnostics();
-    } catch (smtpDiagErr) {
+    // Run SMTP Diagnostics & Firewall check (Asynchronously to avoid blocking port binding)
+    runSMTPDiagnostics().catch((smtpDiagErr) => {
       console.error('❌ Failed to run SMTP diagnostics:', smtpDiagErr);
-    }
+    });
 
-    // Run PDF Generation Test
-    try {
-      await testPDFGenerationOnStartup();
-    } catch (pdfTestErr) {
+    // Run PDF Generation Test (Asynchronously to avoid blocking port binding on slow downloads)
+    testPDFGenerationOnStartup().catch((pdfTestErr) => {
       console.error('❌ Failed to run startup PDF check:', pdfTestErr);
-    }
+    });
 
     // Initialize default seasonal campaigns
     try {
