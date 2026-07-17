@@ -575,11 +575,42 @@ const startServer = async () => {
       contentSecurityPolicy: {
         directives: {
           defaultSrc: ["'self'", "https:", "http:"],
-          scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://checkout.razorpay.com", "https://accounts.google.com"],
-          styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-          imgSrc: ["'self'", "data:", "https://res.cloudinary.com", "https://images.unsplash.com", "https:", "http:"],
+          scriptSrc: [
+            "'self'",
+            "'unsafe-inline'",
+            "'unsafe-eval'",
+            "https://checkout.razorpay.com",
+            "https://accounts.google.com",
+            "https://apis.mappls.com",
+            "https://apis.mapmyindia.com"
+          ],
+          styleSrc: [
+            "'self'",
+            "'unsafe-inline'",
+            "https://fonts.googleapis.com",
+            "https://apis.mappls.com",
+            "https://apis.mapmyindia.com"
+          ],
+          imgSrc: [
+            "'self'",
+            "data:",
+            "https://res.cloudinary.com",
+            "https://images.unsplash.com",
+            "https:",
+            "http:",
+            "*.mappls.com",
+            "*.mapmyindia.com"
+          ],
           frameSrc: ["'self'", "https://checkout.razorpay.com", "https://player.vimeo.com", "https://accounts.google.com"],
-          connectSrc: ["'self'", "https:", "http:", "wss:", "ws:"],
+          connectSrc: [
+            "'self'",
+            "https:",
+            "http:",
+            "wss:",
+            "ws:",
+            "*.mappls.com",
+            "*.mapmyindia.com"
+          ],
         }
       },
       frameguard: { action: 'deny' },
@@ -639,6 +670,7 @@ const startServer = async () => {
     app.use('/wake-up', require('./routes/wakeUpRoutes'));
     app.use('/api/settings', settingsRoutes);
     app.use('/api/newsletter', newsletterRoutes);
+    app.use('/api/mappls', require('./routes/mapplsRoutes'));
 
     app.get('/', (req, res) => {
       const origin = req.get('Origin');

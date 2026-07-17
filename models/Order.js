@@ -42,7 +42,15 @@ const orderSchema = new mongoose.Schema({
     deliveryRequired: {
       type: Boolean,
       default: true
-    }
+    },
+    // Mappls location fields
+    formattedAddress: String,
+    country: String,
+    pincode: String,
+    landmark: String,
+    houseNo: String,
+    floor: String,
+    deliveryInstructions: String,
   },
   items: [{
     product: {
@@ -122,7 +130,17 @@ const orderSchema = new mongoose.Schema({
     recipientZipCode: String,
     greetingCard: String,
     surpriseDelivery: Boolean,
-    anonymousGift: Boolean
+    anonymousGift: Boolean,
+    // Mappls location fields
+    latitude: Number,
+    longitude: Number,
+    formattedAddress: String,
+    country: String,
+    pincode: String,
+    landmark: String,
+    houseNo: String,
+    floor: String,
+    deliveryInstructions: String,
   },
   totalAmount: {
     type: Number,

@@ -437,7 +437,16 @@ const createOrder = async (req, res) => {
         cardMessage: shippingDetails.cardMessage || '',
         deliverySpecialInstructions: shippingDetails.deliverySpecialInstructions || '',
         deliveryDate: shippingDetails.deliveryDate,
-        timeSlot: shippingDetails.timeSlot
+        timeSlot: shippingDetails.timeSlot,
+        latitude: shippingDetails.latitude,
+        longitude: shippingDetails.longitude,
+        formattedAddress: shippingDetails.formattedAddress,
+        country: shippingDetails.country,
+        pincode: shippingDetails.pincode,
+        landmark: shippingDetails.landmark,
+        houseNo: shippingDetails.houseNo,
+        floor: shippingDetails.floor,
+        deliveryInstructions: shippingDetails.deliveryInstructions,
       },
       items: items.map(item => ({
         product: item.product || item.productId,
@@ -473,7 +482,31 @@ const createOrder = async (req, res) => {
 
     // Add gift details if present
     if (giftDetails) {
-      orderData.giftDetails = giftDetails;
+      orderData.giftDetails = {
+        message: giftDetails.message,
+        recipientName: giftDetails.recipientName,
+        recipientEmail: giftDetails.recipientEmail,
+        recipientPhone: giftDetails.recipientPhone,
+        recipientAddress: giftDetails.recipientAddress,
+        recipientApartment: giftDetails.recipientApartment || '',
+        recipientCity: giftDetails.recipientCity,
+        recipientState: giftDetails.recipientState,
+        recipientZipCode: giftDetails.recipientZipCode,
+        greetingCard: giftDetails.greetingCard || 'none',
+        surpriseDelivery: !!giftDetails.surpriseDelivery,
+        anonymousGift: !!giftDetails.anonymousGift,
+        
+        // Mappls location fields
+        latitude: giftDetails.latitude,
+        longitude: giftDetails.longitude,
+        formattedAddress: giftDetails.formattedAddress,
+        country: giftDetails.country,
+        pincode: giftDetails.pincode,
+        landmark: giftDetails.landmark,
+        houseNo: giftDetails.houseNo,
+        floor: giftDetails.floor,
+        deliveryInstructions: giftDetails.deliveryInstructions,
+      };
     }
 
     console.log('Creating order with data:', JSON.stringify(orderData, null, 2));

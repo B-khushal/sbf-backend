@@ -117,6 +117,16 @@ const userSchema = new mongoose.Schema({
         receiverCity: String,
         receiverState: String,
         receiverZipCode: String,
+        // Mappls location fields
+        latitude: Number,
+        longitude: Number,
+        formattedAddress: String,
+        country: String,
+        pincode: String,
+        landmark: String,
+        houseNo: String,
+        floor: String,
+        deliveryInstructions: String,
     }],
     // Google OAuth fields
     googleId: {
