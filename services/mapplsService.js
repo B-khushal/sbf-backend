@@ -63,12 +63,14 @@ async function autosuggest(query, location) {
     if (location) {
       params.append('location', location);
     }
-    // Set tokenizeAddress to true for clean address structures if needed
     params.append('tokenizeAddress', 'true');
 
-    const response = await fetch(`https://atlas.mappls.com/api/places/autosuggest?${params.toString()}`, {
+    // Use search/json endpoint which is OAuth compatible
+    const response = await fetch(`https://atlas.mapmyindia.com/api/places/search/json?${params.toString()}`, {
       headers: {
-        'Authorization': `Bearer ${token}`
+        'Authorization': `Bearer ${token}`,
+        'Origin': 'https://sbflorist.in',
+        'Referer': 'https://sbflorist.in/'
       }
     });
 
@@ -92,7 +94,9 @@ async function getPlaceDetails(eLoc) {
     const token = await getAccessToken();
     const response = await fetch(`https://explore.mappls.com/apis/O2O/entity/${eLoc}`, {
       headers: {
-        'Authorization': `Bearer ${token}`
+        'Authorization': `Bearer ${token}`,
+        'Origin': 'https://sbflorist.in',
+        'Referer': 'https://sbflorist.in/'
       }
     });
 
@@ -101,13 +105,22 @@ async function getPlaceDetails(eLoc) {
     }
 
     const data = await response.json();
-    if (data && data.result) {
+    
+    // Check if coordinates are in flat response or nested in result
+    const lat = data.latitude || (data.result && data.result.latitude);
+    const lng = data.longitude || (data.result && data.result.longitude);
+
+    if (lat === 'RESTRICTED' || lng === 'RESTRICTED') {
+      throw new Error('Coordinates access restricted under your Mappls plan. Please whitelist your VPS IP or contact Mappls support.');
+    }
+
+    if (lat && lng) {
       return {
-        latitude: Number(data.result.latitude),
-        longitude: Number(data.result.longitude)
+        latitude: Number(lat),
+        longitude: Number(lng)
       };
     }
-    throw new Error('No place details returned for this eLoc');
+    throw new Error('No coordinates returned for this eLoc. Plan might be restricted.');
   } catch (error) {
     console.error('❌ Error in Mappls getPlaceDetails service:', error);
     throw error;
@@ -119,39 +132,63 @@ async function getPlaceDetails(eLoc) {
  */
 async function reverseGeocode(lat, lng) {
   try {
-    const token = await getAccessToken();
-
-    // Primary endpoint: search.mappls.com
-    const params = new URLSearchParams({
-      lat: String(lat),
-      lon: String(lng) // parameter is 'lon'
-    });
-
+    const apiKey = process.env.MAPPLS_API_KEY || process.env.VITE_MAPPLS_API_KEY || 'ec2ae7ed0bbcca3fcb6b405be70ac679';
+    
     console.log(`🔄 Reverse geocoding coords: Lat: ${lat}, Lng: ${lng}`);
-    const response = await fetch(`https://search.mappls.com/search/address/rev-geocode?${params.toString()}`, {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    });
 
-    let addressData;
-    if (response.ok) {
-      addressData = await response.json();
-    } else {
-      console.warn(`⚠️ Primary Mappls rev-geocode returned status ${response.status}. Attempting fallback...`);
-      // Fallback endpoint: apis.mappls.com/advancedmaps/v1/reverse
-      const fallbackResponse = await fetch(`https://apis.mappls.com/advancedmaps/v1/reverse?lat=${lat}&lng=${lng}`, {
+    // Primary: Try legacy advancedmaps API using whitelisted static key
+    try {
+      const url = `https://apis.mapmyindia.com/advancedmaps/v1/${apiKey}/rev_geocode?lat=${lat}&lng=${lng}`;
+      const response = await fetch(url, {
         headers: {
-          'Authorization': `Bearer ${token}`
+          'Origin': 'https://sbflorist.in',
+          'Referer': 'https://sbflorist.in/'
         }
       });
 
-      if (!fallbackResponse.ok) {
-        throw new Error(`Both primary and fallback reverse geocoding endpoints failed.`);
+      if (response.ok) {
+        const addressData = await response.json();
+        const result = addressData.results && addressData.results[0];
+        if (result) {
+          return {
+            formattedAddress: result.formatted_address || '',
+            city: result.city || '',
+            state: result.state || '',
+            pincode: result.pincode || '',
+            country: result.country || 'India',
+            landmark: result.poi || result.sublocality || '',
+            houseNo: result.house_number || '',
+            apartment: result.house_name || '',
+            street: result.street || ''
+          };
+        }
+      } else {
+        console.warn(`⚠️ Primary MapmyIndia rev_geocode returned status ${response.status}. Attempting OAuth fallback...`);
       }
-      addressData = await fallbackResponse.json();
+    } catch (primaryErr) {
+      console.warn('⚠️ Primary static-key rev-geocode failed, trying OAuth fallback...', primaryErr.message);
     }
 
+    // Fallback: Use OAuth 2.0 reverse geocoding endpoint
+    const token = await getAccessToken();
+    const params = new URLSearchParams({
+      lat: String(lat),
+      lon: String(lng)
+    });
+
+    const fallbackResponse = await fetch(`https://search.mappls.com/search/address/rev-geocode?${params.toString()}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Origin': 'https://sbflorist.in',
+        'Referer': 'https://sbflorist.in/'
+      }
+    });
+
+    if (!fallbackResponse.ok) {
+      throw new Error(`Reverse geocoding request failed: ${fallbackResponse.statusText}`);
+    }
+
+    const addressData = await fallbackResponse.json();
     const result = addressData.results && addressData.results[0];
     if (!result) {
       throw new Error('Reverse geocode successful but returned empty results list.');
