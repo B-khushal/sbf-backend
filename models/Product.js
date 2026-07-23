@@ -561,6 +561,128 @@ const productSchema = mongoose.Schema(
         ref: "Occasion"
       }
     ],
+    // Enterprise Catalog Architecture Fields
+    catalogType: {
+      type: String,
+      enum: ['bouquet', 'plant', 'cake', 'chocolate', 'hamper', 'combo', 'addon', 'custom'],
+      default: 'bouquet',
+    },
+    sku: {
+      type: String,
+      default: '',
+    },
+    status: {
+      type: String,
+      enum: ['published', 'draft', 'hidden', 'archived', 'scheduled'],
+      default: 'published',
+    },
+    costPrice: {
+      type: Number,
+      default: 0,
+    },
+    barcode: {
+      type: String,
+      default: '',
+    },
+    allowBackorders: {
+      type: Boolean,
+      default: false,
+    },
+    warehouseLocation: {
+      type: String,
+      default: '',
+    },
+    // Type-specific attributes
+    cakeAttributes: {
+      flavor: { type: String, default: '' },
+      weight: { type: String, default: '' },
+      shape: { type: String, default: 'round' },
+      eggless: { type: Boolean, default: false },
+      prepTime: { type: String, default: '' },
+      availableSizes: { type: [String], default: [] },
+      occasion: { type: String, default: '' }
+    },
+    plantAttributes: {
+      scientificName: { type: String, default: '' },
+      potIncluded: { type: Boolean, default: true },
+      indoor: { type: Boolean, default: true },
+      outdoor: { type: Boolean, default: false },
+      waterFrequency: { type: String, default: '' },
+      lightRequirement: { type: String, default: '' },
+      height: { type: String, default: '' },
+      careInstructions: { type: [String], default: [] }
+    },
+    chocolateAttributes: {
+      brand: { type: String, default: '' },
+      weight: { type: String, default: '' },
+      imported: { type: Boolean, default: false },
+      vegetarian: { type: Boolean, default: true },
+      expiryDate: { type: Date, default: null },
+      storage: { type: String, default: '' }
+    },
+    hamperAttributes: {
+      hamperItems: [{
+        productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
+        name: String,
+        type: String,
+        price: Number,
+        image: String,
+        quantity: { type: Number, default: 1 }
+      }]
+    },
+    comboAttributes: {
+      comboProducts: [{
+        productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
+        name: String,
+        type: String,
+        price: Number,
+        image: String,
+        quantity: { type: Number, default: 1 }
+      }],
+      stockPolicy: {
+        type: String,
+        enum: ['hide', 'partial', 'replace'],
+        default: 'hide'
+      }
+    },
+    seoSettings: {
+      metaTitle: { type: String, default: '' },
+      metaDescription: { type: String, default: '' },
+      slug: { type: String, default: '' },
+      canonicalUrl: { type: String, default: '' },
+      ogImage: { type: String, default: '' },
+      twitterCard: { type: String, default: 'summary_large_image' },
+      keywords: { type: [String], default: [] }
+    },
+    collections: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Collection'
+    }],
+    versionHistory: [{
+      version: { type: Number, default: 1 },
+      updatedBy: String,
+      changes: String,
+      data: { type: mongoose.Schema.Types.Mixed },
+      timestamp: { type: Date, default: Date.now }
+    }],
+    activityLogs: [{
+      action: String,
+      performedBy: String,
+      details: String,
+      timestamp: { type: Date, default: Date.now }
+    }],
+    relatedProducts: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Product'
+    }],
+    crossSellProducts: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Product'
+    }],
+    upsellProducts: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Product'
+    }]
   },
   {
     timestamps: true,

@@ -2126,6 +2126,289 @@ const getProductsByOccasionSlug = async (req, res) => {
   }
 };
 
+// @desc    Get enterprise overview analytics stats
+// @route   GET /api/products/admin/overview-stats
+// @access  Private/Admin
+const getOverviewStats = asyncHandler(async (req, res) => {
+  const allProducts = await Product.find({});
+  const totalProducts = allProducts.length;
+  const activeProducts = allProducts.filter(p => !p.hidden && p.status !== 'draft' && p.status !== 'archived').length;
+  const outOfStock = allProducts.filter(p => (p.countInStock || 0) <= 0).length;
+  const hiddenProducts = allProducts.filter(p => p.hidden || p.status === 'hidden').length;
+  const draftProducts = allProducts.filter(p => p.status === 'draft').length;
+  const lowInventoryCount = allProducts.filter(p => (p.countInStock || 0) > 0 && (p.countInStock || 0) <= 5).length;
+  const pendingReviewCount = allProducts.filter(p => p.approvalStatus === 'pending').length;
+
+  // Rating average
+  const totalRating = allProducts.reduce((acc, p) => acc + (p.rating || 0), 0);
+  const averageRating = totalProducts > 0 ? (totalRating / totalProducts).toFixed(1) : '0.0';
+
+  // Product Type Distribution
+  const typeMap = {};
+  allProducts.forEach(p => {
+    const type = p.catalogType || 'bouquet';
+    typeMap[type] = (typeMap[type] || 0) + 1;
+  });
+
+  // Category Breakdown
+  const categoryMap = {};
+  allProducts.forEach(p => {
+    const cat = p.category || 'Uncategorized';
+    categoryMap[cat] = (categoryMap[cat] || 0) + 1;
+  });
+
+  let bestSellingCategory = 'Bouquets';
+  let maxCatCount = 0;
+  Object.entries(categoryMap).forEach(([cat, count]) => {
+    if (count > maxCatCount) {
+      maxCatCount = count;
+      bestSellingCategory = cat;
+    }
+  });
+
+  // Recently updated (last 10)
+  const recentlyUpdated = [...allProducts]
+    .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
+    .slice(0, 8);
+
+  // Recently added (last 8)
+  const recentlyAdded = [...allProducts]
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, 8);
+
+  res.json({
+    totalProducts,
+    activeProducts,
+    outOfStock,
+    hiddenProducts,
+    draftProducts,
+    bestSellingCategory,
+    recentlyAdded,
+    lowInventoryCount,
+    averageRating: parseFloat(averageRating),
+    pendingReviewCount,
+    typeDistribution: typeMap,
+    categoryDistribution: categoryMap,
+    recentlyUpdated,
+  });
+});
+
+const getProductsByCatalogType = asyncHandler(async (req, res) => {
+  const { type } = req.params;
+  
+  let query = {};
+  if (type === 'cake') {
+    query = {
+      $or: [
+        { catalogType: 'cake' },
+        { category: { $regex: /cake/i } }
+      ]
+    };
+  } else if (type === 'plant') {
+    query = {
+      $or: [
+        { catalogType: 'plant' },
+        { category: { $regex: /plant/i } }
+      ]
+    };
+  } else if (type === 'chocolate') {
+    query = {
+      $and: [
+        {
+          $or: [
+            { catalogType: 'chocolate' },
+            { category: { $regex: /chocolate|confectionery|sweets/i } }
+          ]
+        },
+        { catalogType: { $ne: 'bouquet' } },
+        { title: { $not: { $regex: /bouquet/i } } },
+        { subcategory: { $not: { $regex: /bouquet/i } } },
+        { category: { $not: { $regex: /bouquet/i } } }
+      ]
+    };
+  } else if (type === 'hamper') {
+    query = {
+      $or: [
+        { catalogType: 'hamper' },
+        { category: { $regex: /hamper|basket|gift/i } }
+      ]
+    };
+  } else if (type === 'combo') {
+    query = {
+      $or: [
+        { catalogType: 'combo' },
+        { category: { $regex: /combo/i } }
+      ]
+    };
+  } else if (type === 'addon') {
+    query = {
+      $or: [
+        { catalogType: 'addon' },
+        { category: { $regex: /addon|add-on|greeting|card|teddy|balloon/i } }
+      ]
+    };
+  } else if (type === 'bouquet') {
+    query = {
+      $and: [
+        {
+          $or: [
+            { catalogType: 'bouquet' },
+            { catalogType: { $exists: false } },
+            { catalogType: null },
+            { catalogType: '' },
+            { title: { $regex: /bouquet/i } },
+            { subcategory: { $regex: /bouquet/i } },
+            { category: { $regex: /bouquet/i } }
+          ]
+        },
+        { category: { $not: { $regex: /cake|plant|hamper|combo|addon|greeting|card|teddy|balloon/i } } }
+      ]
+    };
+  } else {
+    query = { catalogType: type };
+  }
+
+  const products = await Product.find(query).sort({ createdAt: -1 });
+  const productsWithReviews = await addReviewStats(products);
+  res.json({ products: productsWithReviews, total: products.length });
+});
+
+// @desc    Perform enterprise bulk operations on products
+// @route   POST /api/products/admin/bulk-action
+// @access  Private/Admin
+const executeBulkAction = asyncHandler(async (req, res) => {
+  const { action, productIds, payload } = req.body;
+
+  if (!productIds || !Array.isArray(productIds) || productIds.length === 0) {
+    res.status(400);
+    throw new Error('No product IDs provided');
+  }
+
+  let modifiedCount = 0;
+
+  switch (action) {
+    case 'publish':
+      const publishRes = await Product.updateMany({ _id: { $in: productIds } }, { hidden: false, status: 'published' });
+      modifiedCount = publishRes.modifiedCount;
+      break;
+    case 'hide':
+      const hideRes = await Product.updateMany({ _id: { $in: productIds } }, { hidden: true, status: 'hidden' });
+      modifiedCount = hideRes.modifiedCount;
+      break;
+    case 'delete':
+      const delRes = await Product.deleteMany({ _id: { $in: productIds } });
+      modifiedCount = delRes.deletedCount;
+      break;
+    case 'category':
+      if (!payload?.category) {
+        res.status(400);
+        throw new Error('Category required for bulk category assignment');
+      }
+      const catRes = await Product.updateMany({ _id: { $in: productIds } }, { category: payload.category });
+      modifiedCount = catRes.modifiedCount;
+      break;
+    case 'discount':
+      if (typeof payload?.discount !== 'number') {
+        res.status(400);
+        throw new Error('Valid discount number required');
+      }
+      const discRes = await Product.updateMany({ _id: { $in: productIds } }, { discount: payload.discount });
+      modifiedCount = discRes.modifiedCount;
+      break;
+    case 'stock':
+      if (typeof payload?.countInStock !== 'number') {
+        res.status(400);
+        throw new Error('Valid stock count required');
+      }
+      const stockRes = await Product.updateMany({ _id: { $in: productIds } }, { countInStock: payload.countInStock });
+      modifiedCount = stockRes.modifiedCount;
+      break;
+    case 'duplicate':
+      const productsToDup = await Product.find({ _id: { $in: productIds } });
+      for (const prod of productsToDup) {
+        const dupData = prod.toObject();
+        delete dupData._id;
+        delete dupData.createdAt;
+        delete dupData.updatedAt;
+        dupData.title = `${dupData.title} (Copy)`;
+        dupData.sku = dupData.sku ? `${dupData.sku}-COPY` : '';
+        await Product.create(dupData);
+      }
+      modifiedCount = productsToDup.length;
+      break;
+    case 'sameday_enable':
+      const sameDayOnRes = await Product.updateMany({ _id: { $in: productIds } }, { sameDay: true });
+      modifiedCount = sameDayOnRes.modifiedCount;
+      break;
+    case 'sameday_disable':
+      const sameDayOffRes = await Product.updateMany({ _id: { $in: productIds } }, { sameDay: false });
+      modifiedCount = sameDayOffRes.modifiedCount;
+      break;
+    case 'featured_enable':
+      const featOnRes = await Product.updateMany({ _id: { $in: productIds } }, { isFeatured: true });
+      modifiedCount = featOnRes.modifiedCount;
+      break;
+    case 'featured_disable':
+      const featOffRes = await Product.updateMany({ _id: { $in: productIds } }, { isFeatured: false });
+      modifiedCount = featOffRes.modifiedCount;
+      break;
+    case 'new_enable':
+      const newOnRes = await Product.updateMany({ _id: { $in: productIds } }, { isNew: true, isNewArrival: true });
+      modifiedCount = newOnRes.modifiedCount;
+      break;
+    case 'new_disable':
+      const newOffRes = await Product.updateMany({ _id: { $in: productIds } }, { isNew: false, isNewArrival: false });
+      modifiedCount = newOffRes.modifiedCount;
+      break;
+    default:
+      res.status(400);
+      throw new Error(`Unsupported bulk action: ${action}`);
+  }
+
+  res.json({ success: true, action, modifiedCount, message: `Successfully executed ${action} on ${modifiedCount} products.` });
+});
+
+// @desc    Restore past version from product version history
+// @route   POST /api/products/:id/restore-version
+// @access  Private/Admin
+const restoreProductVersion = asyncHandler(async (req, res) => {
+  const { versionIndex } = req.body;
+  const product = await Product.findById(req.params.id);
+
+  if (!product) {
+    res.status(404);
+    throw new Error('Product not found');
+  }
+
+  if (!product.versionHistory || !product.versionHistory[versionIndex]) {
+    res.status(400);
+    throw new Error('Invalid version index');
+  }
+
+  const targetVersionData = product.versionHistory[versionIndex].data;
+  if (!targetVersionData) {
+    res.status(400);
+    throw new Error('Version data unavailable for restoration');
+  }
+
+  // Restore fields
+  Object.keys(targetVersionData).forEach(key => {
+    if (key !== '_id' && key !== 'createdAt' && key !== 'updatedAt') {
+      product[key] = targetVersionData[key];
+    }
+  });
+
+  product.activityLogs.push({
+    action: 'version_restored',
+    performedBy: req.user ? req.user.name : 'Admin',
+    details: `Restored version from ${new Date(product.versionHistory[versionIndex].timestamp).toLocaleString()}`,
+    timestamp: new Date(),
+  });
+
+  await product.save();
+  res.json({ success: true, message: 'Product version restored successfully', product });
+});
+
 module.exports = {
   getProducts,
   getProductById,
@@ -2154,7 +2437,12 @@ module.exports = {
   updateSectionProductsOrder,
   bulkUpdateSectionProducts,
   resetSectionProductsOrder,
-  applySavedSortingToProducts, // Exported to be reused by public endpoints
+  applySavedSortingToProducts,
   getSharePreview,
   getVideoSitemap,
+  getOverviewStats,
+  getProductsByCatalogType,
+  executeBulkAction,
+  restoreProductVersion,
 };
+

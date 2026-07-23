@@ -29,6 +29,10 @@ const {
   getSharePreview,
   getVideoSitemap,
   getProductsByOccasionSlug,
+  getOverviewStats,
+  getProductsByCatalogType,
+  executeBulkAction,
+  restoreProductVersion,
 } = require('../controllers/productController');
 
 const {
@@ -135,8 +139,14 @@ router.route('/:id/reviews')
   );
 
 // Admin routes for product management
+router.get('/admin/overview-stats', protect, adminOrVendor, getOverviewStats);
+router.post('/admin/bulk-action', protect, adminOrVendor, executeBulkAction);
+router.get('/type/:type', getProductsByCatalogType);
+router.post('/:id/restore-version', protect, adminOrVendor, restoreProductVersion);
 router.get('/admin/list', protect, adminOrVendor, getAdminProducts);
 router.put('/admin/:id/toggle-visibility', protect, adminOrVendor, toggleProductVisibility);
+router.put('/:id/visibility', protect, adminOrVendor, toggleProductVisibility);
+router.put('/:id/toggle-visibility', protect, adminOrVendor, toggleProductVisibility);
 router.put('/admin/:id/toggle-new', protect, adminOrVendor, toggleProductNewStatus);
 router.get('/admin/low-stock', protect, adminOrVendor, getLowStockProducts);
 router.get('/admin/pending-approval', protect, admin, getPendingProducts);

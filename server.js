@@ -629,6 +629,7 @@ const startServer = async () => {
     }));
 
     app.use('/api/products', require('./routes/productRoutes'));
+    app.use('/api/collections', require('./routes/collectionRoutes'));
     app.use('/api/categories', require('./routes/categoryRoutes'));
     app.use('/api/occasions', require('./routes/occasionRoutes'));
     app.use('/api/social-feed', require('./routes/socialFeedRoutes'));
