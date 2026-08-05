@@ -248,7 +248,7 @@ exports.createTestNotification = async (req, res) => {
       return res.status(403).json({ message: 'Access denied' });
     }
     
-    const notification = new Notification({
+    const notification = await Notification.create({
       type: type || 'system',
       title: title || '🧪 Test Notification',
       message: message || 'This is a test notification to verify the system is working correctly.',
@@ -256,18 +256,16 @@ exports.createTestNotification = async (req, res) => {
       read: false
     });
     
-    await notification.save();
-    
     console.log('Test notification created:', notification.title);
     res.status(201).json({
       message: 'Test notification created successfully',
       notification: {
-        id: notification._id,
+        id: notification._id || notification.id,
         type: notification.type,
         title: notification.title,
         message: notification.message,
         createdAt: notification.createdAt,
-        isRead: notification.read
+        isRead: notification.read || notification.isRead
       }
     });
   } catch (error) {
@@ -315,7 +313,7 @@ exports.createOrderNotification = async (orderData) => {
     const currency = orderData.currency || 'INR';
     const currencySymbol = currency === 'INR' ? '₹' : '$';
     
-    const notification = new Notification({
+    const notification = await Notification.create({
       type: 'order',
       title: '🎉 New Order Received!',
       message: `Order ${orderData.orderNumber} has been placed by ${orderData.customerName}. Amount: ${currencySymbol}${orderData.amount}`,
@@ -330,7 +328,6 @@ exports.createOrderNotification = async (orderData) => {
       }
     });
     
-    await notification.save();
     console.log('✅ Order notification created for admin:', orderData.orderNumber);
     return notification;
   } catch (error) {
@@ -342,7 +339,7 @@ exports.createOrderNotification = async (orderData) => {
 // Create admin notification (used internally)
 exports.createAdminNotification = async (data) => {
   try {
-    const notification = new Notification({
+    const notification = await Notification.create({
       type: data.type || 'admin',
       title: data.title,
       message: data.message,
@@ -351,7 +348,6 @@ exports.createAdminNotification = async (data) => {
       metadata: data.metadata || {}
     });
     
-    await notification.save();
     console.log('Admin notification created:', notification.title);
     return notification;
   } catch (error) {

@@ -1,56 +1,59 @@
-const mongoose = require("mongoose");
+const prisma = require('../config/prisma');
 
-const emailLogSchema = new mongoose.Schema(
-  {
-    sender: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    recipient: {
-      type: String,
-      required: true,
-      trim: true,
-      lowercase: true,
-    },
-    subject: {
-      type: String,
-      required: true,
-    },
-    emailType: {
-      type: String,
-      required: true,
-      // e.g. 'order_confirmation', 'delivery_confirmation', 'review_request', 'contact_form_reply', etc.
-    },
-    status: {
-      type: String,
-      enum: ["success", "failed"],
-      required: true,
-    },
-    smtpResponse: {
-      type: String,
-      default: "",
-    },
-    errorMessage: {
-      type: String,
-      default: "",
-    },
-    timestamp: {
-      type: Date,
-      default: Date.now,
-    },
-    metadata: {
-      type: mongoose.Schema.Types.Mixed,
-      default: {},
-    },
-  },
-  {
-    timestamps: true,
+class EmailLogDocument {
+  constructor(data) {
+    Object.assign(this, data);
+    this._id = data.id || data._id;
   }
-);
+}
 
-emailLogSchema.index({ recipient: 1, status: 1 });
-emailLogSchema.index({ emailType: 1, status: 1 });
-emailLogSchema.index({ timestamp: -1 });
+class QueryChain {
+  constructor(prismaQuery) { this.prismaQuery = prismaQuery; }
+  sort() { return this; }
+  skip() { return this; }
+  limit() { return this; }
 
-module.exports = mongoose.model("EmailLog", emailLogSchema);
+  async then(resolve, reject) {
+    try {
+      const res = await this.prismaQuery;
+      if (Array.isArray(res)) resolve(res.map(e => new EmailLogDocument(e)));
+      else if (res) resolve(new EmailLogDocument(res));
+      else resolve(null);
+    } catch (err) { reject(err); }
+  }
+}
+
+class EmailLogModel {
+  static find(where = {}) {
+    const filter = {};
+    if (where.recipient) filter.recipient = where.recipient;
+    if (where.status) filter.status = where.status;
+
+    const query = prisma.emailLog.findMany({
+      where: filter,
+      orderBy: { sentAt: 'desc' }
+    });
+    return new QueryChain(query);
+  }
+
+  static async create(data) {
+    const created = await prisma.emailLog.create({
+      data: {
+        id: data.id || data._id || `eml_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+        recipient: data.recipient || data.to || 'unknown@recipient.com',
+        subject: data.subject || 'Email',
+        type: data.type || null,
+        status: data.status || 'sent',
+        error: data.error || null,
+        metadata: data.metadata ? data.metadata : null
+      }
+    });
+    return new EmailLogDocument(created);
+  }
+
+  static async countDocuments(where = {}) {
+    return await prisma.emailLog.count({ where });
+  }
+}
+
+module.exports = EmailLogModel;

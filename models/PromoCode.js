@@ -1,228 +1,268 @@
-const mongoose = require('mongoose');
+const prisma = require('../config/prisma');
 
-const promoCodeSchema = new mongoose.Schema({
-  code: {
-    type: String,
-    required: [true, 'Promo code is required'],
-    unique: true,
-    uppercase: true,
-    trim: true,
-    minlength: [3, 'Promo code must be at least 3 characters'],
-    maxlength: [20, 'Promo code cannot exceed 20 characters']
-  },
-  description: {
-    type: String,
-    required: [true, 'Description is required'],
-    trim: true,
-    maxlength: [200, 'Description cannot exceed 200 characters']
-  },
-  image: {
-    type: String,
-    trim: true,
-    default: null // Optional promo code image URL
-  },
-  background: {
-    type: String,
-    default: '#ffffff'
-  },
-  discountType: {
-    type: String,
-    required: [true, 'Discount type is required'],
-    enum: ['percentage', 'fixed'],
-    default: 'percentage'
-  },
-  discountValue: {
-    type: Number,
-    required: [true, 'Discount value is required'],
-    min: [0, 'Discount value cannot be negative']
-  },
-  minimumOrderAmount: {
-    type: Number,
-    default: 0,
-    min: [0, 'Minimum order amount cannot be negative']
-  },
-  maximumDiscountAmount: {
-    type: Number,
-    default: null, // null means no maximum limit
-    min: [0, 'Maximum discount amount cannot be negative']
-  },
-  usageLimit: {
-    type: Number,
-    default: null, // null means unlimited usage
-    min: [1, 'Usage limit must be at least 1']
-  },
-  usedCount: {
-    type: Number,
-    default: 0,
-    min: [0, 'Used count cannot be negative']
-  },
-  validFrom: {
-    type: Date,
-    required: [true, 'Valid from date is required'],
-    default: Date.now
-  },
-  validUntil: {
-    type: Date,
-    required: [true, 'Valid until date is required']
-  },
-  isActive: {
-    type: Boolean,
-    default: true
-  },
-  applicableCategories: [{
-    type: String,
-    trim: true
-  }], // Empty array means applicable to all categories
-  excludedCategories: [{
-    type: String,
-    trim: true
-  }],
-  applicableProducts: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Product'
-  }], // Empty array means applicable to all products
-  excludedProducts: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Product'
-  }],
-  firstTimeUserOnly: {
-    type: Boolean,
-    default: false
-  },
-  createdBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now
-  },
-  metadata: {
-    campaignName: String,
-    notes: String,
-    tags: [String]
+const parseUntilDate = (inputDate) => {
+  if (!inputDate) return null;
+  const str = String(inputDate).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    const [y, m, d] = str.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, d, 23, 59, 59, 999));
   }
-});
-
-// Index for efficient querying
-promoCodeSchema.index({ code: 1 });
-promoCodeSchema.index({ isActive: 1, validFrom: 1, validUntil: 1 });
-promoCodeSchema.index({ createdAt: -1 });
-
-// Update the updatedAt field before saving
-promoCodeSchema.pre('save', function(next) {
-  this.updatedAt = new Date();
-  next();
-});
-
-// Virtual for checking if promo code is currently valid
-promoCodeSchema.virtual('isCurrentlyValid').get(function() {
-  const now = new Date();
-  return this.isActive && 
-         this.validFrom <= now && 
-         this.validUntil >= now &&
-         (this.usageLimit === null || this.usedCount < this.usageLimit);
-});
-
-// Method to check if promo code is applicable to specific order
-promoCodeSchema.methods.isApplicableToOrder = function(orderData) {
-  const { totalAmount, items = [], userId } = orderData;
-  
-  // Check if promo code is currently valid
-  if (!this.isCurrentlyValid) {
-    return { valid: false, reason: 'Promo code is not currently valid' };
+  const dateObj = new Date(inputDate);
+  if (!isNaN(dateObj.getTime()) && dateObj.getUTCHours() === 0 && dateObj.getUTCMinutes() === 0 && dateObj.getUTCSeconds() === 0) {
+    dateObj.setUTCHours(23, 59, 59, 999);
   }
-  
-  // Check minimum order amount
-  if (totalAmount < this.minimumOrderAmount) {
-    return { 
-      valid: false, 
-      reason: `Minimum order amount of ₹${this.minimumOrderAmount} required` 
+  return dateObj;
+};
+
+class PromoCodeDocument {
+  constructor(data = {}) {
+    Object.assign(this, data);
+    this.id = data.id || data._id || `promo_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    this._id = this.id;
+    this.code = data.code ? String(data.code).toUpperCase() : '';
+    this.description = data.description || '';
+    this.image = data.image || null;
+    this.background = data.background || '#ffffff';
+    this.discountType = data.discountType || 'percentage';
+    this.discountValue = data.discountValue !== undefined && data.discountValue !== null ? parseFloat(data.discountValue) : 0;
+    
+    this.minOrderAmount = (data.minOrderAmount !== undefined && data.minOrderAmount !== null)
+      ? parseFloat(data.minOrderAmount)
+      : ((data.minimumOrderAmount !== undefined && data.minimumOrderAmount !== null) ? parseFloat(data.minimumOrderAmount) : null);
+    this.minimumOrderAmount = this.minOrderAmount || 0;
+
+    this.maxDiscountAmount = (data.maxDiscountAmount !== undefined && data.maxDiscountAmount !== null)
+      ? parseFloat(data.maxDiscountAmount)
+      : ((data.maximumDiscountAmount !== undefined && data.maximumDiscountAmount !== null) ? parseFloat(data.maximumDiscountAmount) : null);
+    this.maximumDiscountAmount = this.maxDiscountAmount;
+
+    this.usageLimit = data.usageLimit !== undefined && data.usageLimit !== null ? parseInt(data.usageLimit, 10) : null;
+    this.usedCount = data.usedCount !== undefined && data.usedCount !== null ? parseInt(data.usedCount, 10) : 0;
+    
+    this.startDate = data.startDate || data.validFrom ? new Date(data.startDate || data.validFrom) : new Date();
+    this.endDate = parseUntilDate(data.endDate || data.validUntil);
+    this.validFrom = this.startDate;
+    this.validUntil = this.endDate;
+
+    this.isActive = data.isActive !== undefined ? Boolean(data.isActive) : true;
+    this.createdAt = data.createdAt ? new Date(data.createdAt) : new Date();
+    this.updatedAt = data.updatedAt ? new Date(data.updatedAt) : new Date();
+  }
+
+  populate() { return this; }
+
+  isApplicableToOrder({ totalAmount = 0, items = [], userId = null } = {}) {
+    if (!this.isActive) {
+      return { valid: false, reason: 'This promo code is inactive' };
+    }
+
+    const now = new Date();
+    if (this.validFrom && new Date(this.validFrom) > now) {
+      return { valid: false, reason: 'This promo code is not valid yet' };
+    }
+    if (this.validUntil && new Date(this.validUntil) < now) {
+      return { valid: false, reason: 'This promo code has expired' };
+    }
+
+    if (this.usageLimit !== null && this.usageLimit !== undefined && this.usedCount >= this.usageLimit) {
+      return { valid: false, reason: 'This promo code usage limit has been reached' };
+    }
+
+    const minOrder = this.minimumOrderAmount || this.minOrderAmount || 0;
+    if (totalAmount < minOrder) {
+      return { valid: false, reason: `Minimum order amount of ₹${minOrder} is required for this promo code` };
+    }
+
+    return { valid: true };
+  }
+
+  calculateDiscount(totalAmount = 0) {
+    if (!totalAmount || totalAmount <= 0) return 0;
+
+    let discount = 0;
+    if (this.discountType === 'percentage') {
+      discount = (totalAmount * (parseFloat(this.discountValue) || 0)) / 100;
+    } else {
+      discount = parseFloat(this.discountValue) || 0;
+    }
+
+    const maxDiscount = this.maximumDiscountAmount || this.maxDiscountAmount;
+    if (maxDiscount !== null && maxDiscount !== undefined && maxDiscount > 0) {
+      discount = Math.min(discount, parseFloat(maxDiscount));
+    }
+
+    return Math.min(discount, totalAmount);
+  }
+
+  async deleteOne() {
+    const promoId = this.id || this._id;
+    try {
+      await prisma.promoCode.delete({ where: { id: String(promoId) } });
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  async save() {
+    const promoId = this.id || this._id;
+
+    const rawStart = this.validFrom || this.startDate;
+    const rawEnd = this.validUntil || this.endDate;
+
+    const startDateVal = rawStart ? new Date(rawStart) : new Date();
+    const endDateVal = rawEnd ? new Date(rawEnd) : null;
+
+    const dataToSave = {
+      code: this.code ? String(this.code).toUpperCase() : `CODE_${Date.now()}`,
+      description: this.description || '',
+      image: this.image || null,
+      background: this.background || '#ffffff',
+      discountType: this.discountType || 'percentage',
+      discountValue: this.discountValue !== undefined && this.discountValue !== null ? parseFloat(this.discountValue) : 0,
+      minOrderAmount: (this.minOrderAmount !== undefined && this.minOrderAmount !== null) ? parseFloat(this.minOrderAmount) : ((this.minimumOrderAmount !== undefined && this.minimumOrderAmount !== null) ? parseFloat(this.minimumOrderAmount) : null),
+      maxDiscountAmount: (this.maxDiscountAmount !== undefined && this.maxDiscountAmount !== null) ? parseFloat(this.maxDiscountAmount) : ((this.maximumDiscountAmount !== undefined && this.maximumDiscountAmount !== null) ? parseFloat(this.maximumDiscountAmount) : null),
+      minimumOrderAmount: (this.minOrderAmount !== undefined && this.minOrderAmount !== null) ? parseFloat(this.minOrderAmount) : ((this.minimumOrderAmount !== undefined && this.minimumOrderAmount !== null) ? parseFloat(this.minimumOrderAmount) : null),
+      maximumDiscountAmount: (this.maxDiscountAmount !== undefined && this.maxDiscountAmount !== null) ? parseFloat(this.maxDiscountAmount) : ((this.maximumDiscountAmount !== undefined && this.maximumDiscountAmount !== null) ? parseFloat(this.maximumDiscountAmount) : null),
+      validFrom: startDateVal,
+      validUntil: endDateVal,
+      applicableCategories: this.applicableCategories || undefined,
+      excludedCategories: this.excludedCategories || undefined,
+      applicableProducts: this.applicableProducts || undefined,
+      excludedProducts: this.excludedProducts || undefined,
+      firstTimeUserOnly: !!this.firstTimeUserOnly,
+      createdBy: this.createdBy || null,
+      metadata: this.metadata || undefined,
+      usageLimit: this.usageLimit !== undefined && this.usageLimit !== null ? parseInt(this.usageLimit, 10) : null,
+      usedCount: this.usedCount !== undefined && this.usedCount !== null ? parseInt(this.usedCount, 10) : 0,
+      startDate: startDateVal,
+      endDate: endDateVal,
+      isActive: this.isActive !== false
     };
+
+    const saved = await prisma.promoCode.upsert({
+      where: { id: String(promoId) },
+      update: dataToSave,
+      create: {
+        id: String(promoId),
+        ...dataToSave
+      }
+    });
+
+    Object.assign(this, saved);
+    this.id = saved.id;
+    this._id = saved.id;
+    this.description = saved.description || '';
+    this.image = saved.image || null;
+    this.background = saved.background || '#ffffff';
+    this.validFrom = saved.startDate;
+    this.validUntil = saved.endDate;
+    this.startDate = saved.startDate;
+    this.endDate = saved.endDate;
+    this.minimumOrderAmount = saved.minOrderAmount ? parseFloat(saved.minOrderAmount) : 0;
+    this.maximumDiscountAmount = saved.maxDiscountAmount ? parseFloat(saved.maxDiscountAmount) : null;
+    return this;
   }
-  
-  // Check usage limit
-  if (this.usageLimit !== null && this.usedCount >= this.usageLimit) {
-    return { valid: false, reason: 'Promo code usage limit exceeded' };
+}
+
+class QueryChain {
+  constructor(prismaQuery) { this.prismaQuery = prismaQuery; }
+  sort() { return this; }
+  skip() { return this; }
+  limit() { return this; }
+  select() { return this; }
+  populate() { return this; }
+  lean() { return this; }
+  exec() { return this.then(r => r); }
+
+  async then(resolve, reject) {
+    try {
+      const res = await this.prismaQuery;
+      if (Array.isArray(res)) resolve(res.map(i => new PromoCodeDocument(i)));
+      else if (res) resolve(new PromoCodeDocument(res));
+      else resolve(null);
+    } catch (err) { reject(err); }
   }
-  
-  // Check category restrictions
-  if (this.applicableCategories.length > 0) {
-    const hasApplicableCategory = items.some(item => 
-      this.applicableCategories.includes(item.category)
-    );
-    if (!hasApplicableCategory) {
-      return { 
-        valid: false, 
-        reason: `Promo code only applicable to: ${this.applicableCategories.join(', ')}` 
-      };
+}
+
+class PromoCodeModel extends PromoCodeDocument {
+  constructor(data) {
+    super(data);
+  }
+
+  static findValidCodes(query = {}) {
+    const now = new Date();
+    const filter = {
+      isActive: true,
+      AND: [
+        { OR: [{ startDate: null }, { startDate: { lte: now } }] },
+        { OR: [{ endDate: null }, { endDate: { gte: now } }] }
+      ]
+    };
+    const promise = prisma.promoCode.findMany({ where: filter, orderBy: { createdAt: 'desc' } });
+    return new QueryChain(promise);
+  }
+
+  static findOne(where = {}) {
+    const filter = {};
+    if (where.code) filter.code = String(where.code).toUpperCase();
+    if (where._id || where.id) filter.id = String(where._id || where.id);
+
+    const query = prisma.promoCode.findFirst({ where: filter });
+    return new QueryChain(query);
+  }
+
+  static find(where = {}) {
+    const filter = {};
+    if (where.isActive !== undefined) filter.isActive = Boolean(where.isActive);
+
+    const query = prisma.promoCode.findMany({ where: filter, orderBy: { createdAt: 'desc' } });
+    return new QueryChain(query);
+  }
+
+  static findById(id) {
+    if (!id) return new QueryChain(Promise.resolve(null));
+    const query = prisma.promoCode.findUnique({ where: { id: String(id) } });
+    return new QueryChain(query);
+  }
+
+  static async create(data) {
+    const doc = new PromoCodeDocument(data);
+    await doc.save();
+    return doc;
+  }
+
+  static async findByIdAndUpdate(id, update) {
+    const existing = await PromoCodeModel.findById(id);
+    if (!existing) return null;
+
+    const dataToSet = update.$set ? update.$set : update;
+    Object.assign(existing, dataToSet);
+    await existing.save();
+    return existing;
+  }
+
+  static async findByIdAndDelete(id) {
+    if (!id) return null;
+    try {
+      const existing = await PromoCodeModel.findById(id);
+      if (existing) {
+        await prisma.promoCode.delete({ where: { id: String(id) } });
+        return existing;
+      }
+      return null;
+    } catch (e) {
+      return null;
     }
   }
-  
-  // Check excluded categories
-  if (this.excludedCategories.length > 0) {
-    const hasExcludedCategory = items.some(item => 
-      this.excludedCategories.includes(item.category)
-    );
-    if (hasExcludedCategory) {
-      return { 
-        valid: false, 
-        reason: `Promo code not applicable to: ${this.excludedCategories.join(', ')}` 
-      };
-    }
+
+  static async countDocuments(where = {}) {
+    const filter = {};
+    if (where.isActive !== undefined) filter.isActive = Boolean(where.isActive);
+    return await prisma.promoCode.count({ where: filter });
   }
-  
-  return { valid: true, reason: 'Promo code is applicable' };
-};
 
-// Method to calculate discount amount
-promoCodeSchema.methods.calculateDiscount = function(orderAmount) {
-  let discountAmount = 0;
-  
-  if (this.discountType === 'percentage') {
-    discountAmount = (orderAmount * this.discountValue) / 100;
-  } else if (this.discountType === 'fixed') {
-    discountAmount = this.discountValue;
-  }
-  
-  // Apply maximum discount limit if set
-  if (this.maximumDiscountAmount !== null && discountAmount > this.maximumDiscountAmount) {
-    discountAmount = this.maximumDiscountAmount;
-  }
-  
-  // Ensure discount doesn't exceed order amount
-  if (discountAmount > orderAmount) {
-    discountAmount = orderAmount;
-  }
-  
-  return Math.round(discountAmount * 100) / 100; // Round to 2 decimal places
-};
+  static populate() { return this; }
+}
 
-// Method to increment usage count
-promoCodeSchema.methods.incrementUsage = async function() {
-  this.usedCount += 1;
-  await this.save();
-};
-
-// Static method to find valid promo codes
-promoCodeSchema.statics.findValidCodes = function() {
-  const now = new Date();
-  return this.find({
-    isActive: true,
-    validFrom: { $lte: now },
-    validUntil: { $gte: now }
-  });
-};
-
-// Ensure virtual fields are serialized
-promoCodeSchema.set('toJSON', { virtuals: true });
-promoCodeSchema.set('toObject', { virtuals: true });
-
-const PromoCode = mongoose.model('PromoCode', promoCodeSchema);
-
-module.exports = PromoCode; 
+module.exports = PromoCodeModel;

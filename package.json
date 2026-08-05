@@ -12,6 +12,7 @@
     "sync-reviews": "node scripts/syncReviews.js"
   },
   "dependencies": {
+    "@prisma/client": "^5.22.0",
     "@react-oauth/google": "^0.12.1",
     "bcryptjs": "^2.4.3",
     "bl": "^6.0.12",
@@ -51,7 +52,8 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1"
+    "nodemon": "^3.0.1",
+    "prisma": "^5.22.0"
   },
   "keywords": [],
   "author": "",

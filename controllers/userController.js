@@ -67,17 +67,23 @@ const updateUser = async (req, res) => {
 // @access  Private/Admin
 const deleteUser = async (req, res) => {
   try {
-    const user = await User.findById(req.params.id);
+    const userId = req.params.id;
+    const user = await User.findById(userId);
 
-    if (user) {
-      await user.deleteOne();
-      res.json({ message: 'User removed' });
-    } else {
-      res.status(404).json({ message: 'User not found' });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
     }
+
+    if (req.user && (req.user.id === userId || req.user._id === userId)) {
+      return res.status(400).json({ message: 'Cannot delete your own logged in account' });
+    }
+
+    await user.deleteOne();
+    console.log(`🗑️ User deleted: ${user.email} (${user.id || user._id})`);
+    res.json({ success: true, message: 'User removed successfully' });
   } catch (error) {
     console.error('Error deleting user:', error);
-    res.status(500).json({ message: 'Error deleting user' });
+    res.status(500).json({ message: 'Error deleting user', error: error.message });
   }
 };
 

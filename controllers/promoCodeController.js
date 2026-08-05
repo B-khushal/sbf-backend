@@ -1,4 +1,5 @@
 const PromoCode = require('../models/PromoCode');
+const Offer = require('../models/Offer');
 
 // Get all promo codes (admin only)
 exports.getAllPromoCodes = async (req, res) => {
@@ -108,6 +109,21 @@ exports.getPromoCodeById = async (req, res) => {
   }
 };
 
+// Helper to set validUntil to the end of the specified day (23:59:59.999)
+const parseUntilDate = (inputDate) => {
+  if (!inputDate) return null;
+  const str = String(inputDate).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    const [y, m, d] = str.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, d, 23, 59, 59, 999));
+  }
+  const dateObj = new Date(inputDate);
+  if (!isNaN(dateObj.getTime()) && dateObj.getUTCHours() === 0 && dateObj.getUTCMinutes() === 0 && dateObj.getUTCSeconds() === 0) {
+    dateObj.setUTCHours(23, 59, 59, 999);
+  }
+  return dateObj;
+};
+
 // Create new promo code (admin only)
 exports.createPromoCode = async (req, res) => {
   try {
@@ -115,6 +131,7 @@ exports.createPromoCode = async (req, res) => {
       code,
       description,
       image,
+      background,
       discountType,
       discountValue,
       minimumOrderAmount,
@@ -156,7 +173,7 @@ exports.createPromoCode = async (req, res) => {
     
     // Validate date range
     const fromDate = new Date(validFrom || Date.now());
-    const untilDate = new Date(validUntil);
+    const untilDate = parseUntilDate(validUntil);
     
     if (untilDate <= fromDate) {
       return res.status(400).json({
@@ -182,6 +199,7 @@ exports.createPromoCode = async (req, res) => {
       code: code.toUpperCase(),
       description,
       image: image || null,
+      background: background || '#ffffff',
       discountType,
       discountValue,
       minimumOrderAmount: minimumOrderAmount || 0,
@@ -260,7 +278,7 @@ exports.updatePromoCode = async (req, res) => {
     
     // Update fields
     const updateFields = [
-      'code', 'description', 'image', 'discountType', 'discountValue',
+      'code', 'description', 'image', 'background', 'discountType', 'discountValue',
       'minimumOrderAmount', 'maximumDiscountAmount', 'usageLimit',
       'validFrom', 'validUntil', 'isActive', 'applicableCategories',
       'excludedCategories', 'applicableProducts', 'excludedProducts',
@@ -271,6 +289,8 @@ exports.updatePromoCode = async (req, res) => {
       if (req.body[field] !== undefined) {
         if (field === 'code') {
           promoCode[field] = req.body[field].toUpperCase();
+        } else if (field === 'validUntil') {
+          promoCode[field] = parseUntilDate(req.body[field]);
         } else {
           promoCode[field] = req.body[field];
         }
@@ -300,7 +320,7 @@ exports.updatePromoCode = async (req, res) => {
     // Validate date range if changed
     if (req.body.validFrom || req.body.validUntil) {
       const fromDate = new Date(req.body.validFrom || promoCode.validFrom);
-      const untilDate = new Date(req.body.validUntil || promoCode.validUntil);
+      const untilDate = parseUntilDate(req.body.validUntil || promoCode.validUntil);
       
       if (untilDate <= fromDate) {
         return res.status(400).json({
@@ -400,11 +420,52 @@ exports.validatePromoCode = async (req, res) => {
       });
     }
     
+    const cleanCode = code.trim().toUpperCase();
+    
     // Find promo code
-    const promoCode = await PromoCode.findOne({ 
-      code: code.toUpperCase(),
+    let promoCode = await PromoCode.findOne({ 
+      code: cleanCode,
       isActive: true 
     });
+    
+    // Fallback: If not found in PromoCode collection, check active Offers!
+    if (!promoCode) {
+      const activeOffer = await Offer.findOne({
+        code: cleanCode,
+        isActive: true
+      });
+
+      if (activeOffer) {
+        // Auto-create / sync into PromoCode model for persistence
+        const discountVal = activeOffer.discountPercent || activeOffer.discountPercentage || 10;
+        try {
+          promoCode = new PromoCode({
+            code: cleanCode,
+            description: activeOffer.description || activeOffer.title || 'Campaign Special Offer',
+            discountType: 'percentage',
+            discountValue: discountVal,
+            minimumOrderAmount: 0,
+            isActive: true,
+            validFrom: activeOffer.startDate || new Date(),
+            validUntil: activeOffer.endDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+          });
+          await promoCode.save();
+        } catch (syncErr) {
+          console.warn('Auto-sync promo code warning:', syncErr.message);
+          // Construct in-memory promo code object for instant response
+          promoCode = {
+            _id: activeOffer._id,
+            code: cleanCode,
+            description: activeOffer.description || activeOffer.title,
+            discountType: 'percentage',
+            discountValue: discountVal,
+            minimumOrderAmount: 0,
+            isApplicableToOrder: () => ({ valid: true }),
+            calculateDiscount: (amt) => Math.round((amt * discountVal) / 100)
+          };
+        }
+      }
+    }
     
     if (!promoCode) {
       return res.status(404).json({

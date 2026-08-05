@@ -106,88 +106,41 @@ const addReviewStats = async (products) => {
 // @access Public
 const getProducts = async (req, res) => {
   try {
-    // const pageSize = 12;
-    // const page = Number(req.query.page) || 1;
-    const category = req.query.category ? { category: req.query.category } : {};
+    const query = { hidden: false };
 
-    // ✅ Search by title, description, category, or categories using regex (case-insensitive)
-    const keyword = req.query.search
-    ? {
-        $or: [
-          { title: { $regex: req.query.search, $options: "i" } },
-          { description: { $regex: req.query.search, $options: "i" } },
-            { category: { $regex: req.query.search, $options: "i" } },
-            { categories: { $elemMatch: { $regex: req.query.search, $options: "i" } } },
-          { category: { $regex: req.query.search, $options: "i" } },
-          { categories: { $elemMatch: { $regex: req.query.search, $options: "i" } } },
-        ],
-      }
-    : {};
-
-    // Only show visible products to customers (exclude hidden ones)
-    // Also only show approved products to non-admin users (or products without status for backward compatibility)
-    const query = { 
-      ...category, 
-      ...keyword, 
-      hidden: { $ne: true },
-      $or: [
-        { approvalStatus: 'approved' },
-        { approvalStatus: { $exists: false } } // Backward compatibility
-      ]
-    };
-
-    // Filter by productType / isValentineProduct
-    if (req.query.isValentineProduct === 'true' || req.query.productType === 'valentine') {
-      query.isValentineProduct = true;
-    } else {
-      query.isValentineProduct = { $ne: true };
-      query.productType = { $ne: 'valentine' };
+    if (req.query.category) {
+      const cat = req.query.category.trim();
+      const catRegex = new RegExp(`^${cat}$`, 'i');
+      query.$or = [
+        { category: catRegex },
+        { subcategory: catRegex },
+        { categories: { $elemMatch: catRegex } }
+      ];
     }
-    
-    // Filter by occasion if specified (supports both slug and occasion ObjectId)
-    if (req.query.occasion) {
-      const Occasion = require('../models/Occasion');
-      let occasionDoc;
-      if (mongoose.Types.ObjectId.isValid(req.query.occasion)) {
-        occasionDoc = await Occasion.findById(req.query.occasion);
-      } else {
-        occasionDoc = await Occasion.findOne({ slug: req.query.occasion });
-      }
-      if (occasionDoc) {
-        const occSlug = occasionDoc.slug;
-        const occRegex = new RegExp(`^${occSlug}$|^${occSlug}-|-${occSlug}-|-${occSlug}$`, 'i');
-        query.$and = query.$and || [];
-        query.$and.push({
-          $or: [
-            { occasionIds: occasionDoc._id },
-            { category: occRegex },
-            { subcategory: occRegex },
-            { categories: occRegex }
-          ]
-        });
-      } else {
-        // If an occasion was specified but not found, return empty array
-        return res.json({ products: [], total: 0 });
-      }
-    }
-    
-    const count = await Product.countDocuments(query);
-    // Remove pagination: fetch all products
+
     let products = await Product.find(query);
 
-    // Apply sorting preference
+    if (req.query.search) {
+      const term = req.query.search.toLowerCase().trim();
+      products = products.filter(p => 
+        (p.title && p.title.toLowerCase().includes(term)) ||
+        (p.description && p.description.toLowerCase().includes(term)) ||
+        (p.category && p.category.toLowerCase().includes(term))
+      );
+    }
+
     let section = 'shop';
     if (req.query.isValentineProduct === 'true' || req.query.productType === 'valentine') {
       section = 'valentine';
+      products = products.filter(p => p.isValentineProduct || p.productType === 'valentine');
     } else if (req.query.category) {
       section = `category:${req.query.category}`;
     }
-    products = await applySavedSortingToProducts(products, section);
 
-    // Add real review statistics
+    products = await applySavedSortingToProducts(products, section);
     const productsWithReviews = await addReviewStats(products);
 
-    return res.json({ products: productsWithReviews, total: count });
+    return res.json({ products: productsWithReviews, total: productsWithReviews.length });
   } catch (error) {
     console.error("❌ Error fetching products:", error);
     return res.status(500).json({ message: "Server Error: Failed to fetch products" });
@@ -684,19 +637,19 @@ const deleteProduct = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
 
-    if (product) {
-      // Check authorization: vendors can only delete their own products
-      if (req.user.role === 'vendor' && product.user.toString() !== req.user._id.toString()) {
-        return res.status(403).json({ message: 'Not authorized to delete this product' });
-      }
-      
-      await product.deleteOne();
-      res.json({ message: 'Product removed' });
-    } else {
-      res.status(404).json({ message: 'Product not found' });
+    if (!product) {
+      return res.status(404).json({ message: 'Product not found' });
     }
+
+    if (req.user && req.user.role === 'vendor' && product.vendorId && product.vendorId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Not authorized to delete this product' });
+    }
+
+    await Product.findByIdAndDelete(req.params.id);
+    res.json({ message: 'Product removed successfully', success: true });
   } catch (error) {
-    res.status(504).json({ message: "Product not found" });
+    console.error('Error deleting product:', error);
+    res.status(500).json({ message: 'Error deleting product', error: error.message });
   }
 };
 
@@ -803,19 +756,13 @@ const createProductReview = async (req, res) => {
 // @access  Public
 const getTopProducts = async (req, res) => {
   try {
-    const products = await Product.find({ 
-      hidden: { $ne: true },
-      $or: [
-        { approvalStatus: 'approved' },
-        { approvalStatus: { $exists: false } }
-      ]
-    }).sort({ rating: -1 }).limit(4);
-    
-    // Add real review statistics
-    const productsWithReviews = await addReviewStats(products);
-    
+    const products = await Product.find({ hidden: false });
+    const topProds = products.filter(p => p.isBestseller || (p.rating && p.rating >= 4));
+    const sorted = await applySavedSortingToProducts(topProds.length > 0 ? topProds : products, 'bestsellers');
+    const productsWithReviews = await addReviewStats(sorted);
     res.json(productsWithReviews);
   } catch (error) {
+    console.error("Error fetching top products:", error);
     res.status(500).json({ message: 'Error fetching top products' });
   }
 };
@@ -825,23 +772,15 @@ const getTopProducts = async (req, res) => {
 // @access  Public
 const getFeaturedProducts = async (req, res) => {
   try {
-    let products = await Product.find({ 
-      isFeatured: true, 
-      hidden: { $ne: true },
-      $or: [
-        { approvalStatus: 'approved' },
-        { approvalStatus: { $exists: false } }
-      ]
-    });
+    let products = await Product.find({ hidden: false });
+    const featProds = products.filter(p => p.isFeatured);
+    const targetProducts = featProds.length > 0 ? featProds : products;
     
     // Apply saved sorting
-    products = await applySavedSortingToProducts(products, 'featured');
-    
-    console.log("Featured Products Query:", { isFeatured: true, hidden: { $ne: true }, approvalOrNoStatus: true });
-    console.log("Fetched Featured Products:", products.map(p => ({ title: p.title, isFeatured: p.isFeatured })));
+    const sortedProducts = await applySavedSortingToProducts(targetProducts, 'featured');
     
     // Add real review statistics
-    const productsWithReviews = await addReviewStats(products);
+    const productsWithReviews = await addReviewStats(sortedProducts);
     
     res.json(productsWithReviews);
   } catch (error) {
@@ -855,32 +794,15 @@ const getFeaturedProducts = async (req, res) => {
 // @access  Public
 const getNewProducts = async (req, res) => {
   try {
-    let products = await Product.find({
-      $and: [
-        {
-          $or: [
-            { isNew: true },
-            // Backward compatibility for legacy records
-            { isNewArrival: true },
-          ],
-        },
-        { hidden: { $ne: true } },
-        {
-          $or: [
-            { approvalStatus: 'approved' },
-            { approvalStatus: { $exists: false } },
-          ],
-        },
-      ],
-    });
-    
+    const products = await Product.find({ hidden: false });
+    const newProds = products.filter(p => p.isNew || p.isNewArrival);
+    const targetProducts = newProds.length > 0 ? newProds : products;
+
     // Apply saved sorting
-    products = await applySavedSortingToProducts(products, 'newArrivals');
-    
-    console.log("Fetched New Products:", products.map(p => ({ title: p.title, isNew: p.isNew })));
+    const sortedProducts = await applySavedSortingToProducts(targetProducts, 'newArrivals');
     
     // Add real review statistics
-    const productsWithReviews = await addReviewStats(products);
+    const productsWithReviews = await addReviewStats(sortedProducts);
     
     res.json(productsWithReviews);
   } catch (error) {
@@ -1043,111 +965,111 @@ const getProductCategories = async (req, res) => {
 // @access  Public
 const getCategoriesWithCounts = async (req, res) => {
   try {
-    // Get categories with counts using aggregation (only visible products)
-    const categoriesWithCounts = await Product.aggregate([
-      // Only include visible and approved products (or products without status)
-      { $match: { 
-        hidden: { $ne: true },
-        $or: [
-          { approvalStatus: 'approved' },
-          { approvalStatus: { $exists: false } }
-        ]
-      } },
-      // Unwind the categories array to de-normalize it
-      { $unwind: "$categories" },
-      // Group by category name and count products
-      { 
-        $group: { 
-          _id: "$categories", 
-          count: { $sum: 1 } 
-        } 
-      },
-      // Project to rename _id to name
-      { 
-        $project: { 
-          name: "$_id", 
-          count: 1, 
-          _id: 0 
-        } 
-      },
-      // Sort by count descending, then by name
-      { $sort: { count: -1, name: 1 } }
-    ]);
+    const Category = require('../models/Category');
+    const dbCategories = await Category.find({});
+    const products = await Product.find({ hidden: false });
 
-    // Also get primary category counts (only visible products)
-    const primaryCategoryCounts = await Product.aggregate([
-      // Only include visible products
-      { $match: { hidden: { $ne: true } } },
-      // Group by primary category and count products
-      { 
-        $group: { 
-          _id: "$category", 
-          count: { $sum: 1 } 
-        } 
-      },
-      // Project to rename _id to name
-      { 
-        $project: { 
-          name: "$_id", 
-          count: 1, 
-          _id: 0 
-        } 
-      },
-      // Sort by count descending, then by name
-      { $sort: { count: -1, name: 1 } }
-    ]);
+    // Build product category lookup map
+    const countsMap = new Map();
 
-    const subcategoryCounts = await Product.aggregate([
-      { $match: { 
-        hidden: { $ne: true },
-        subcategory: { $exists: true, $ne: '' },
-        $or: [
-          { approvalStatus: 'approved' },
-          { approvalStatus: { $exists: false } }
-        ]
-      } },
-      { $group: { _id: "$subcategory", count: { $sum: 1 } } },
-      { $project: { name: "$_id", count: 1, _id: 0 } },
-      { $sort: { count: -1, name: 1 } }
-    ]);
-
-    // Combine both results, prioritizing additional categories
-    const combinedCounts = new Map();
-    
-    // Add primary category counts
-    primaryCategoryCounts.forEach(item => {
-      if (item.name) {
-        combinedCounts.set(item.name.toLowerCase(), item.count);
+    const addCount = (key) => {
+      if (!key) return;
+      const k = String(key).trim().toLowerCase();
+      if (!k) return;
+      countsMap.set(k, (countsMap.get(k) || 0) + 1);
+      const unhyphenated = k.replace(/-/g, ' ');
+      if (unhyphenated !== k) {
+        countsMap.set(unhyphenated, (countsMap.get(unhyphenated) || 0) + 1);
       }
-    });
-    
-    // Add or update with additional category counts
-    categoriesWithCounts.forEach(item => {
-      if (item.name) {
-        const key = item.name.toLowerCase();
-        const existingCount = combinedCounts.get(key) || 0;
-        combinedCounts.set(key, existingCount + item.count);
+    };
+
+    products.forEach(p => {
+      const names = new Set();
+      if (p.category) names.add(p.category);
+      if (p.subcategory) names.add(p.subcategory);
+      if (p.details && Array.isArray(p.details.categories)) {
+        p.details.categories.forEach(c => names.add(c));
       }
+      if (Array.isArray(p.categories)) {
+        p.categories.forEach(c => {
+          if (typeof c === 'string') names.add(c);
+          else if (c && typeof c === 'object') {
+            if (c.name) names.add(c.name);
+            if (c.slug) names.add(c.slug);
+            if (c.category && typeof c.category === 'object') {
+              if (c.category.name) names.add(c.category.name);
+              if (c.category.slug) names.add(c.category.slug);
+            }
+          }
+        });
+      }
+      if (Array.isArray(p.occasions)) {
+        p.occasions.forEach(o => {
+          if (typeof o === 'string') names.add(o);
+          else if (o && typeof o === 'object') {
+            if (o.name) names.add(o.name);
+            if (o.slug) names.add(o.slug);
+            if (o.occasion && typeof o.occasion === 'object') {
+              if (o.occasion.name) names.add(o.occasion.name);
+              if (o.occasion.slug) names.add(o.occasion.slug);
+            }
+          }
+        });
+      }
+      if (Array.isArray(p.tags)) {
+        p.tags.forEach(t => {
+          if (typeof t === 'string') names.add(t);
+          else if (t && typeof t === 'object' && t.tag) names.add(t.tag);
+        });
+      }
+      names.forEach(n => addCount(n));
     });
 
-    subcategoryCounts.forEach(item => {
-      if (item.name) {
-        const key = item.name.toLowerCase();
-        const existingCount = combinedCounts.get(key) || 0;
-        combinedCounts.set(key, existingCount + item.count);
-      }
+    const result = [];
+    const addedNames = new Set();
+
+    // Include DB categories first with computed counts
+    dbCategories.forEach(cat => {
+      const nameKey = (cat.name || '').trim().toLowerCase();
+      const slugKey = (cat.slug || '').trim().toLowerCase();
+
+      const countByName = countsMap.get(nameKey) || 0;
+      const countBySlug = countsMap.get(slugKey) || 0;
+      const maxCount = Math.max(countByName, countBySlug);
+
+      result.push({
+        _id: cat._id || cat.id,
+        id: cat._id || cat.id,
+        name: cat.name,
+        slug: cat.slug,
+        count: maxCount,
+        productCount: maxCount
+      });
+
+      addedNames.add(nameKey);
+      addedNames.add(slugKey);
     });
 
-    // Convert to array and sort
-    const result = Array.from(combinedCounts.entries()).map(([name, count]) => ({
-      name: name,
-      count: count
-    })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+    // Also include remaining dynamic category counts from products
+    countsMap.forEach((count, key) => {
+      if (!addedNames.has(key)) {
+        const formattedName = key.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        result.push({
+          _id: key,
+          id: key,
+          name: formattedName,
+          slug: key.replace(/\s+/g, '-'),
+          count: count,
+          productCount: count
+        });
+        addedNames.add(key);
+      }
+    });
 
     res.json(result);
   } catch (error) {
     console.error("Error fetching categories with counts:", error);
-    res.status(500).json({ message: "Server Error" });
+    res.status(500).json({ message: "Server Error", error: error.message });
   }
 };
 
@@ -1156,46 +1078,31 @@ const getCategoriesWithCounts = async (req, res) => {
 // @access  Public
 const getProductsByCategory = async (req, res) => {
   try {
-    const { category } = req.params;
-    const pageSize = 12;
-    const page = Number(req.query.page) || 1;
+    const rawCategory = req.params.category ? req.params.category.trim() : '';
+    console.log(`🔍 Fetching products for category: "${rawCategory}"`);
 
-    // Check both primary category and additional categories, but only visible products
-    const query = {
-      $and: [
-        {
-          $or: [
-            { category: { $regex: new RegExp(`^${category}$`, 'i') } },
-            { subcategory: { $regex: new RegExp(`^${category}$`, 'i') } },
-            { categories: { $regex: new RegExp(`^${category}$`, 'i') } }
-          ]
-        },
-        { hidden: { $ne: true } },
-        {
-          $or: [
-            { approvalStatus: 'approved' },
-            { approvalStatus: { $exists: false } }
-          ]
-        }
-      ]
-    };
-    
-    const count = await Product.countDocuments(query);
-    let products = await Product.find(query);
+    const allProducts = await Product.find({});
+    const target = rawCategory.toLowerCase().replace(/-/g, ' ').replace(/s$/, '');
 
-    // Apply saved sorting
-    products = await applySavedSortingToProducts(products, `category:${category}`);
+    const matchingProducts = allProducts.filter(p => {
+      if (p.hidden) return false;
+      const pCat = (p.category || '').toLowerCase().replace(/-/g, ' ').replace(/s$/, '');
+      const pSubCat = (p.subcategory || '').toLowerCase().replace(/-/g, ' ').replace(/s$/, '');
+      const pCats = Array.isArray(p.categories)
+        ? p.categories.map(c => c.toLowerCase().replace(/-/g, ' ').replace(/s$/, ''))
+        : [];
 
-    // Paginate in memory
-    const paginatedProducts = products.slice(pageSize * (page - 1), pageSize * page);
+      return (
+        (pCat && (pCat.includes(target) || target.includes(pCat))) ||
+        (pSubCat && (pSubCat.includes(target) || target.includes(pSubCat))) ||
+        pCats.some(c => c && (c.includes(target) || target.includes(c)))
+      );
+    });
 
-    // Add real review statistics
-    const productsWithReviews = await addReviewStats(paginatedProducts);
-
-    res.json({ products: productsWithReviews, page, pages: Math.ceil(count / pageSize), total: count });
+    res.json(productsWithReviews);
   } catch (error) {
     console.error(`Error fetching products for category ${req.params.category}:`, error);
-    res.status(500).json({ message: 'Server Error' });
+    res.status(500).json({ message: 'Server Error', error: error.message });
   }
 };
 
@@ -1250,11 +1157,15 @@ const removeFromWishlist = async (req, res) => {
 };
 
 // @desc Get pending products for approval
+// @desc Get all pending approval products (vendor products requiring admin approval)
 // @route GET /api/products/admin/pending-approval
 // @access Private/Admin
 const getPendingProducts = async (req, res) => {
   try {
-    const products = await Product.find({ approvalStatus: 'pending' })
+    const products = await Product.find({
+      approvalStatus: 'pending',
+      vendor: { $ne: null }
+    })
       .populate('user', 'name email')
       .populate('vendor', 'storeName')
       .sort({ createdAt: -1 });
@@ -1456,30 +1367,26 @@ const getProductsForSectionQuery = (section) => {
 const getDisplayOrderValue = (product, section) => {
   if (!product || !product.displayOrders) return 0;
   const dobj = product.displayOrders;
+  const secKey = (section || '').replace(/^(category:|occasion:)/, '').trim().toLowerCase();
+
   if (section === 'featured') return dobj.featured || 0;
   if (section === 'shop') return dobj.shop || 0;
   if (section === 'newArrivals' || section === 'new') return dobj.newArrivals || 0;
   if (section === 'recommended') return dobj.recommended || 0;
   
-  // Occasions
-  if (section === 'valentine' || section === 'valentines-day') return dobj.occasions?.valentine || 0;
-  if (section === 'mothersDay' || section === 'mothers-day') return dobj.occasions?.mothersDay || 0;
-  if (section === 'fathersDay' || section === 'fathers-day') return dobj.occasions?.fathersDay || 0;
-  if (section === 'friendshipDay' || section === 'friendship-day') return dobj.occasions?.friendshipDay || 0;
-  if (section === 'rakhi' || section === 'raksha-bandhan') return dobj.occasions?.rakhi || 0;
-  if (section === 'diwali') return dobj.occasions?.diwali || 0;
-  if (section === 'newYear' || section === 'new-year') return dobj.occasions?.newYear || 0;
-  
-  // Categories
-  if (section.startsWith('category:')) {
-    const categoryName = section.substring(9).trim();
+  if (dobj.occasions && typeof dobj.occasions === 'object') {
+    if (dobj.occasions[secKey] !== undefined) return Number(dobj.occasions[secKey]) || 0;
+  }
+
+  if (dobj.categories) {
     if (dobj.categories instanceof Map) {
-      return dobj.categories.get(categoryName) || 0;
+      if (dobj.categories.has(secKey)) return Number(dobj.categories.get(secKey)) || 0;
+    } else if (typeof dobj.categories === 'object') {
+      if (dobj.categories[secKey] !== undefined) return Number(dobj.categories[secKey]) || 0;
     }
-    return dobj.categories?.[categoryName] || 0;
   }
   
-  return 0;
+  return Number(dobj[secKey]) || 0;
 };
 
 // Main sorting function combining Custom order, Selected Sort preference and Created Date
@@ -2080,49 +1987,92 @@ const getVideoSitemap = async (req, res) => {
 // @access  Public
 const getProductsByOccasionSlug = async (req, res) => {
   try {
+    const { slug } = req.params;
     const Occasion = require('../models/Occasion');
-    const occasion = await Occasion.findOne({ slug: req.params.slug, status: 'active' });
-    if (!occasion) {
-      return res.status(404).json({ message: 'Occasion not found' });
+    const Category = require('../models/Category');
+
+    let occasionDoc = await Occasion.findOne({ slug: slug.toLowerCase() });
+    let occasionData = occasionDoc ? (typeof occasionDoc.toObject === 'function' ? occasionDoc.toObject() : occasionDoc) : null;
+
+    if (!occasionData) {
+      const cat = await Category.findOne({ slug: slug.toLowerCase() });
+      if (cat) {
+        const catObj = typeof cat.toObject === 'function' ? cat.toObject() : cat;
+        occasionData = {
+          _id: catObj._id || catObj.id,
+          id: catObj._id || catObj.id,
+          name: catObj.name,
+          slug: catObj.slug,
+          description: catObj.description || `Explore our beautiful ${catObj.name} collection`,
+          image: catObj.image || null,
+          icon: catObj.icon || 'Gift',
+          banner: catObj.banner || null
+        };
+      } else {
+        const formattedTitle = slug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        occasionData = {
+          _id: slug,
+          id: slug,
+          name: formattedTitle,
+          slug: slug,
+          description: `Explore our beautiful ${formattedTitle} collection`,
+          image: null,
+          icon: 'Gift',
+          banner: null
+        };
+      }
     }
 
-    const occSlug = occasion.slug;
-    const occRegex = new RegExp(`^${occSlug}$|^${occSlug}-|-${occSlug}-|-${occSlug}$`, 'i');
-    const query = {
-      hidden: { $ne: true },
-      $or: [
-        { approvalStatus: 'approved' },
-        { approvalStatus: { $exists: false } }
-      ],
-      $and: [
-        {
-          $or: [
-            { occasionIds: occasion._id },
-            { category: occRegex },
-            { subcategory: occRegex },
-            { categories: occRegex }
-          ]
-        }
-      ]
-    };
+    const allProducts = await Product.find({});
+    const target = slug.toLowerCase().replace(/-/g, ' ').replace(/s$/, '');
 
-    const count = await Product.countDocuments(query);
-    const products = await Product.find(query);
+    let linkedProductIds = new Set();
+    if (occasionData && (occasionData.id || occasionData._id)) {
+      try {
+        const poLinks = await prisma.productOccasion.findMany({
+          where: { occasionId: String(occasionData.id || occasionData._id) },
+          select: { productId: true }
+        });
+        poLinks.forEach(l => linkedProductIds.add(l.productId));
+      } catch (e) {}
+    }
 
-    // Apply sorting preference
-    const sortedProducts = await applySavedSortingToProducts(products, `occasion:${occasion.slug}`);
+    let matchingProducts = allProducts.filter(p => {
+      if (p.hidden) return false;
+      const pid = String(p._id || p.id);
+      if (linkedProductIds.has(pid)) return true;
 
-    // Add review stats
+      const pTitle = (p.title || p.name || '').toLowerCase();
+      const pCat = (p.category || '').toLowerCase().replace(/-/g, ' ').replace(/s$/, '');
+      const pSubCat = (p.subcategory || '').toLowerCase().replace(/-/g, ' ').replace(/s$/, '');
+      const pCats = Array.isArray(p.categories)
+        ? p.categories.map(c => (typeof c === 'string' ? c : c.name || c.slug || '').toLowerCase().replace(/-/g, ' ').replace(/s$/, ''))
+        : [];
+      const pTags = Array.isArray(p.tags)
+        ? p.tags.map(t => (typeof t === 'string' ? t : t.tag || '').toLowerCase().replace(/-/g, ' '))
+        : [];
+
+      return (
+        (pCat && (pCat.includes(target) || target.includes(pCat))) ||
+        (pSubCat && (pSubCat.includes(target) || target.includes(pSubCat))) ||
+        pCats.some(c => c && (c.includes(target) || target.includes(c))) ||
+        pTags.some(t => t && (t.includes(target) || target.includes(t))) ||
+        pTitle.includes(target)
+      );
+    });
+
+    // Keep exact matching products without fallback slice so empty occasions return empty list
+    const sortedProducts = await applySavedSortingToProducts(matchingProducts, `occasion:${slug}`);
     const productsWithReviews = await addReviewStats(sortedProducts);
 
     res.json({
-      occasion,
+      occasion: occasionData,
       products: productsWithReviews,
-      total: count
+      total: productsWithReviews.length
     });
   } catch (error) {
     console.error('Error fetching products by occasion:', error);
-    res.status(500).json({ message: 'Error fetching products by occasion' });
+    res.status(500).json({ message: 'Error fetching products by occasion', error: error.message });
   }
 };
 
@@ -2398,12 +2348,14 @@ const restoreProductVersion = asyncHandler(async (req, res) => {
     }
   });
 
-  product.activityLogs.push({
-    action: 'version_restored',
-    performedBy: req.user ? req.user.name : 'Admin',
-    details: `Restored version from ${new Date(product.versionHistory[versionIndex].timestamp).toLocaleString()}`,
-    timestamp: new Date(),
-  });
+  if (Array.isArray(product.activityLogs)) {
+    product.activityLogs.push({
+      action: 'version_restored',
+      performedBy: req.user ? req.user.name : 'Admin',
+      details: `Restored version`,
+      timestamp: new Date(),
+    });
+  }
 
   await product.save();
   res.json({ success: true, message: 'Product version restored successfully', product });

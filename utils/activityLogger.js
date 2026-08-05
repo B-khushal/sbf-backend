@@ -1,6 +1,7 @@
 const ActivityLog = require('../models/ActivityLog');
 
 const getClientIp = (req) => {
+  if (!req || !req.headers) return req?.ip || req?.socket?.remoteAddress || '';
   const forwarded = req.headers['x-forwarded-for'];
   if (typeof forwarded === 'string' && forwarded.length > 0) {
     return forwarded.split(',')[0].trim();
@@ -34,9 +35,9 @@ const logActivity = async ({
     url: url || req?.originalUrl || req?.url || '',
     method: (method || req?.method || 'GET').toUpperCase(),
     ipAddress: getClientIp(req),
-    device: req?.headers['user-agent'] || '',
+    device: req?.headers ? req.headers['user-agent'] || '' : '',
     status: status === 'Failed' ? 'Failed' : 'Success',
-    sessionId: sessionId || req?.headers['x-session-id'] || req?.body?.sessionId || '',
+    sessionId: sessionId || (req?.headers ? req.headers['x-session-id'] : undefined) || req?.body?.sessionId || '',
     metadata,
     timestamp: new Date(),
   };

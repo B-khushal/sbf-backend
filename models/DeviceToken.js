@@ -1,156 +1,190 @@
-const mongoose = require('mongoose');
+const prisma = require('../config/prisma');
 
-const deviceTokenSchema = new mongoose.Schema({
-  userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true,
-    index: true
-  },
-  token: {
-    type: String,
-    required: true,
-    unique: true,
-    index: true
-  },
-  deviceType: {
-    type: String,
-    enum: ['android', 'ios'],
-    required: true
-  },
-  deviceInfo: {
-    model: String,
-    platform: String,
-    osVersion: String,
-    appVersion: String
-  },
-  isActive: {
-    type: Boolean,
-    default: true,
-    index: true
-  },
-  lastUsed: {
-    type: Date,
-    default: Date.now
+class DeviceTokenDocument {
+  constructor(data = {}) {
+    Object.assign(this, data);
+    this.id = data.id || data._id || `tok_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    this._id = this.id;
+    this.userId = data.userId || (data.user ? data.user.id || data.user : null);
+    this.token = data.token || '';
+    this.deviceType = data.deviceType || 'android';
+    this.deviceInfo = data.deviceInfo || {};
+    this.isActive = data.isActive !== undefined ? Boolean(data.isActive) : true;
+    this.lastUsed = data.lastUsed ? new Date(data.lastUsed) : new Date();
   }
-}, {
-  timestamps: true
-});
 
-// Compound index for querying active tokens by user
-deviceTokenSchema.index({ userId: 1, isActive: 1 });
+  async deactivate() {
+    this.isActive = false;
+    return this.save();
+  }
 
-// Method to mark token as inactive
-deviceTokenSchema.methods.deactivate = function() {
-  this.isActive = false;
-  return this.save();
-};
+  async updateLastUsed() {
+    this.lastUsed = new Date();
+    return this.save();
+  }
 
-// Method to update last used timestamp
-deviceTokenSchema.methods.updateLastUsed = function() {
-  this.lastUsed = new Date();
-  return this.save();
-};
+  async save() {
+    let validUserId = this.userId || null;
+    if (validUserId) {
+      try {
+        const userExists = await prisma.user.findUnique({ where: { id: String(validUserId) }, select: { id: true } });
+        if (!userExists) validUserId = null;
+      } catch (e) {
+        validUserId = null;
+      }
+    }
+    const saved = await prisma.deviceToken.upsert({
+      where: { token: this.token },
+      update: {
+        userId: validUserId,
+        deviceType: this.deviceType,
+        isActive: this.isActive,
+        updatedAt: new Date()
+      },
+      create: {
+        id: String(this.id),
+        userId: validUserId,
+        token: this.token,
+        deviceType: this.deviceType,
+        isActive: this.isActive
+      }
+    });
+    Object.assign(this, saved);
+    this.id = saved.id;
+    this._id = saved.id;
+    return this;
+  }
+}
 
-// Static method to clean up old inactive tokens (older than 90 days)
-deviceTokenSchema.statics.cleanupOldTokens = async function() {
-  const ninetyDaysAgo = new Date();
-  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-  
-  const result = await this.deleteMany({
-    isActive: false,
-    updatedAt: { $lt: ninetyDaysAgo }
-  });
-  
-  console.log(`🗑️  Cleaned up ${result.deletedCount} old inactive device tokens`);
-  return result;
-};
+class QueryChain {
+  constructor(prismaQuery) { this.prismaQuery = prismaQuery; }
+  sort() { return this; }
+  skip() { return this; }
+  limit() { return this; }
+  select() { return this; }
+  exec() { return this.then(r => r); }
 
-// Static method to find or create device token
-deviceTokenSchema.statics.findOrCreate = async function(userId, token, deviceType, deviceInfo = {}) {
-  try {
-    // Check if token already exists
+  async then(resolve, reject) {
+    try {
+      const res = await this.prismaQuery;
+      if (Array.isArray(res)) resolve(res.map(d => new DeviceTokenDocument(d)));
+      else if (res) resolve(new DeviceTokenDocument(res));
+      else resolve(null);
+    } catch (err) { reject(err); }
+  }
+}
+
+class DeviceTokenModel {
+  static find(where = {}) {
+    const filter = {};
+    if (where.userId) {
+      if (typeof where.userId === 'object' && where.userId.$in) {
+        filter.userId = { in: where.userId.$in.map(String) };
+      } else {
+        filter.userId = String(where.userId);
+      }
+    }
+    if (where.isActive !== undefined) {
+      filter.isActive = Boolean(where.isActive);
+    }
+    const query = prisma.deviceToken.findMany({ where: filter, orderBy: { updatedAt: 'desc' } });
+    return new QueryChain(query);
+  }
+
+  static findOne(where = {}) {
+    const filter = {};
+    if (where.token) filter.token = where.token;
+    if (where._id || where.id) filter.id = String(where._id || where.id);
+    const query = prisma.deviceToken.findFirst({ where: filter });
+    return new QueryChain(query);
+  }
+
+  static async create(data) {
+    const doc = new DeviceTokenDocument(data);
+    await doc.save();
+    return doc;
+  }
+
+  static async updateOne(where = {}, update = {}) {
+    const filter = {};
+    if (where.token) filter.token = where.token;
+    const dataToSet = update.$set ? update.$set : update;
+    try {
+      const updated = await prisma.deviceToken.updateMany({
+        where: filter,
+        data: dataToSet
+      });
+      return updated;
+    } catch (e) {
+      return { modifiedCount: 0 };
+    }
+  }
+
+  static async deleteMany(where = {}) {
+    try {
+      const deleted = await prisma.deviceToken.deleteMany({ where });
+      return { deletedCount: deleted.count };
+    } catch (e) {
+      return { deletedCount: 0 };
+    }
+  }
+
+  static async cleanupOldTokens() {
+    const ninetyDaysAgo = new Date();
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+    const result = await prisma.deviceToken.deleteMany({
+      where: { updatedAt: { lt: ninetyDaysAgo } }
+    });
+    return { deletedCount: result.count };
+  }
+
+  static async findOrCreate(userId, token, deviceType, deviceInfo = {}) {
     let deviceToken = await this.findOne({ token });
-    
     if (deviceToken) {
-      // Update existing token
-      deviceToken.userId = userId;
+      deviceToken.userId = String(userId);
       deviceToken.deviceType = deviceType;
       deviceToken.deviceInfo = { ...deviceToken.deviceInfo, ...deviceInfo };
       deviceToken.isActive = true;
-      deviceToken.lastUsed = new Date();
       await deviceToken.save();
-      console.log('✅ Updated existing device token');
       return { deviceToken, created: false };
     } else {
-      // Create new token
       deviceToken = await this.create({
-        userId,
+        userId: String(userId),
         token,
         deviceType,
         deviceInfo,
-        isActive: true,
-        lastUsed: new Date()
+        isActive: true
       });
-      console.log('✅ Created new device token');
       return { deviceToken, created: true };
     }
-  } catch (error) {
-    console.error('❌ Error in findOrCreate:', error.message);
-    throw error;
   }
-};
 
-// Static method to get active tokens for user
-deviceTokenSchema.statics.getActiveTokensForUser = async function(userId) {
-  return await this.find({ userId, isActive: true }).sort({ lastUsed: -1 });
-};
-
-// Static method to get active tokens for multiple users
-deviceTokenSchema.statics.getActiveTokensForUsers = async function(userIds) {
-  return await this.find({ 
-    userId: { $in: userIds }, 
-    isActive: true 
-  }).sort({ lastUsed: -1 });
-};
-
-// Static method to deactivate token by value
-deviceTokenSchema.statics.deactivateToken = async function(token) {
-  const result = await this.updateOne(
-    { token },
-    { $set: { isActive: false } }
-  );
-  return result;
-};
-
-// Static method to get all active admin device tokens
-deviceTokenSchema.statics.getActiveAdminTokens = async function() {
-  const User = require('./User');
-  
-  // Find all admin users
-  const admins = await User.find({ role: 'admin', status: 'active' }).select('_id');
-  
-  if (!admins || admins.length === 0) {
-    return [];
+  static async getActiveTokensForUser(userId) {
+    return await this.find({ userId: String(userId) });
   }
-  
-  const adminIds = admins.map(admin => admin._id);
-  
-  // Get all active device tokens for admins
-  return await this.find({
-    userId: { $in: adminIds },
-    isActive: true
-  }).sort({ lastUsed: -1 });
-};
 
-// Pre-save hook to update lastUsed
-deviceTokenSchema.pre('save', function(next) {
-  if (this.isModified('isActive') && this.isActive) {
-    this.lastUsed = new Date();
+  static async getActiveTokensForUsers(userIds) {
+    const ids = userIds.map(String);
+    return await this.find({ userId: { $in: ids } });
   }
-  next();
-});
 
-const DeviceToken = mongoose.model('DeviceToken', deviceTokenSchema);
+  static async deactivateToken(token) {
+    return await this.updateOne({ token }, { isActive: false });
+  }
 
-module.exports = DeviceToken;
+  static async getActiveAdminTokens() {
+    const User = require('./User');
+    const admins = await User.find({ role: 'admin', status: 'active' });
+    const adminIds = (admins || []).map(a => String(a._id || a.id));
+
+    if (adminIds.length > 0) {
+      const adminTokens = await this.getActiveTokensForUsers(adminIds);
+      if (adminTokens && adminTokens.length > 0) return adminTokens;
+    }
+
+    const allActive = await this.find({ isActive: true });
+    return allActive || [];
+  }
+}
+
+module.exports = DeviceTokenModel;

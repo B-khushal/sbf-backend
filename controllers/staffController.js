@@ -76,9 +76,13 @@ const seedDefaultRoles = async () => {
   ];
 
   for (const role of defaults) {
-    const exists = await Role.findOne({ code: role.code });
-    if (!exists) {
-      await Role.create(role);
+    try {
+      const exists = await Role.findOne({ code: role.code, name: role.name });
+      if (!exists) {
+        await Role.create(role);
+      }
+    } catch (err) {
+      console.warn(`Note: Could not seed role ${role.code}:`, err.message);
     }
   }
 };

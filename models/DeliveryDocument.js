@@ -1,63 +1,31 @@
-const mongoose = require('mongoose');
+const prisma = require('../config/prisma');
 
-const deliveryDocumentSchema = new mongoose.Schema({
-  partnerId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'DeliveryPartner',
-    required: true,
-    index: true
-  },
-  aadhaarNumber: {
-    type: String
-  },
-  aadhaarFileUrl: {
-    type: String
-  },
-  panNumber: {
-    type: String
-  },
-  panFileUrl: {
-    type: String
-  },
-  licenseNumber: {
-    type: String
-  },
-  licenseFileUrl: {
-    type: String
-  },
-  vehicleRcNumber: {
-    type: String
-  },
-  vehicleRcFileUrl: {
-    type: String
-  },
-  insuranceNumber: {
-    type: String
-  },
-  insuranceFileUrl: {
-    type: String
-  },
-  bankAccountHolder: {
-    type: String
-  },
-  bankAccountNumber: {
-    type: String
-  },
-  bankIfscCode: {
-    type: String
-  },
-  bankDetailsFileUrl: {
-    type: String
-  },
-  verificationStatus: {
-    type: String,
-    enum: ['pending', 'verified', 'rejected'],
-    default: 'pending',
-    index: true
+class DeliveryDocumentDocument {
+  constructor(data) {
+    Object.assign(this, data);
+    this._id = data.id || data._id;
   }
-}, {
-  timestamps: true
-});
+}
 
-const DeliveryDocument = mongoose.model('DeliveryDocument', deliveryDocumentSchema);
-module.exports = DeliveryDocument;
+class QueryChain {
+  constructor(prismaQuery) { this.prismaQuery = prismaQuery; }
+  async then(resolve, reject) {
+    try {
+      const res = await this.prismaQuery;
+      if (Array.isArray(res)) resolve(res.map(d => new DeliveryDocumentDocument(d)));
+      else if (res) resolve(new DeliveryDocumentDocument(res));
+      else resolve(null);
+    } catch (err) { reject(err); }
+  }
+}
+
+class DeliveryDocumentModel {
+  static find(where = {}) {
+    const filter = {};
+    if (where.partnerId) filter.partnerId = String(where.partnerId);
+    const query = prisma.deliveryDocument.findMany({ where: filter });
+    return new QueryChain(query);
+  }
+}
+
+module.exports = DeliveryDocumentModel;

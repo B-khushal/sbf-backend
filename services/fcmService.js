@@ -1,18 +1,19 @@
+require('dotenv').config();
 const admin = require('firebase-admin');
 
 // Initialize Firebase Admin SDK
 let firebaseInitialized = false;
 
 const initializeFirebase = () => {
-  if (firebaseInitialized) {
+  if (firebaseInitialized || admin.apps.length > 0) {
+    firebaseInitialized = true;
     return;
   }
 
   try {
-    // Check if Firebase credentials are available
     const projectId = process.env.FIREBASE_PROJECT_ID;
     const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-    const privateKey = process.env.FIREBASE_PRIVATE_KEY;
+    let privateKey = process.env.FIREBASE_PRIVATE_KEY;
 
     if (!projectId || !clientEmail || !privateKey) {
       console.warn('⚠️  Firebase credentials not found in environment variables');
@@ -21,13 +22,16 @@ const initializeFirebase = () => {
       return;
     }
 
-    // Initialize Firebase Admin with credentials from environment variables
+    if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
+      privateKey = privateKey.substring(1, privateKey.length - 1);
+    }
+    privateKey = privateKey.replace(/\\n/g, '\n');
+
     admin.initializeApp({
       credential: admin.credential.cert({
         projectId: projectId,
         clientEmail: clientEmail,
-        // Replace escaped newlines in private key
-        privateKey: privateKey.replace(/\\n/g, '\n')
+        privateKey: privateKey
       })
     });
 
@@ -107,16 +111,22 @@ const sendPushNotification = async (token, notification, data = {}, options = {}
 
     const message = {
       token: token,
+      notification: {
+        title: String(notification.title),
+        body: String(notification.body)
+      },
       data: {
         title: String(notification.title),
         body: String(notification.body),
         ...dataPayload
       },
-      // Android-specific configuration
       android: {
-        priority: 'high'
+        priority: 'high',
+        notification: {
+          sound: options.sound || 'default',
+          channelId: 'orders_channel'
+        }
       },
-      // iOS-specific configuration
       apns: {
         payload: {
           aps: {
@@ -131,8 +141,15 @@ const sendPushNotification = async (token, notification, data = {}, options = {}
           }
         },
         headers: {
-          'apns-priority': '10', // High priority
+          'apns-priority': '10',
           'apns-push-type': 'alert'
+        }
+      },
+      webpush: {
+        notification: {
+          title: String(notification.title),
+          body: String(notification.body),
+          requireInteraction: true
         }
       }
     };
@@ -195,11 +212,14 @@ const sendMulticastNotification = async (tokens, notification, data = {}, option
     // App handles notification display from data payload
     const message = {
       tokens: validTokens,
+      notification: {
+        title: String(notification.title),
+        body: String(notification.body)
+      },
       data: {
-        title: notification.title,
-        body: notification.body,
+        title: String(notification.title),
+        body: String(notification.body),
         ...data,
-        // Ensure all data values are strings (FCM requirement)
         ...Object.keys(data).reduce((acc, key) => {
           if (key !== 'title' && key !== 'body') {
             acc[key] = String(data[key]);
@@ -207,11 +227,13 @@ const sendMulticastNotification = async (tokens, notification, data = {}, option
           return acc;
         }, {})
       },
-      // Android-specific configuration
       android: {
-        priority: 'high'
+        priority: 'high',
+        notification: {
+          sound: options.sound || 'default',
+          channelId: 'orders_channel'
+        }
       },
-      // iOS-specific configuration
       apns: {
         payload: {
           aps: {
@@ -226,8 +248,15 @@ const sendMulticastNotification = async (tokens, notification, data = {}, option
           }
         },
         headers: {
-          'apns-priority': '10', // High priority
+          'apns-priority': '10',
           'apns-push-type': 'alert'
+        }
+      },
+      webpush: {
+        notification: {
+          title: String(notification.title),
+          body: String(notification.body),
+          requireInteraction: true
         }
       }
     };
@@ -411,20 +440,51 @@ const sendToAllAdmins = async (data) => {
     // Send to EACH device individually
     const results = [];
     for (const tokenDoc of adminTokens) {
+      const notifTitle = data.title || '🎉 New Order Received!';
+      const notifBody = data.body || `Order #${data.orderNumber} placed`;
+
       const message = {
         token: tokenDoc.token,
+        notification: {
+          title: notifTitle,
+          body: notifBody
+        },
         data: {
-          title: data.title || 'Notification',
-          body: data.body || '',
-          orderId: data.orderId || '',
-          orderNumber: data.orderNumber || '',
-          customerName: data.customerName || '',
-          amount: data.amount || '',
-          type: data.type || 'GENERAL'
+          title: String(notifTitle),
+          body: String(notifBody),
+          orderId: String(data.orderId || ''),
+          orderNumber: String(data.orderNumber || ''),
+          customerName: String(data.customerName || ''),
+          amount: String(data.amount || ''),
+          type: String(data.type || 'NEW_ORDER')
         },
         android: {
-          priority: 'high',  // CRITICAL: High priority for Android
-          ttl: 3600 * 1000
+          priority: 'high',
+          ttl: 3600 * 1000,
+          notification: {
+            sound: 'default',
+            channelId: 'orders_channel'
+          }
+        },
+        apns: {
+          payload: {
+            aps: {
+              alert: {
+                title: notifTitle,
+                body: notifBody
+              },
+              sound: 'default',
+              badge: 1,
+              contentAvailable: true
+            }
+          }
+        },
+        webpush: {
+          notification: {
+            title: notifTitle,
+            body: notifBody,
+            requireInteraction: true
+          }
         }
       };
       

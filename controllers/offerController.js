@@ -1,16 +1,65 @@
 const Offer = require('../models/Offer');
+const PromoCode = require('../models/PromoCode');
 
-// Get all active offers
+const syncOfferPromoCode = async (offerData) => {
+  if (!offerData || !offerData.code) return;
+  const cleanCode = offerData.code.trim().toUpperCase();
+  if (!cleanCode) return;
+
+  const discountVal = offerData.discountPercent !== undefined && offerData.discountPercent !== null 
+    ? Number(offerData.discountPercent) 
+    : (offerData.discountPercentage ? Number(offerData.discountPercentage) : 10);
+
+  const startDateVal = offerData.startDate ? new Date(offerData.startDate) : new Date();
+  const endDateVal = offerData.endDate ? new Date(offerData.endDate) : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+  const imageUrlVal = offerData.imageUrl || offerData.image || offerData.mobileImageUrl || null;
+  const backgroundVal = offerData.background || null;
+
+  try {
+    const existing = await PromoCode.findOne({ code: cleanCode });
+    if (existing) {
+      existing.isActive = offerData.isActive !== undefined ? Boolean(offerData.isActive) : true;
+      existing.discountValue = discountVal;
+      existing.description = offerData.description || offerData.title || existing.description;
+      existing.validFrom = startDateVal;
+      existing.validUntil = endDateVal;
+      existing.image = imageUrlVal || existing.image;
+      existing.background = backgroundVal || existing.background;
+      await existing.save();
+      console.log(`✅ Synced PromoCode [${cleanCode}]: ${discountVal}% OFF | Valid: ${startDateVal.toISOString()} to ${endDateVal.toISOString()}`);
+    } else {
+      const newPromo = new PromoCode({
+        code: cleanCode,
+        description: offerData.description || offerData.title || 'Campaign Promo Code',
+        discountType: 'percentage',
+        discountValue: discountVal,
+        minimumOrderAmount: 0,
+        isActive: offerData.isActive !== undefined ? Boolean(offerData.isActive) : true,
+        validFrom: startDateVal,
+        validUntil: endDateVal,
+        image: imageUrlVal,
+        background: backgroundVal
+      });
+      await newPromo.save();
+      console.log(`✅ Created & Synced new PromoCode [${cleanCode}]: ${discountVal}% OFF`);
+    }
+  } catch (err) {
+    console.warn('Sync offer promo code warning:', err.message);
+  }
+};
+
 const getActiveOffers = async (req, res) => {
   try {
     const currentDate = new Date();
-    const offers = await Offer.find({
-      isActive: true,
-      startDate: { $lte: currentDate },
-      endDate: { $gte: currentDate }
+    const allActive = await Offer.find({ isActive: true });
+    const validOffers = allActive.filter(offer => {
+      if (offer.startDate && new Date(offer.startDate) > currentDate) return false;
+      if (offer.endDate && new Date(offer.endDate) < currentDate) return false;
+      return true;
     });
-    res.json(offers);
+    res.json(validOffers);
   } catch (error) {
+    console.error('Error fetching active offers:', error);
     res.status(500).json({ message: error.message });
   }
 };
@@ -30,6 +79,7 @@ const createOffer = async (req, res) => {
   const offer = new Offer(req.body);
   try {
     const newOffer = await offer.save();
+    await syncOfferPromoCode(newOffer);
     res.status(201).json(newOffer);
   } catch (error) {
     res.status(400).json({ message: error.message });
@@ -49,6 +99,7 @@ const updateOffer = async (req, res) => {
     });
 
     const updatedOffer = await offer.save();
+    await syncOfferPromoCode(updatedOffer);
     res.json(updatedOffer);
   } catch (error) {
     res.status(400).json({ message: error.message });

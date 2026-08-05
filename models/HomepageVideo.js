@@ -1,61 +1,57 @@
-const mongoose = require('mongoose');
+const prisma = require('../config/prisma');
 
-const homepageVideoSchema = new mongoose.Schema(
-  {
-    title: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    description: {
-      type: String,
-      default: '',
-      trim: true,
-    },
-    videoUrl: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    thumbnailUrl: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    ctaText: {
-      type: String,
-      default: '',
-      trim: true,
-    },
-    ctaLink: {
-      type: String,
-      default: '',
-      trim: true,
-    },
-    displayOrder: {
-      type: Number,
-      default: 0,
-    },
-    isFeatured: {
-      type: Boolean,
-      default: false,
-    },
-    isActive: {
-      type: Boolean,
-      default: true,
-    },
-    deletedAt: {
-      type: Date,
-      default: null,
-    }
-  },
-  {
-    timestamps: true,
+class HomepageVideoDocument {
+  constructor(data) {
+    Object.assign(this, data);
+    this._id = data.id || data._id;
   }
-);
+}
 
-// Indexing displayOrder and isActive for faster query performance
-homepageVideoSchema.index({ displayOrder: 1, isActive: 1, deletedAt: 1 });
+class QueryChain {
+  constructor(prismaQuery) { this.prismaQuery = prismaQuery; }
+  sort() { return this; }
+  skip() { return this; }
+  limit() { return this; }
 
-const HomepageVideo = mongoose.model('HomepageVideo', homepageVideoSchema);
-module.exports = HomepageVideo;
+  async then(resolve, reject) {
+    try {
+      const res = await this.prismaQuery;
+      if (Array.isArray(res)) resolve(res.map(v => new HomepageVideoDocument(v)));
+      else if (res) resolve(new HomepageVideoDocument(res));
+      else resolve(null);
+    } catch (err) { reject(err); }
+  }
+}
+
+class HomepageVideoModel {
+  static async countDocuments(where = {}) {
+    const filter = {};
+    if (where.isActive !== undefined) filter.isActive = where.isActive;
+
+    return await prisma.homepageVideo.count({ where: filter });
+  }
+
+  static find(where = {}) {
+    const filter = {};
+    if (where.isActive !== undefined) filter.isActive = where.isActive;
+
+    const query = prisma.homepageVideo.findMany({ where: filter, orderBy: { displayOrder: 'asc' } });
+    return new QueryChain(query);
+  }
+
+  static async create(data) {
+    const created = await prisma.homepageVideo.create({
+      data: {
+        id: data.id || data._id || `vid_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+        videoUrl: data.videoUrl || data.url || '',
+        thumbnailUrl: data.thumbnailUrl || null,
+        title: data.title || null,
+        displayOrder: parseInt(data.displayOrder || 0),
+        isActive: data.isActive !== false
+      }
+    });
+    return new HomepageVideoDocument(created);
+  }
+}
+
+module.exports = HomepageVideoModel;

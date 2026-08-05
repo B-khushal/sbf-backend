@@ -1,0 +1,1197 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ==========================================
+// USER, ROLES, PERMISSIONS & AUTHENTICATION
+// ==========================================
+
+model User {
+  id              String           @id
+  name            String?
+  email           String           @unique
+  password        String?
+  role            String           @default("customer")
+  status          String           @default("active")
+  lastActive      DateTime?
+  lastLogin       DateTime?
+  provider        String           @default("local")
+  googleId        String?
+  photoURL        String?
+  agreedToTerms   Boolean          @default(false)
+  vendorStatus    String?
+  assigned_store  String?
+  assigned_zone   String?
+  created_by      String?
+  employeeId      String?
+  staffCode       String?
+  phone           String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  addresses       Address[]
+  cartItems       CartItem[]
+  wishlistItems   WishlistItem[]
+  loginHistory    LoginHistory[]
+  permissions     UserPermission[]
+  orders          Order[]
+  reviews         Review[]
+  vendor          Vendor?
+  deviceTokens    DeviceToken[]
+  notifications   Notification[]
+  reviewLikes     ReviewLike[]
+
+  @@index([email])
+  @@index([role])
+  @@index([status])
+}
+
+model Address {
+  id                          String   @id
+  userId                      String
+  user                        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName                    String?
+  firstName                   String?
+  lastName                    String?
+  email                       String?
+  phone                       String?
+  street                      String?
+  address                     String?
+  apartment                   String?
+  addressLine1                String?
+  addressLine2                String?
+  city                        String?
+  state                       String?
+  pincode                     String?
+  zipCode                     String?
+  country                     String?  @default("India")
+  isDefault                   Boolean  @default(false)
+  type                        String?  @default("home")
+  landmark                    String?
+  houseNo                     String?
+  floor                       String?
+  deliveryOption              String?  @default("self")
+  deliveryInstructions        String?
+  deliverySpecialInstructions String?
+  notes                       String?
+  cardMessage                 String?
+  giftMessage                 String?
+  receiverFirstName           String?
+  receiverLastName            String?
+  receiverEmail               String?
+  receiverPhone               String?
+  receiverAddress             String?
+  receiverApartment           String?
+  receiverCity                String?
+  receiverState               String?
+  receiverZipCode             String?
+  latitude                    Float?
+  longitude                   Float?
+  formattedAddress            String?
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model LoginHistory {
+  id        String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  loginAt   DateTime @default(now())
+  ipAddress String?
+  userAgent String?
+  device    String?
+
+  @@index([userId])
+}
+
+model UserPermission {
+  id         String @id
+  userId     String
+  user       User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission String
+
+  @@index([userId])
+}
+
+model DeviceToken {
+  id         String   @id
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token      String   @unique
+  deviceType String?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model Role {
+  id          String   @id
+  name        String   @unique
+  displayName String?
+  description String?
+  permissions Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ==========================================
+// CATALOG, PRODUCTS & CATEGORIES
+// ==========================================
+
+model Category {
+  id                 String             @id
+  name               String
+  slug               String             @unique
+  description        String?
+  image              String?
+  icon               String?
+  banner             String?
+  categoryUrl        String?            @unique
+  parentId           String?
+  parent             Category?          @relation("SubCategories", fields: [parentId], references: [id], onDelete: SetNull)
+  subCategories      Category[]         @relation("SubCategories")
+  displayOrder       Int                @default(0)
+  isActive           Boolean            @default(true)
+  isFeatured         Boolean            @default(false)
+  metaTitle          String?
+  metaDescription    String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  products           ProductCategory[]
+
+  @@index([slug])
+  @@index([categoryUrl])
+  @@index([parentId])
+}
+
+model Occasion {
+  id                String            @id
+  name              String
+  slug              String            @unique
+  description       String?
+  image             String?
+  icon              String?
+  banner            String?
+  thumbnail         String?
+  accentColor       String?           @default("#D4AF37")
+  displayOrder      Int               @default(0)
+  isActive          Boolean           @default(true)
+  isFeatured        Boolean           @default(false)
+  visibleOnHomepage Boolean           @default(true)
+  metaTitle         String?
+  metaDescription   String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  products          ProductOccasion[]
+
+  @@index([slug])
+}
+
+model Collection {
+  id          String   @id
+  name        String
+  slug        String   @unique
+  description String?
+  image       String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([slug])
+}
+
+model Product {
+  id                      String            @id
+  name                    String
+  slug                    String            @unique
+  sku                     String?
+  description             String?
+  shortDescription        String?
+  details                 Json?
+  price                   Decimal           @db.Decimal(10, 2)
+  comparePrice            Decimal?          @db.Decimal(10, 2)
+  costPrice               Decimal?          @db.Decimal(10, 2)
+  stock                   Int               @default(0)
+  isAvailable             Boolean           @default(true)
+  isVisible               Boolean           @default(true)
+  isFeatured              Boolean           @default(false)
+  isBestseller            Boolean           @default(false)
+  isNewArrival            Boolean           @default(false)
+  rating                  Float             @default(0)
+  reviewCount             Int               @default(0)
+  vendorId                String?
+  vendor                  Vendor?           @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+
+  // Personalization & Customization
+  personalizationEnabled  Boolean           @default(false)
+  personalizationType     String?
+  fieldLabel              String?
+  placeholder             String?
+  minCharacters           Int?
+  maxCharacters           Int?
+  allowedCharacters       Json?
+  personalizationRequired Boolean           @default(false)
+  textTransform           String?
+  helperText              String?
+  pricePerCharacter       Decimal?          @db.Decimal(10, 2)
+  baseIncludedCharacters  Int?
+  maxExtraPrice           Decimal?          @db.Decimal(10, 2)
+  customizationOptions    Json?
+
+  // Category Specific Attributes
+  cakeAttributes          Json?
+  plantAttributes         Json?
+  chocolateAttributes     Json?
+  hamperAttributes        Json?
+  comboAttributes         Json?
+
+  // Dynamic Date-wise Stock, Pricing, Offers & Delivery
+  dateWiseStock           Json?
+  dateWisePricing         Json?
+  dateWiseOffers          Json?
+  dateWiseDeliveryCharges Json?
+
+  // Display, Sorting & SEO
+  displayOrders           Json?
+  seoSettings             Json?
+  relatedProducts         Json?
+  crossSellProducts       Json?
+  upsellProducts          Json?
+  videos                  Json?
+  collections             Json?
+  versionHistory          Json?
+  careInstructions        String?
+  approvalStatus          String?           @default("approved")
+  rejectionReason         String?
+
+  // Valentine Features
+  isValentineProduct      Boolean           @default(false)
+  showInValentineShop     Boolean           @default(false)
+  valentineCategories     Json?
+  valentineSections       Json?
+  valentineBadge          String?
+  enableValentinePricing  Boolean           @default(false)
+
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+
+  images                  ProductImage[]
+  priceVariants           ProductVariant[]
+  categories              ProductCategory[]
+  occasions               ProductOccasion[]
+  tags                    ProductTag[]
+  addonProducts           AddonProductItem[]
+  reviews                 Review[]
+  orderItems              OrderItem[]
+  cartItems               CartItem[]
+  wishlistItems           WishlistItem[]
+
+  @@index([slug])
+  @@index([vendorId])
+  @@index([price])
+  @@index([rating])
+  @@index([isVisible, isAvailable])
+}
+
+model ProductImage {
+  id           String   @id
+  productId    String
+  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url          String
+  publicId     String?
+  alt          String?
+  displayOrder Int      @default(0)
+  isPrimary    Boolean  @default(false)
+
+  @@index([productId])
+}
+
+model ProductVariant {
+  id           String   @id
+  productId    String
+  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name         String
+  size         String?
+  price        Decimal  @db.Decimal(10, 2)
+  comparePrice Decimal? @db.Decimal(10, 2)
+  stock        Int?
+  sku          String?
+  isDefault    Boolean  @default(false)
+
+  @@index([productId])
+}
+
+model ProductCategory {
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([productId, categoryId])
+  @@index([categoryId])
+}
+
+model ProductOccasion {
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  occasionId String
+  occasion   Occasion @relation(fields: [occasionId], references: [id], onDelete: Cascade)
+
+  @@id([productId, occasionId])
+  @@index([occasionId])
+}
+
+model ProductTag {
+  id        String  @id
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  tag       String
+
+  @@index([productId])
+  @@index([tag])
+}
+
+model AddonProduct {
+  id          String             @id
+  name        String
+  price       Decimal            @db.Decimal(10, 2)
+  image       String?
+  description String?
+  category    String?
+  isActive    Boolean            @default(true)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  products    AddonProductItem[]
+}
+
+model AddonProductItem {
+  productId      String
+  product        Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  addonProductId String
+  addonProduct   AddonProduct @relation(fields: [addonProductId], references: [id], onDelete: Cascade)
+
+  @@id([productId, addonProductId])
+}
+
+// ==========================================
+// CART & WISHLIST
+// ==========================================
+
+model CartItem {
+  id             String   @id
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variantId      String?
+  quantity       Int      @default(1)
+  selectedPrice  Decimal? @db.Decimal(10, 2)
+  customizations Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([userId])
+  @@index([productId])
+}
+
+model WishlistItem {
+  id        String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, productId])
+  @@index([userId])
+}
+
+// ==========================================
+// ORDERS, PAYMENTS & TRANSACTIONS
+// ==========================================
+
+model Order {
+  id                      String               @id
+  orderNumber             String               @unique
+  userId                  String?
+  user                    User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+  customerName            String?
+  customerEmail           String?
+  customerPhone           String?
+  totalAmount             Decimal              @db.Decimal(10, 2)
+  subtotal                Decimal              @db.Decimal(10, 2)
+  taxAmount               Decimal              @default(0) @db.Decimal(10, 2)
+  shippingFee             Decimal              @default(0) @db.Decimal(10, 2)
+  discountAmount          Decimal              @default(0) @db.Decimal(10, 2)
+  orderStatus             String               @default("pending")
+  paymentStatus           String               @default("pending")
+  paymentMethod           String?
+  razorpayOrderId         String?
+  razorpayPaymentId       String?
+  razorpaySignature       String?
+  shippingAddress         Json?
+  billingAddress          Json?
+  deliveryDate            DateTime?
+  deliverySlot            String?
+  deliveryInstruction     String?
+  cardMessage             String?
+  senderName              String?
+  senderPhone             String?
+  recipientName           String?
+  recipientPhone          String?
+  promoCode               String?
+  discountCode            String?
+
+  // Extended Mongo Sub-documents & Pricing Fields
+  shippingDetails         Json?
+  paymentDetails          Json?
+  giftDetails             Json?
+  deliveryCharge          Decimal?             @db.Decimal(10, 2)
+  discount                Decimal?             @db.Decimal(10, 2)
+  finalTotal              Decimal?             @db.Decimal(10, 2)
+  isFirstOrderFreeDelivery Boolean             @default(false)
+  currencyRate            Decimal?             @default(1) @db.Decimal(10, 6)
+  originalCurrency        String?              @default("INR")
+  currency                String?              @default("INR")
+  trackingHistory         Json?
+  stockUpdated            Boolean              @default(false)
+  isTestOrder             Boolean              @default(false)
+
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+
+  items                   OrderItem[]
+  timeline                OrderTimeline[]
+  payments                Payment[]
+  deliveryAssignments     DeliveryAssignment[]
+  vendorAssignments       VendorAssignment[]
+
+  @@index([orderNumber])
+  @@index([userId])
+  @@index([orderStatus])
+  @@index([paymentStatus])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id          String   @id
+  orderId     String
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId   String?
+  product     Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  productName String
+  sku         String?
+  variantName String?
+  price       Decimal  @db.Decimal(10, 2)
+  quantity    Int
+  subtotal    Decimal  @db.Decimal(10, 2)
+  image       String?
+  addons      Json?
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+model OrderTimeline {
+  id          String   @id
+  orderId     String
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status      String
+  title       String
+  description String?
+  updatedBy   String?
+  timestamp   DateTime @default(now())
+
+  @@index([orderId])
+}
+
+model Payment {
+  id            String   @id
+  orderId       String
+  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  amount        Decimal  @db.Decimal(10, 2)
+  currency      String   @default("INR")
+  provider      String   @default("razorpay")
+  status        String
+  transactionId String?
+  rawResponse   Json?
+  createdAt     DateTime @default(now())
+
+  @@index([orderId])
+  @@index([transactionId])
+}
+
+// ==========================================
+// VENDORS & PAYOUTS
+// ==========================================
+
+model Vendor {
+  id               String             @id
+  userId           String             @unique
+  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ownerName        String?
+  storeName        String?
+  storeDescription String?
+  storeLogo        String?
+  storeBanner      String?
+  status           String             @default("pending")
+  signatureImage   String?
+  consentPdf       String?
+  consentPdfData   String?
+  adminSignature   String?
+  approvalPdf      String?
+  approvalPdfData  String?
+  approvedAt       DateTime?
+  storeAddress     Json?
+  contactInfo      Json?
+  businessInfo     Json?
+  bankDetails      Json?
+  commission       Json?
+  verification     Json?
+  subscription     Json?
+  storeSettings    Json?
+  salesSettings    Json?
+  analytics        Json?
+  socialMedia      Json?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  products         Product[]
+  documents        VendorDocument[]
+  notes            VendorNote[]
+  payouts          VendorPayout[]
+  assignments      VendorAssignment[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+model VendorDocument {
+  id         String   @id
+  vendorId   String
+  vendor     Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  type       String?
+  name       String?
+  url        String
+  status     String?
+  uploadedAt DateTime @default(now())
+
+  @@index([vendorId])
+}
+
+model VendorNote {
+  id        String   @id
+  vendorId  String
+  vendor    Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  text      String
+  author    String?
+  createdAt DateTime @default(now())
+
+  @@index([vendorId])
+}
+
+model VendorPayout {
+  id            String    @id
+  vendorId      String
+  vendor        Vendor    @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  amount        Decimal   @db.Decimal(10, 2)
+  status        String    @default("pending")
+  payoutDate    DateTime?
+  transactionId String?
+  notes         String?
+  period        Json?
+  summary       Json?
+  orders        Json?
+  payoutDetails Json?
+  processedBy   String?
+  processedAt   DateTime?
+  documents     Json?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([vendorId])
+}
+
+model VendorAssignment {
+  id         String   @id
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  vendorId   String
+  vendor     Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  status     String   @default("assigned")
+  assignedAt DateTime @default(now())
+
+  @@index([orderId])
+  @@index([vendorId])
+}
+
+// ==========================================
+// PROMO CODES & OFFERS
+// ==========================================
+
+model PromoCode {
+  id                    String           @id
+  code                  String           @unique
+  description           String?
+  image                 String?
+  background            String?          @default("#ffffff")
+  discountType          String           @default("percentage")
+  discountValue         Decimal          @db.Decimal(10, 2)
+  minOrderAmount        Decimal?         @db.Decimal(10, 2)
+  maxDiscountAmount     Decimal?         @db.Decimal(10, 2)
+  minimumOrderAmount    Decimal?         @db.Decimal(10, 2)
+  maximumDiscountAmount Decimal?         @db.Decimal(10, 2)
+  validFrom             DateTime?
+  validUntil            DateTime?
+  applicableCategories  Json?
+  excludedCategories    Json?
+  applicableProducts    Json?
+  excludedProducts      Json?
+  firstTimeUserOnly     Boolean          @default(false)
+  createdBy             String?
+  metadata              Json?
+  usageLimit            Int?
+  usedCount             Int              @default(0)
+  startDate             DateTime?
+  endDate               DateTime?
+  isActive              Boolean          @default(true)
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+
+  usages                PromoCodeUsage[]
+
+  @@index([code])
+}
+
+model PromoCodeUsage {
+  id          String    @id
+  promoCodeId String
+  promoCode   PromoCode @relation(fields: [promoCodeId], references: [id], onDelete: Cascade)
+  userId      String?
+  orderId     String?
+  usedAt      DateTime  @default(now())
+
+  @@index([promoCodeId])
+}
+
+model Offer {
+  id                   String    @id
+  title                String
+  description          String?
+  subtitle             String?
+  code                 String?
+  discountPercentage   Decimal?  @db.Decimal(5, 2)
+  discountPercent      Int?      @default(0)
+  image                String?
+  mobileImageUrl       String?
+  banner               String?
+  background           String?
+  textColor            String?
+  buttonText           String?
+  buttonLink           String?
+  secondaryCtaText     String?
+  secondaryCtaLink     String?
+  startDate            DateTime?
+  endDate              DateTime?
+  isActive             Boolean   @default(true)
+  showOnlyOnce         Boolean   @default(false)
+  showCountdown        Boolean   @default(true)
+  badgeText            String?
+  theme                String?   @default("general")
+  triggerType          String?   @default("combined")
+  triggerDelay         Int?      @default(8)
+  triggerScrollPercent Int?      @default(30)
+  frequencyCap         String?   @default("oncePerSession")
+  deviceTargeting      String?   @default("both")
+  isABTesting          Boolean   @default(false)
+  variants             Json?
+  impressions          Int       @default(0)
+  closes               Int       @default(0)
+  ctaClicks            Int       @default(0)
+  couponCopies         Int       @default(0)
+  conversions          Int       @default(0)
+  config               Json?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+}
+
+// ==========================================
+// REVIEWS & FEEDBACK
+// ==========================================
+
+model Review {
+  id                 String        @id
+  userId             String?
+  user               User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  productId          String
+  product            Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  orderId            String?
+  name               String?
+  email              String?
+  rating             Int
+  title              String?
+  comment            String
+  status             String        @default("approved")
+  isVerifiedPurchase Boolean       @default(false)
+  likeCount          Int           @default(0)
+  moderatorNotes     String?
+  moderationReason   String?
+  featured           Boolean       @default(false)
+  featuredAt         DateTime?
+  pinned             Boolean       @default(false)
+  pinnedAt           DateTime?
+  qualityRating      Int?
+  valueRating        Int?
+  deliveryRating     Int?
+  pros               Json?
+  cons               Json?
+  deviceInfo         Json?
+  ipAddress          String?
+  source             String?
+  officialResponse   Json?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  likes              ReviewLike[]
+  replies            ReviewReply[]
+  images             ReviewImage[]
+
+  @@index([productId])
+  @@index([userId])
+  @@index([rating])
+}
+
+model ReviewLike {
+  id        String   @id
+  reviewId  String
+  review    Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([reviewId, userId])
+  @@index([reviewId])
+}
+
+model ReviewReply {
+  id         String   @id
+  reviewId   String
+  review     Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  userId     String?
+  replyText  String
+  isOfficial Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([reviewId])
+}
+
+model ReviewImage {
+  id        String   @id
+  reviewId  String
+  review    Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  url       String
+  publicId  String?
+  createdAt DateTime @default(now())
+
+  @@index([reviewId])
+}
+
+model ReviewEmailLog {
+  id        String   @id
+  orderId   String?
+  email     String
+  status    String
+  sentAt    DateTime @default(now())
+}
+
+// ==========================================
+// DELIVERY & LOGISTICS
+// ==========================================
+
+model DeliveryPartner {
+  id              String               @id
+  name            String
+  phone           String
+  email           String?
+  vehicleNumber   String?
+  status          String               @default("available")
+  currentLocation Json?
+  password        String?
+  vehicleType     String?
+  profilePhoto    String?
+  availability    Boolean              @default(true)
+  currentLatitude Float?
+  currentLongitude Float?
+  activeOrders    Int                  @default(0)
+  rating          Float                @default(5.0)
+  totalDeliveries Int                  @default(0)
+  todayDeliveries Int                  @default(0)
+  todayEarnings   Decimal              @default(0) @db.Decimal(10, 2)
+  totalEarnings   Decimal              @default(0) @db.Decimal(10, 2)
+  acceptanceRate  Float                @default(100.0)
+  lastActiveTime  DateTime?
+  city            String?
+  zone            String?
+  userId          String?
+  approvalStatus  String?              @default("approved")
+  isSuspended     Boolean              @default(false)
+  isActive        Boolean              @default(true)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  assignments     DeliveryAssignment[]
+}
+
+model DeliveryZone {
+  id             String             @id
+  name           String
+  code           String?            @unique
+  pincodes       Json?
+  deliveryFee    Decimal            @default(0) @db.Decimal(10, 2)
+  minOrderAmount Decimal?           @db.Decimal(10, 2)
+  isActive       Boolean            @default(true)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  locations      DeliveryLocation[]
+}
+
+model DeliveryLocation {
+  id             String        @id
+  name           String
+  pincode        String
+  city           String?
+  state          String?
+  zoneId         String?
+  zone           DeliveryZone? @relation(fields: [zoneId], references: [id], onDelete: SetNull)
+  deliveryCharge Decimal?      @db.Decimal(10, 2)
+  isDeliverable  Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([pincode])
+}
+
+model DeliveryAssignment {
+  id                String           @id
+  orderId           String
+  order             Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  deliveryPartnerId String?
+  deliveryPartner   DeliveryPartner? @relation(fields: [deliveryPartnerId], references: [id], onDelete: SetNull)
+  partnerId         String?
+  status            String           @default("pending")
+  payoutAmount      Decimal?         @db.Decimal(10, 2)
+  distanceKm        Float?
+  distance          Float?
+  eta               DateTime?
+  pickupTime        DateTime?
+  deliveryTime      DateTime?
+  routeHistory      Json?
+  customerOtp       String?
+  otpVerified       Boolean          @default(false)
+  earnings          Decimal?         @db.Decimal(10, 2)
+  reassignmentCount Int              @default(0)
+  history           Json?
+  assignedAt        DateTime?
+  acceptedAt        DateTime?
+  pickedUpAt        DateTime?
+  deliveredAt       DateTime?
+  failedAt          DateTime?
+  failureReason     String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  proofs            DeliveryProof[]
+
+  @@index([orderId])
+  @@index([deliveryPartnerId])
+  @@index([status])
+}
+
+model DeliveryProof {
+  id           String             @id
+  assignmentId String
+  assignment   DeliveryAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  imageUrl     String
+  signatureUrl String?
+  notes        String?
+  uploadedAt   DateTime           @default(now())
+
+  @@index([assignmentId])
+}
+
+model DeliveryDocument {
+  id                  String   @id
+  partnerId           String?
+  title               String?
+  documentUrl         String?
+  type                String?
+  aadhaarNumber       String?
+  aadhaarFileUrl      String?
+  panNumber           String?
+  panFileUrl          String?
+  licenseNumber       String?
+  licenseFileUrl      String?
+  vehicleRcNumber     String?
+  vehicleRcFileUrl    String?
+  insuranceNumber     String?
+  insuranceFileUrl    String?
+  bankAccountHolder   String?
+  bankAccountNumber   String?
+  bankIfscCode        String?
+  bankDetailsFileUrl  String?
+  verificationStatus  String?  @default("pending")
+  uploadedAt          DateTime @default(now())
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model DeliveryEarning {
+  id                  String   @id
+  partnerId           String
+  orderId             String?
+  assignmentId        String?
+  amount              Decimal  @db.Decimal(10, 2)
+  basePay             Decimal? @db.Decimal(10, 2)
+  deliveryChargeShare Decimal? @db.Decimal(10, 2)
+  tips                Decimal? @db.Decimal(10, 2)
+  bonus               Decimal? @db.Decimal(10, 2)
+  status              String?  @default("unpaid")
+  date                DateTime @default(now())
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([partnerId])
+}
+
+model DeliverySetting {
+  id        String   @id
+  settings  Json
+  updatedAt DateTime @default(now())
+}
+
+// ==========================================
+// SYSTEM LOGS, NOTIFICATIONS & SETTINGS
+// ==========================================
+
+model Notification {
+  id        String   @id
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String   @default("info")
+  link      String?
+  isRead    Boolean  @default(false)
+  metadata  Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([isRead])
+}
+
+model ActivityLog {
+  id        String   @id
+  userId    String?
+  userName  String?
+  email     String?
+  action    String
+  actionType String?
+  module    String?
+  details   Json?
+  url       String?
+  method    String?
+  device    String?
+  status    String?
+  sessionId String?
+  metadata  Json?
+  ipAddress String?
+  userAgent String?
+  timestamp DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+model EmailLog {
+  id        String   @id
+  recipient String
+  subject   String
+  type      String?
+  status    String
+  error     String?
+  metadata  Json?
+  sentAt    DateTime @default(now())
+
+  @@index([recipient])
+  @@index([status])
+  @@index([sentAt])
+}
+
+model Holiday {
+  id             String   @id
+  title          String?
+  name           String?
+  date           DateTime
+  description    String?
+  reason         String?
+  type           String?  @default("public")
+  category       String?
+  isActive       Boolean  @default(true)
+  isRecurring    Boolean  @default(false)
+  recurring      Boolean  @default(false)
+  recurringYears Json?
+  year           Int?
+  month          Int?
+  day            Int?
+  createdBy      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model HomepageVideo {
+  id           String   @id
+  videoUrl     String
+  thumbnailUrl String?
+  title        String?
+  displayOrder Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model SocialFeedPost {
+  id           String   @id
+  embedUrl     String
+  displayOrder Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Newsletter {
+  id           String   @id
+  email        String   @unique
+  status       String   @default("subscribed")
+  subscribedAt DateTime @default(now())
+}
+
+model Store {
+  id        String   @id
+  name      String
+  code      String   @unique
+  city      String?
+  address   String?
+  zone      String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Redirect {
+  id         String   @id
+  sourceUrl  String   @unique
+  targetUrl  String
+  statusCode Int      @default(301)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model SectionSortingPreference {
+  id          String   @id
+  page        String?
+  preferences Json
+  updatedAt   DateTime @default(now())
+}
+
+model Setting {
+  id        String   @id
+  key       String   @unique @default("global")
+  data      Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ValentineSetting {
+  id        String   @id
+  key       String   @unique @default("valentine")
+  enabled   Boolean  @default(true)
+  data      Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ValentineOffer {
+  id             String   @id
+  title          String
+  description    String?
+  type           String?
+  discountValue  Decimal? @db.Decimal(10, 2)
+  minOrderAmount Decimal? @db.Decimal(10, 2)
+  freeItemName   String?
+  products       Json?
+  code           String?
+  image          String?
+  badgeText      String?
+  badgeColor     String?
+  startDate      DateTime?
+  endDate        DateTime?
+  isActive       Boolean  @default(true)
+  usageCount     Int      @default(0)
+  maxUsage       Int?
+  order          Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model SeasonalCampaign {
+  id          String    @id
+  title       String
+  name        String?
+  slug        String    @unique
+  description String?
+  bannerUrl   String?
+  enabled     Boolean   @default(true)
+  general     Json?
+  theme       Json?
+  navigation  Json?
+  banners     Json?
+  categories  Json?
+  offers      Json?
+  delivery    Json?
+  seo         Json?
+  analytics   Json?
+  startDate   DateTime?
+  endDate     DateTime?
+  isActive    Boolean   @default(true)
+  config      Json?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+// ==========================================
+// MIGRATION CHECKPOINTS & AUDIT TRACKING
+// ==========================================
+
+model MigrationCheckpoint {
+  id            String   @id @default(cuid())
+  collection    String   @unique
+  status        String   // 'PENDING', 'IN_PROGRESS', 'COMPLETED', 'FAILED'
+  migratedCount Int      @default(0)
+  totalCount    Int      @default(0)
+  errorMessage  String?
+  updatedAt     DateTime @updatedAt
+}

@@ -218,7 +218,9 @@ const getUserProfile = async (req, res) => {
 
     if (user) {
       // Update last active timestamp
-      await user.updateLastActive();
+      if (typeof user.updateLastActive === 'function') {
+        await user.updateLastActive();
+      }
       
       res.json({
         _id: user._id,
@@ -298,7 +300,9 @@ const logoutUser = async (req, res) => {
     if (req.user) {
       const user = await User.findById(req.user._id);
       if (user) {
-        await user.updateLastActive();
+        if (typeof user.updateLastActive === 'function') {
+          await user.updateLastActive();
+        }
 
         await logActivity({
           req,
@@ -337,21 +341,22 @@ const googleAuth = async (req, res) => {
     const payload = ticket.getPayload();
     const { email, name, picture, sub: googleId } = payload;
 
-    // Check if user already exists
-    let user = await User.findOne({ 
-      $or: [
-        { email: email },
-        { googleId: googleId }
-      ]
-    });
+    // Check if user already exists (by email first, then googleId)
+    let user = await User.findOne({ email: email.toLowerCase() });
+
+    if (!user && googleId) {
+      user = await User.findOne({ googleId });
+    }
 
     let isNewUser = false;
 
     if (user) {
       // User exists, update their info and log them in
-      user.name = name;
+      if (name && (!user.name || user.name.startsWith('User'))) {
+        user.name = name;
+      }
       user.googleId = googleId;
-      user.photoURL = picture;
+      if (picture) user.photoURL = picture;
       user.provider = 'google';
       user.lastLogin = new Date();
       user.lastActive = new Date();

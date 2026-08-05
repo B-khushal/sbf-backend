@@ -1,15 +1,40 @@
 const User = require('../models/User');
 const Product = require('../models/Product');
 
+const formatWishlistItems = (wishlistArray) => {
+  if (!Array.isArray(wishlistArray)) return [];
+  return wishlistArray.map(item => {
+    const prod = (item.product && typeof item.product === 'object') 
+      ? item.product 
+      : ((item.productId && typeof item.productId === 'object') ? item.productId : null);
+    
+    const prodId = prod ? (prod._id || prod.id) : String(item.productId || item.id || '');
+    const title = prod ? (prod.title || prod.name) : (item.title || item.name || '');
+    const price = prod ? (typeof prod.price === 'number' ? prod.price : parseFloat(prod.price || 0)) : (item.price || 0);
+    const images = prod ? (Array.isArray(prod.images) ? prod.images.map(i => typeof i === 'string' ? i : i.url) : []) : (item.images || []);
+    const image = images[0] || (prod ? prod.image : '') || item.image || '/images/placeholder.svg';
+
+    return {
+      id: String(prodId),
+      productId: String(prodId),
+      title: String(title),
+      price: Number(price),
+      image: String(image),
+      images,
+      discount: prod?.discount || item.discount || 0,
+      category: prod?.category || item.category || '',
+      description: prod?.description || item.description || '',
+      addedAt: item.addedAt || new Date()
+    };
+  }).filter(i => Boolean(i.id && i.title));
+};
+
 // @desc    Get user's wishlist
 // @route   GET /api/wishlist
 // @access  Private
 const getWishlist = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).populate({
-      path: 'wishlist.productId',
-      select: 'title price images discount category description'
-    });
+    const user = await User.findById(req.user._id);
 
     if (!user) {
       return res.status(404).json({ 
@@ -20,19 +45,7 @@ const getWishlist = async (req, res) => {
       });
     }
 
-    // Transform wishlist items to include product details
-    const wishlistItems = user.wishlist.map(item => ({
-      id: item.productId._id,
-      productId: item.productId._id,
-      title: item.productId.title,
-      price: item.productId.price,
-      image: item.productId.images?.[0] || '',
-      images: item.productId.images,
-      discount: item.productId.discount,
-      category: item.productId.category,
-      description: item.productId.description,
-      addedAt: item.addedAt
-    }));
+    const wishlistItems = formatWishlistItems(user.wishlist);
 
     res.json({
       success: true,
@@ -97,45 +110,33 @@ const addToWishlist = async (req, res) => {
     }
 
     // Check if item already exists in wishlist
-    const existingItem = user.wishlist.find(
-      item => item.productId.toString() === productId
-    );
+    const targetIdStr = String(productId);
+    const existingItem = user.wishlist.find(item => {
+      const pId = String(item.productId?._id || item.productId?.id || item.productId || item.id || '');
+      return pId === targetIdStr;
+    });
 
     if (existingItem) {
+      const existingItems = formatWishlistItems(user.wishlist);
       return res.status(400).json({ 
         success: false,
         message: 'Product already in wishlist',
-        wishlist: [],
-        itemCount: 0
+        wishlist: existingItems,
+        itemCount: existingItems.length
       });
     }
 
     // Add new item to wishlist
     user.wishlist.push({
-      productId,
+      productId: targetIdStr,
+      product: product,
       addedAt: new Date()
     });
 
     await user.save();
 
-    // Return updated wishlist
-    const updatedUser = await User.findById(req.user._id).populate({
-      path: 'wishlist.productId',
-      select: 'title price images discount category description'
-    });
-
-    const wishlistItems = updatedUser.wishlist.map(item => ({
-      id: item.productId._id,
-      productId: item.productId._id,
-      title: item.productId.title,
-      price: item.productId.price,
-      image: item.productId.images?.[0] || '',
-      images: item.productId.images,
-      discount: item.productId.discount,
-      category: item.productId.category,
-      description: item.productId.description,
-      addedAt: item.addedAt
-    }));
+    const updatedUser = await User.findById(req.user._id);
+    const wishlistItems = formatWishlistItems(updatedUser.wishlist);
 
     res.json({
       success: true,
@@ -180,44 +181,16 @@ const removeFromWishlist = async (req, res) => {
       });
     }
 
-    // Check if item exists in wishlist before removing
-    const itemExists = user.wishlist.some(
-      item => item.productId.toString() === productId
-    );
-
-    if (!itemExists) {
-      return res.status(404).json({ 
-        success: false,
-        message: 'Product not found in wishlist',
-        wishlist: [],
-        itemCount: 0
-      });
-    }
-
-    user.wishlist = user.wishlist.filter(
-      item => item.productId.toString() !== productId
-    );
+    const targetIdStr = String(productId);
+    user.wishlist = user.wishlist.filter(item => {
+      const pId = String(item.productId?._id || item.productId?.id || item.productId || item.id || '');
+      return pId !== targetIdStr;
+    });
 
     await user.save();
 
-    // Return updated wishlist
-    const updatedUser = await User.findById(req.user._id).populate({
-      path: 'wishlist.productId',
-      select: 'title price images discount category description'
-    });
-
-    const wishlistItems = updatedUser.wishlist.map(item => ({
-      id: item.productId._id,
-      productId: item.productId._id,
-      title: item.productId.title,
-      price: item.productId.price,
-      image: item.productId.images?.[0] || '',
-      images: item.productId.images,
-      discount: item.productId.discount,
-      category: item.productId.category,
-      description: item.productId.description,
-      addedAt: item.addedAt
-    }));
+    const updatedUser = await User.findById(req.user._id);
+    const wishlistItems = formatWishlistItems(updatedUser.wishlist);
 
     res.json({
       success: true,
@@ -227,12 +200,6 @@ const removeFromWishlist = async (req, res) => {
     });
   } catch (error) {
     console.error('Error removing from wishlist:', error);
-    res.status(500).json({ 
-      success: false,
-      message: 'Server error',
-      wishlist: [],
-      itemCount: 0
-    });
   }
 };
 

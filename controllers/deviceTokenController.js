@@ -28,9 +28,9 @@ const registerDeviceToken = async (req, res) => {
     }
 
     // Validate deviceType
-    if (!['android', 'ios'].includes(type)) {
+    if (!['android', 'ios', 'web'].includes(type.toLowerCase())) {
       return res.status(400).json({ 
-        message: 'Device type must be either "android" or "ios"',
+        message: 'Device type must be "android", "ios", or "web"',
         success: false
       });
     }

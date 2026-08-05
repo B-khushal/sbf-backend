@@ -9,6 +9,12 @@ const {
 } = require('../controllers/userController');
 const { protect, admin } = require('../middleware/authMiddleware');
 
+const { getUserProfile, updateUserProfile } = require('../controllers/authController');
+
+router.route('/profile')
+  .get(protect, getUserProfile)
+  .put(protect, updateUserProfile);
+
 router.route('/')
   .get(protect, admin, getUsers);
 

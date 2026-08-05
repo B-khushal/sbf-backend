@@ -303,7 +303,11 @@ const createOrder = async (req, res) => {
     console.log('User from request:', req.user);
     console.log('Received order data:', JSON.stringify(req.body, null, 2));
 
-    const { shippingDetails, items, paymentDetails, totalAmount, giftDetails, currency, currencyRate, originalCurrency } = req.body;
+    const items = req.body.items || req.body.orderItems || [];
+    const shippingDetails = req.body.shippingDetails || req.body.shippingAddress || {};
+    const paymentDetails = req.body.paymentDetails || { method: req.body.paymentMethod || 'cod' };
+    const totalAmount = req.body.totalAmount || req.body.totalPrice || 0;
+    const { giftDetails, currency, currencyRate, originalCurrency } = req.body;
 
     // Resolve any client-side valentine-gift- IDs
     await resolveGiftBuilderProductIds(items, req.user?._id);
@@ -448,19 +452,29 @@ const createOrder = async (req, res) => {
         floor: shippingDetails.floor,
         deliveryInstructions: shippingDetails.deliveryInstructions,
       },
-      items: items.map(item => ({
-        product: item.product || item.productId,
-        productModel: item.productModel || 'Product',
-        title: item.title || '',
-        image: item.image || item.images?.[0] || '',
-        images: Array.isArray(item.images) ? item.images : [],
-        selectedVariant: item.selectedVariant || null,
-        quantity: item.quantity,
-        price: item.price,
-        finalPrice: item.finalPrice || item.price,
-        customizations: item.customizations || null,
-        characterCount: item.characterCount || item.customizations?.personalization?.characterCount || 0
-      })),
+      items: items.map(item => {
+        const itemPrice = parseFloat(item.price ?? item.finalPrice ?? item.unitPrice ?? 0);
+        const itemQty = parseInt(item.quantity ?? item.qty ?? 1);
+        const itemTitle = item.title || item.name || item.productName || (typeof item.product === 'object' ? item.product.title || item.product.name : '') || 'Florist Item';
+
+        return {
+          product: item.product || item.productId,
+          productModel: item.productModel || 'Product',
+          title: itemTitle,
+          name: itemTitle,
+          productName: itemTitle,
+          image: item.image || item.images?.[0] || '',
+          images: Array.isArray(item.images) ? item.images : [],
+          selectedVariant: item.selectedVariant || null,
+          quantity: itemQty,
+          qty: itemQty,
+          price: itemPrice,
+          finalPrice: itemPrice,
+          subtotal: itemPrice * itemQty,
+          customizations: item.customizations || null,
+          characterCount: item.characterCount || item.customizations?.personalization?.characterCount || 0
+        };
+      }),
       paymentDetails: {
         method: paymentDetails.method,
         razorpayOrderId: paymentDetails.razorpayOrderId,
@@ -540,28 +554,28 @@ const createOrder = async (req, res) => {
       // Get customer details (for logged in, fetch from User, for guest, use shippingDetails)
       const customer = userId 
         ? await User.findById(userId)
-        : {
-            name: savedOrder.shippingDetails.fullName,
-            email: savedOrder.shippingDetails.email,
-            phone: savedOrder.shippingDetails.phone
-          };
+        : null;
+
+      const customerName = (customer && customer.name) || savedOrder.shippingDetails?.fullName || 'Customer';
+      const customerEmail = (customer && customer.email) || savedOrder.shippingDetails?.email || '';
+      const customerPhone = (customer && customer.phone) || savedOrder.shippingDetails?.phone || '';
 
       // Populate product details for notifications
-      const populatedOrder = await Order.findById(savedOrder._id)
+      const populatedOrder = (await Order.findById(savedOrder._id)
         .populate({
           path: 'items.product',
           select: 'name title price images'
-        });
+        })) || savedOrder;
 
       // Prepare notification data
       const notificationData = {
         order: populatedOrder,
         customer: {
-          name: customer.name,
-          email: customer.email,
-          phone: customer.phone || populatedOrder.shippingDetails.phone
+          name: customerName,
+          email: customerEmail,
+          phone: customerPhone
         },
-        items: populatedOrder.items
+        items: populatedOrder.items || savedOrder.items
       };
 
       // Send email notification (includes both customer and admin emails)
@@ -573,7 +587,7 @@ const createOrder = async (req, res) => {
         const adminNotification = await createOrderNotification({
           orderId: savedOrder._id,
           orderNumber: savedOrder.orderNumber,
-          customerName: customer.name,
+          customerName: customerName,
           amount: savedOrder.totalAmount,
           currency: savedOrder.currency || 'INR'
         });
@@ -582,10 +596,10 @@ const createOrder = async (req, res) => {
         // Store in a global variable for real-time polling (optional backup)
         global.latestNotifications = global.latestNotifications || [];
         global.latestNotifications.unshift({
-          id: adminNotification.id || `order-${Date.now()}`,
+          id: adminNotification._id || adminNotification.id || `order-${Date.now()}`,
           type: 'order',
           title: '🎉 New Order Received!',
-          message: `Order ${savedOrder.orderNumber} placed by ${customer.name}. Amount: ${savedOrder.currency === 'INR' ? '₹' : '$'}${savedOrder.totalAmount}`,
+          message: `Order ${savedOrder.orderNumber} placed by ${customerName}. Amount: ${savedOrder.currency === 'INR' ? '₹' : '$'}${savedOrder.totalAmount}`,
           createdAt: new Date().toISOString(),
           isRead: false,
           orderId: savedOrder._id,
@@ -611,7 +625,7 @@ const createOrder = async (req, res) => {
           body: `Order #${savedOrder.orderNumber} - ${savedOrder.currency === 'INR' ? '₹' : '$'}${savedOrder.totalAmount}`,
           orderId: savedOrder._id.toString(),
           orderNumber: savedOrder.orderNumber,
-          customerName: customer.name,
+          customerName: customerName,
           amount: savedOrder.totalAmount.toString(),
           type: 'NEW_ORDER'  // MUST be "NEW_ORDER" for 3x ring + vibration
         });
@@ -895,14 +909,26 @@ const updateOrderToDelivered = async (req, res) => {
       }
 
       try {
-        // Get customer details
+        // Get customer details - try User model first, then fallback to shipping details
         const User = require('../models/User');
-        const customer = await User.findById(order.user);
+        let customer = null;
+        let customerEmail = null;
+        let customerName = null;
 
-        console.log('👤 Customer lookup result:', customer ? 'Found' : 'Not found');
-        console.log('📧 Customer email:', customer?.email);
+        if (order.user) {
+          customer = await User.findById(order.user);
+          if (customer && customer.email) {
+            customerEmail = customer.email;
+            customerName = customer.name;
+          }
+        }
 
-        if (customer && customer.email) {
+        if (!customerEmail) {
+          customerEmail = order.customerEmail || order.shippingDetails?.email || order.shippingAddress?.email;
+          customerName = order.customerName || order.shippingDetails?.fullName || order.shippingAddress?.fullName;
+        }
+
+        if (customerEmail) {
           // Populate product details for delivery email
           const populatedOrder = await Order.findById(order._id)
             .populate({
@@ -914,9 +940,9 @@ const updateOrderToDelivered = async (req, res) => {
           const deliveryNotificationData = {
             order: populatedOrder,
             customer: {
-              name: customer.name,
-              email: customer.email,
-              phone: customer.phone || order.shippingDetails.phone
+              name: customerName || order.shippingDetails?.fullName || 'Customer',
+              email: customerEmail,
+              phone: customer?.phone || order.shippingDetails?.phone || order.customerPhone
             },
             items: populatedOrder.items
           };
@@ -1254,6 +1280,7 @@ const updateOrderStatus = async (req, res) => {
 
     const previousStatus = order.status;
     order.status = status;
+    order.orderStatus = status;
 
     // Send FCM push notification to all admins when order is confirmed (received status)
     if (status === 'received' && previousStatus !== 'received') {
@@ -1380,15 +1407,14 @@ const updateOrderStatus = async (req, res) => {
 
       // Create notification for stock update
       try {
-        const notification = new Notification({
-          title: 'Stock Updated',
-          message: `Stock updated for order ${order.orderNumber}. ${order.items.length} products' stock reduced.`,
+        const { createAdminNotification } = require('./notificationController');
+        await createAdminNotification({
           type: 'info',
-          read: false
+          title: 'Stock Updated',
+          message: `Stock updated for order ${order.orderNumber}. ${order.items.length} products' stock reduced.`
         });
-        await notification.save();
       } catch (notificationError) {
-        console.error('Error creating stock update notification:', notificationError);
+        console.error('Error creating stock update notification:', notificationError.message);
       }
     } else {
       console.log('📦 Stock already updated or status already processed');
@@ -1741,8 +1767,13 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
       const orderDbData = {
         orderNumber,
         user: userId,
+        customerName: orderData.shippingDetails.fullName || 'Customer',
+        customerEmail: orderData.shippingDetails.email || 'N/A',
+        customerPhone: orderData.shippingDetails.phone || 'N/A',
         shippingDetails: {
           fullName: orderData.shippingDetails.fullName,
+          firstName: orderData.shippingDetails.firstName,
+          lastName: orderData.shippingDetails.lastName,
           email: orderData.shippingDetails.email,
           phone: orderData.shippingDetails.phone,
           address: orderData.shippingDetails.address,
@@ -1817,28 +1848,28 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
         // Get customer details (for logged in, fetch from User, for guest, use shippingDetails)
         const customer = userId 
           ? await User.findById(userId)
-          : {
-              name: savedOrder.shippingDetails.fullName,
-              email: savedOrder.shippingDetails.email,
-              phone: savedOrder.shippingDetails.phone
-            };
+          : null;
+
+        const customerName = (customer && customer.name) || savedOrder.shippingDetails?.fullName || 'Customer';
+        const customerEmail = (customer && customer.email) || savedOrder.shippingDetails?.email || '';
+        const customerPhone = (customer && customer.phone) || savedOrder.shippingDetails?.phone || '';
 
         // Populate product details for notifications
-        const populatedOrder = await Order.findById(savedOrder._id)
+        const populatedOrder = (await Order.findById(savedOrder._id)
           .populate({
             path: 'items.product',
             select: 'name title price images'
-          });
+          })) || savedOrder;
 
         // Prepare notification data
         const notificationData = {
           order: populatedOrder,
           customer: {
-            name: customer.name,
-            email: customer.email,
-            phone: customer.phone || populatedOrder.shippingDetails.phone
+            name: customerName,
+            email: customerEmail,
+            phone: customerPhone
           },
-          items: populatedOrder.items
+          items: populatedOrder.items || savedOrder.items
         };
 
         // Send email notification (includes both customer and admin emails)
@@ -1850,7 +1881,7 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
           const adminNotification = await createOrderNotification({
             orderId: savedOrder._id,
             orderNumber: savedOrder.orderNumber,
-            customerName: customer.name,
+            customerName: customerName,
             amount: savedOrder.totalAmount,
             currency: savedOrder.currency || 'INR'
           });
@@ -1859,10 +1890,10 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
           // Store in a global variable for real-time polling (optional backup)
           global.latestNotifications = global.latestNotifications || [];
           global.latestNotifications.unshift({
-            id: adminNotification.id || `order-${Date.now()}`,
+            id: adminNotification._id || adminNotification.id || `order-${Date.now()}`,
             type: 'order',
             title: '🎉 New Order Received!',
-            message: `Order ${savedOrder.orderNumber} placed by ${customer.name}. Amount: ${savedOrder.currency === 'INR' ? '₹' : '$'}${savedOrder.totalAmount}`,
+            message: `Order ${savedOrder.orderNumber} placed by ${customerName}. Amount: ${savedOrder.currency === 'INR' ? '₹' : '$'}${savedOrder.totalAmount}`,
             createdAt: new Date().toISOString(),
             isRead: false,
             orderId: savedOrder._id,
@@ -1884,7 +1915,7 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
               body: `Order #${savedOrder.orderNumber} - ${savedOrder.currency === 'INR' ? '₹' : '$'}${savedOrder.totalAmount}`,
               orderId: savedOrder._id.toString(),
               orderNumber: savedOrder.orderNumber,
-              customerName: customer.name,
+              customerName: customerName,
               amount: savedOrder.totalAmount.toString(),
               type: 'NEW_ORDER'
             });
@@ -2335,8 +2366,8 @@ const getOrderInvoice = async (req, res) => {
 // @access  Public (Optional auth)
 const calculateDelivery = async (req, res) => {
   try {
-    const { subtotal, timeSlot, email, phone } = req.body;
-    const userId = req.user?._id || null;
+    const { subtotal, timeSlot, email, phone, userId: bodyUserId } = req.body;
+    const userId = req.user?._id || req.user?.id || bodyUserId || null;
 
     if (subtotal === undefined) {
       return res.status(400).json({

@@ -110,6 +110,8 @@ router.get('/seo/video-sitemap', getVideoSitemap);
 
 router.get('/share-preview/:type/:idOrSlug', getSharePreview);
 
+router.get('/category/:category', getProductsByCategory);
+
 router.route('/:id')
   .get(getProductById)
   .put(protect, adminOrVendor, updateProduct)
@@ -144,6 +146,8 @@ router.post('/admin/bulk-action', protect, adminOrVendor, executeBulkAction);
 router.get('/type/:type', getProductsByCatalogType);
 router.post('/:id/restore-version', protect, adminOrVendor, restoreProductVersion);
 router.get('/admin/list', protect, adminOrVendor, getAdminProducts);
+router.get('/admin/all', protect, adminOrVendor, getAdminProducts);
+router.get('/admin/products', protect, adminOrVendor, getAdminProducts);
 router.put('/admin/:id/toggle-visibility', protect, adminOrVendor, toggleProductVisibility);
 router.put('/:id/visibility', protect, adminOrVendor, toggleProductVisibility);
 router.put('/:id/toggle-visibility', protect, adminOrVendor, toggleProductVisibility);

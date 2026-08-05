@@ -10,12 +10,12 @@ const PromoCode = require('../models/PromoCode');
 // GET /api/seasonal-campaigns/status - Lightweight check of all campaigns with product counts
 const getActiveCampaignsStatus = async (req, res) => {
   try {
-    const campaigns = await SeasonalCampaign.find({}).select(
-      'name slug enabled general theme navigation banners offers categories seo'
-    );
+    const allCampaigns = await SeasonalCampaign.find({});
+    // Filter only enabled and active campaigns
+    const activeCampaigns = allCampaigns.filter(c => c.enabled === true && c.isActive === true);
     
     // Add product counts dynamically
-    const campaignsWithCounts = await Promise.all(campaigns.map(async (campaign) => {
+    const campaignsWithCounts = await Promise.all(activeCampaigns.map(async (campaign) => {
       const count = await Product.countDocuments({
         seasonalCampaigns: campaign.slug,
         hidden: { $ne: true },

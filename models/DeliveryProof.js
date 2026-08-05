@@ -1,30 +1,31 @@
-const mongoose = require('mongoose');
+const prisma = require('../config/prisma');
 
-const deliveryProofSchema = new mongoose.Schema({
-  assignmentId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'DeliveryAssignment',
-    required: true,
-    index: true
-  },
-  imageUrl: {
-    type: String,
-    required: true
-  },
-  verificationType: {
-    type: String,
-    enum: ['otp', 'photo', 'signature'],
-    default: 'photo'
-  },
-  timestamp: {
-    type: Date,
-    default: Date.now
-  },
-  latitude: Number,
-  longitude: Number
-}, {
-  timestamps: true
-});
+class DeliveryProofDocument {
+  constructor(data) {
+    Object.assign(this, data);
+    this._id = data.id || data._id;
+  }
+}
 
-const DeliveryProof = mongoose.model('DeliveryProof', deliveryProofSchema);
-module.exports = DeliveryProof;
+class QueryChain {
+  constructor(prismaQuery) { this.prismaQuery = prismaQuery; }
+  async then(resolve, reject) {
+    try {
+      const res = await this.prismaQuery;
+      if (Array.isArray(res)) resolve(res.map(d => new DeliveryProofDocument(d)));
+      else if (res) resolve(new DeliveryProofDocument(res));
+      else resolve(null);
+    } catch (err) { reject(err); }
+  }
+}
+
+class DeliveryProofModel {
+  static find(where = {}) {
+    const filter = {};
+    if (where.assignmentId) filter.assignmentId = String(where.assignmentId);
+    const query = prisma.deliveryProof.findMany({ where: filter });
+    return new QueryChain(query);
+  }
+}
+
+module.exports = DeliveryProofModel;

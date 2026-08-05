@@ -25,6 +25,7 @@ const { createRateLimiter } = require('../middleware/rateLimiter');
 router.post('/', optionalProtect, createOrder);
 router.get('/', protect, admin, getOrders);
 router.get('/myorders', protect, getUserOrders);
+router.get('/my-orders', protect, getUserOrders);
 router.get('/today', protect, admin, getTodayOrders);
 
 // New date and delivery focused routes

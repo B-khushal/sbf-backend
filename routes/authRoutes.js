@@ -10,7 +10,7 @@ const {
   logoutUser,
   googleAuth,
 } = require('../controllers/authController');
-const { protect } = require('../middleware/authMiddleware');
+const { protect, optionalProtect } = require('../middleware/authMiddleware');
 
 // Rate limiter for auth endpoints (50 requests per 15 minutes)
 const authLimiter = rateLimit({
@@ -60,7 +60,7 @@ router.get('/verify-token', protect, (req, res) => {
 router.post('/login', authLimiter, validateRequest(loginSchema), loginUser);
 router.post('/register', authLimiter, validateRequest(registerSchema), registerUser);
 router.post('/google', authLimiter, googleAuth);
-router.post('/logout', protect, logoutUser);
+router.post('/logout', optionalProtect, logoutUser);
 
 router.route('/profile')
   .get(protect, getUserProfile)

@@ -1,40 +1,46 @@
-const mongoose = require('mongoose');
+const prisma = require('../config/prisma');
 
-const newsletterSchema = new mongoose.Schema({
-  email: {
-    type: String,
-    required: true,
-    unique: true,
-    trim: true,
-    lowercase: true,
-  },
-  subscriptionDate: {
-    type: Date,
-    default: Date.now
-  },
-  isActive: {
-    type: Boolean,
-    default: true
-  },
-  source: {
-    type: String,
-    default: 'website'
-  },
-  lastUpdated: {
-    type: Date,
-    default: Date.now
+class NewsletterDocument {
+  constructor(data) {
+    Object.assign(this, data);
+    this._id = data.id || data._id;
   }
-});
+}
 
-// Add index for email field
-newsletterSchema.index({ email: 1 });
+class QueryChain {
+  constructor(prismaQuery) { this.prismaQuery = prismaQuery; }
+  async then(resolve, reject) {
+    try {
+      const res = await this.prismaQuery;
+      if (Array.isArray(res)) resolve(res.map(n => new NewsletterDocument(n)));
+      else if (res) resolve(new NewsletterDocument(res));
+      else resolve(null);
+    } catch (err) { reject(err); }
+  }
+}
 
-// Pre-save middleware to update lastUpdated
-newsletterSchema.pre('save', function(next) {
-  this.lastUpdated = new Date();
-  next();
-});
+class NewsletterModel {
+  static find(where = {}) {
+    const query = prisma.newsletter.findMany({ where });
+    return new QueryChain(query);
+  }
 
-const Newsletter = mongoose.model('Newsletter', newsletterSchema);
+  static findOne(where = {}) {
+    const filter = {};
+    if (where.email) filter.email = where.email.toLowerCase();
+    const query = prisma.newsletter.findFirst({ where: filter });
+    return new QueryChain(query);
+  }
 
-module.exports = Newsletter; 
+  static async create(data) {
+    const created = await prisma.newsletter.create({
+      data: {
+        id: data.id || data._id || `news_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+        email: data.email.toLowerCase()
+      }
+    });
+    return new NewsletterDocument(created);
+  }
+}
+
+module.exports = NewsletterModel;

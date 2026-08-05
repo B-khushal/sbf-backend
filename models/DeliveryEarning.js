@@ -1,57 +1,31 @@
-const mongoose = require('mongoose');
+const prisma = require('../config/prisma');
 
-const deliveryEarningSchema = new mongoose.Schema({
-  partnerId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'DeliveryPartner',
-    required: true,
-    index: true
-  },
-  assignmentId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'DeliveryAssignment',
-    required: true,
-    index: true
-  },
-  orderId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Order',
-    required: true
-  },
-  amount: {
-    type: Number,
-    required: true
-  },
-  basePay: {
-    type: Number,
-    default: 0
-  },
-  deliveryChargeShare: {
-    type: Number,
-    default: 0
-  },
-  tips: {
-    type: Number,
-    default: 0
-  },
-  bonus: {
-    type: Number,
-    default: 0
-  },
-  date: {
-    type: Date,
-    default: Date.now,
-    index: true
-  },
-  status: {
-    type: String,
-    enum: ['pending', 'paid'],
-    default: 'pending',
-    index: true
+class DeliveryEarningDocument {
+  constructor(data) {
+    Object.assign(this, data);
+    this._id = data.id || data._id;
   }
-}, {
-  timestamps: true
-});
+}
 
-const DeliveryEarning = mongoose.model('DeliveryEarning', deliveryEarningSchema);
-module.exports = DeliveryEarning;
+class QueryChain {
+  constructor(prismaQuery) { this.prismaQuery = prismaQuery; }
+  async then(resolve, reject) {
+    try {
+      const res = await this.prismaQuery;
+      if (Array.isArray(res)) resolve(res.map(d => new DeliveryEarningDocument(d)));
+      else if (res) resolve(new DeliveryEarningDocument(res));
+      else resolve(null);
+    } catch (err) { reject(err); }
+  }
+}
+
+class DeliveryEarningModel {
+  static find(where = {}) {
+    const filter = {};
+    if (where.partnerId) filter.partnerId = String(where.partnerId);
+    const query = prisma.deliveryEarning.findMany({ where: filter });
+    return new QueryChain(query);
+  }
+}
+
+module.exports = DeliveryEarningModel;

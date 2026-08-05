@@ -150,7 +150,7 @@ const updateCategory = asyncHandler(async (req, res) => {
   // Verify unique slug if changed
   if (newSlug !== oldSlug) {
     const slugExists = await Category.findOne({ slug: newSlug });
-    if (slugExists) {
+    if (slugExists && String(slugExists._id || slugExists.id) !== String(req.params.id)) {
       res.status(400);
       throw new Error('A category with this slug already exists.');
     }
@@ -172,7 +172,7 @@ const updateCategory = asyncHandler(async (req, res) => {
   // Verify unique URL if changed
   if (newUrl !== oldUrl) {
     const urlExists = await Category.findOne({ categoryUrl: newUrl });
-    if (urlExists) {
+    if (urlExists && String(urlExists._id || urlExists.id) !== String(req.params.id)) {
       res.status(400);
       throw new Error('A category with this URL already exists.');
     }
