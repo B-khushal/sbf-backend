@@ -38,6 +38,9 @@ class QueryChain {
   sort() { return this; }
   skip() { return this; }
   limit() { return this; }
+  lean() { return this; }
+  select() { return this; }
+  populate() { return this; }
   exec() { return this.then(r => r); }
   async then(resolve, reject) {
     try {

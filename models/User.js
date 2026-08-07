@@ -38,7 +38,54 @@ class UserDocument {
           addedAt: w.createdAt
         }))
       : [];
-    this.addresses = Array.isArray(data.addresses) ? data.addresses : [];
+    this.addresses = Array.isArray(data.addresses)
+      ? data.addresses.map((a, idx) => {
+          if (!a || typeof a !== 'object') return null;
+          const rawName = (a.fullName || `${a.firstName || ''} ${a.lastName || ''}`).trim();
+          const nameParts = rawName.split(' ');
+          const firstName = a.firstName || nameParts[0] || '';
+          const lastName = a.lastName || nameParts.slice(1).join(' ') || '';
+          const streetAddr = a.address || a.street || a.addressLine1 || a.formattedAddress || '';
+          const apt = a.apartment || a.addressLine2 || a.houseNo || '';
+          const zip = a.zipCode || a.pincode || '';
+
+          return {
+            id: String(a.id || a._id || `addr_${Date.now()}_${idx}`),
+            firstName,
+            lastName,
+            fullName: rawName || `${firstName} ${lastName}`.trim(),
+            address: streetAddr,
+            street: streetAddr,
+            addressLine1: streetAddr,
+            apartment: apt,
+            addressLine2: apt,
+            houseNo: a.houseNo || apt || '',
+            city: a.city || 'Hyderabad',
+            state: a.state || 'Telangana',
+            zipCode: zip,
+            pincode: zip,
+            phone: a.phone || '',
+            email: a.email || '',
+            notes: a.notes || a.deliveryInstructions || '',
+            deliveryOption: a.deliveryOption === 'gift' ? 'gift' : 'self',
+            isDefault: !!a.isDefault,
+            giftMessage: a.giftMessage || '',
+            receiverFirstName: a.receiverFirstName || '',
+            receiverLastName: a.receiverLastName || '',
+            receiverEmail: a.receiverEmail || '',
+            receiverPhone: a.receiverPhone || '',
+            receiverAddress: a.receiverAddress || '',
+            receiverApartment: a.receiverApartment || '',
+            receiverCity: a.receiverCity || '',
+            receiverState: a.receiverState || '',
+            receiverZipCode: a.receiverZipCode || '',
+            latitude: a.latitude,
+            longitude: a.longitude,
+            formattedAddress: a.formattedAddress || streetAddr,
+            landmark: a.landmark || '',
+          };
+        }).filter(Boolean)
+      : [];
     this.login_history = [];
     this.permissions = [];
   }

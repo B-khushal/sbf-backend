@@ -1099,7 +1099,7 @@ const getProductsByCategory = async (req, res) => {
       );
     });
 
-    res.json(productsWithReviews);
+    res.json(matchingProducts);
   } catch (error) {
     console.error(`Error fetching products for category ${req.params.category}:`, error);
     res.status(500).json({ message: 'Server Error', error: error.message });

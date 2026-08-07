@@ -13,31 +13,51 @@ const normalizeAddresses = (addresses = []) => {
 
   return addresses
     .filter((address) => address && typeof address === 'object')
-    .map((address, index) => ({
-      id: String(address.id || `${Date.now()}-${index}`),
-      firstName: address.firstName || '',
-      lastName: address.lastName || '',
-      address: address.address || '',
-      apartment: address.apartment || '',
-      city: address.city || '',
-      state: address.state || '',
-      zipCode: address.zipCode || '',
-      phone: address.phone || '',
-      email: address.email || '',
-      notes: address.notes || '',
-      deliveryOption: address.deliveryOption === 'gift' ? 'gift' : 'self',
-      isDefault: !!address.isDefault,
-      giftMessage: address.giftMessage || '',
-      receiverFirstName: address.receiverFirstName || '',
-      receiverLastName: address.receiverLastName || '',
-      receiverEmail: address.receiverEmail || '',
-      receiverPhone: address.receiverPhone || '',
-      receiverAddress: address.receiverAddress || '',
-      receiverApartment: address.receiverApartment || '',
-      receiverCity: address.receiverCity || '',
-      receiverState: address.receiverState || '',
-      receiverZipCode: address.receiverZipCode || '',
-    }));
+    .map((address, index) => {
+      const rawName = (address.fullName || `${address.firstName || ''} ${address.lastName || ''}`).trim();
+      const nameParts = rawName.split(' ');
+      const firstName = address.firstName || nameParts[0] || '';
+      const lastName = address.lastName || nameParts.slice(1).join(' ') || '';
+      const streetAddr = address.address || address.street || address.addressLine1 || address.formattedAddress || '';
+      const apt = address.apartment || address.addressLine2 || address.houseNo || '';
+      const zip = address.zipCode || address.pincode || '';
+
+      return {
+        id: String(address.id || `${Date.now()}-${index}`),
+        firstName,
+        lastName,
+        fullName: rawName || `${firstName} ${lastName}`.trim(),
+        address: streetAddr,
+        street: streetAddr,
+        addressLine1: streetAddr,
+        apartment: apt,
+        addressLine2: apt,
+        houseNo: address.houseNo || apt || '',
+        city: address.city || 'Hyderabad',
+        state: address.state || 'Telangana',
+        zipCode: zip,
+        pincode: zip,
+        phone: address.phone || '',
+        email: address.email || '',
+        notes: address.notes || address.deliveryInstructions || '',
+        deliveryOption: address.deliveryOption === 'gift' ? 'gift' : 'self',
+        isDefault: !!address.isDefault,
+        giftMessage: address.giftMessage || '',
+        receiverFirstName: address.receiverFirstName || '',
+        receiverLastName: address.receiverLastName || '',
+        receiverEmail: address.receiverEmail || '',
+        receiverPhone: address.receiverPhone || '',
+        receiverAddress: address.receiverAddress || '',
+        receiverApartment: address.receiverApartment || '',
+        receiverCity: address.receiverCity || '',
+        receiverState: address.receiverState || '',
+        receiverZipCode: address.receiverZipCode || '',
+        latitude: address.latitude,
+        longitude: address.longitude,
+        formattedAddress: address.formattedAddress || streetAddr,
+        landmark: address.landmark || '',
+      };
+    });
 };
 
 // @desc    Auth user & get token
