@@ -147,22 +147,26 @@ const getProducts = async (req, res) => {
   }
 };
 
-// @desc Fetch single product
-// @route GET /api/products/:id
-// @access Public
 const getProductById = async (req, res) => {
   try {
     const idOrSlug = req.params.id;
     let product;
 
-    if (mongoose.Types.ObjectId.isValid(idOrSlug)) {
+    // 1. Try finding directly by ID (handles both MongoDB ObjectIds and PostgreSQL prod_... string IDs)
+    if (idOrSlug) {
       product = await Product.findById(idOrSlug);
-    } else {
+    }
+
+    // 2. If not found by direct ID, search by slug or title
+    if (!product && idOrSlug) {
+      product = await Product.findOne({ slug: idOrSlug });
+    }
+
+    if (!product && idOrSlug) {
       const terms = idOrSlug.split('-');
       const firstTerm = terms[0];
       
       if (firstTerm) {
-        // Find products matching the first term in their title to narrow down
         const candidates = await Product.find({
           $or: [
             { title: { $regex: new RegExp(firstTerm, 'i') } },
@@ -170,20 +174,19 @@ const getProductById = async (req, res) => {
           ]
         });
 
-        // Helper function to slugify title
         const slugify = (text) => {
           return text
             .toString()
             .toLowerCase()
-            .replace(/\s+/g, '-')           // Replace spaces with -
-            .replace(/[^\w\-]+/g, '')       // Remove all non-word chars (except -)
-            .replace(/\-\-+/g, '-')         // Replace multiple - with single -
-            .replace(/^-+/, '')             // Trim - from start
-            .replace(/-+$/, '');            // Trim - from end
+            .replace(/\s+/g, '-')
+            .replace(/[^\w\-]+/g, '')
+            .replace(/\-\-+/g, '-')
+            .replace(/^-+/, '')
+            .replace(/-+$/, '');
         };
 
         product = candidates.find(c => 
-          slugify(c.title) === idOrSlug || c.valentineSlug === idOrSlug
+          slugify(c.title || c.name || '') === idOrSlug || c.valentineSlug === idOrSlug
         );
       }
     }

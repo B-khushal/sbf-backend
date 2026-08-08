@@ -93,7 +93,7 @@ const getViewerReviewState = async (userId, productId) => {
   const [eligibleOrders, ownReviews] = await Promise.all([
     getEligibleDeliveredOrders(userId, productId),
     Review.find({ user: userId, product: productId })
-      .select("orderId status rating createdAt updatedAt title")
+      .select("orderId status rating createdAt updatedAt title comment qualityRating valueRating deliveryRating pros cons images isVerifiedPurchase helpfulVotes")
       .sort({ createdAt: -1 })
       .lean(),
   ]);
