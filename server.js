@@ -802,7 +802,7 @@ const startServer = async () => {
 
     const PORT = process.env.PORT || 5000;
 
-    app.listen(PORT, () => {
+    const server = app.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
       console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
       console.log(`Health check: http://localhost:${PORT}/health`);
@@ -839,7 +839,13 @@ const startServer = async () => {
       } else {
         console.log('Keep-alive service skipped (no RENDER_EXTERNAL_URL or APP_URL found)');
       }
-    }).on('error', (err) => {
+    });
+
+    server.headersTimeout = 120000; // 120s
+    server.requestTimeout = 300000; // 300s (5m) for slow networks
+    server.keepAliveTimeout = 120000;
+
+    server.on('error', (err) => {
       console.error('Server failed to start:', err);
       process.exit(1);
     });
