@@ -5,14 +5,47 @@ function cleanHolidayWhere(where = {}) {
   if (!where || typeof where !== 'object') return clean;
 
   if (where.year) {
-    clean.date = {
-      gte: new Date(parseInt(where.year), 0, 1),
-      lte: new Date(parseInt(where.year), 11, 31, 23, 59, 59, 999)
-    };
+    const y = parseInt(where.year);
+    clean.OR = [
+      { year: y },
+      {
+        date: {
+          gte: new Date(y, 0, 1),
+          lte: new Date(y, 11, 31, 23, 59, 59, 999)
+        }
+      }
+    ];
+  }
+
+  if (where.month !== undefined) {
+    clean.month = parseInt(where.month);
+  }
+
+  if (where.day !== undefined) {
+    clean.day = parseInt(where.day);
   }
 
   if (where._id || where.id) {
-    clean.id = String(where._id || where.id);
+    const idVal = where._id || where.id;
+    if (typeof idVal === 'object' && idVal !== null) {
+      if (idVal.$ne) {
+        clean.id = { not: String(idVal.$ne) };
+      }
+    } else if (idVal) {
+      clean.id = String(idVal);
+    }
+  }
+
+  if (where.isActive !== undefined) {
+    clean.isActive = where.isActive === true || where.isActive === 'true';
+  }
+
+  if (where.category) {
+    clean.category = String(where.category);
+  }
+
+  if (where.type) {
+    clean.type = String(where.type);
   }
 
   return clean;
@@ -62,7 +95,7 @@ class HolidayDocument {
   async save() {
     const id = this.id || this._id;
     const updated = await prisma.holiday.upsert({
-      where: { id },
+      where: { id: id || `hol_${Date.now()}_${Math.random().toString(36).substr(2, 5)}` },
       update: {
         title: this.title || this.name,
         name: this.name || this.title,
@@ -150,6 +183,10 @@ class QueryChain {
 }
 
 class HolidayModel {
+  constructor(data = {}) {
+    return new HolidayDocument(data);
+  }
+
   static find(where = {}) {
     const filter = cleanHolidayWhere(where);
     const query = prisma.holiday.findMany({ where: filter, orderBy: { date: 'asc' } });
@@ -177,19 +214,47 @@ class HolidayModel {
   static async findByIdAndUpdate(id, update) {
     const dataToUpdate = update.$set ? update.$set : update;
     try {
+      const updatePayload = {};
+      if (dataToUpdate.title || dataToUpdate.name) {
+        updatePayload.title = dataToUpdate.title || dataToUpdate.name;
+        updatePayload.name = dataToUpdate.name || dataToUpdate.title;
+      }
+      if (dataToUpdate.description !== undefined || dataToUpdate.reason !== undefined) {
+        updatePayload.description = dataToUpdate.description || dataToUpdate.reason;
+        updatePayload.reason = dataToUpdate.reason || dataToUpdate.description;
+      }
+      if (dataToUpdate.type !== undefined) {
+        updatePayload.type = dataToUpdate.type;
+      }
+      if (dataToUpdate.category !== undefined) {
+        updatePayload.category = dataToUpdate.category;
+      }
+      if (dataToUpdate.isActive !== undefined) {
+        updatePayload.isActive = Boolean(dataToUpdate.isActive);
+      }
+      if (dataToUpdate.isRecurring !== undefined || dataToUpdate.recurring !== undefined) {
+        const isRec = dataToUpdate.isRecurring !== undefined ? Boolean(dataToUpdate.isRecurring) : Boolean(dataToUpdate.recurring);
+        updatePayload.isRecurring = isRec;
+        updatePayload.recurring = isRec;
+      }
+      if (dataToUpdate.recurringYears !== undefined) {
+        updatePayload.recurringYears = dataToUpdate.recurringYears;
+      }
+      if (dataToUpdate.date) {
+        const d = new Date(dataToUpdate.date);
+        updatePayload.date = d;
+        updatePayload.year = d.getFullYear();
+        updatePayload.month = d.getMonth() + 1;
+        updatePayload.day = d.getDate();
+      }
+
       const updated = await prisma.holiday.update({
         where: { id: String(id) },
-        data: {
-          title: dataToUpdate.title || dataToUpdate.name,
-          name: dataToUpdate.name || dataToUpdate.title,
-          description: dataToUpdate.description || dataToUpdate.reason,
-          reason: dataToUpdate.reason || dataToUpdate.description,
-          isRecurring: dataToUpdate.isRecurring !== undefined ? Boolean(dataToUpdate.isRecurring) : (dataToUpdate.recurring !== undefined ? Boolean(dataToUpdate.recurring) : undefined),
-          date: dataToUpdate.date ? new Date(dataToUpdate.date) : undefined
-        }
+        data: updatePayload
       });
       return new HolidayDocument(updated);
     } catch (e) {
+      console.error('Error updating holiday by ID:', e);
       return null;
     }
   }
@@ -206,6 +271,52 @@ class HolidayModel {
   static async countDocuments(where = {}) {
     const filter = cleanHolidayWhere(where);
     return await prisma.holiday.count({ where: filter });
+  }
+
+  static async aggregate(pipeline = []) {
+    let matchFilter = {};
+    let groupByField = null;
+
+    for (const stage of pipeline) {
+      if (stage.$match) {
+        matchFilter = { ...matchFilter, ...stage.$match };
+      }
+      if (stage.$group && stage.$group._id) {
+        const rawGroup = stage.$group._id;
+        if (typeof rawGroup === 'string' && rawGroup.startsWith('$')) {
+          groupByField = rawGroup.substring(1);
+        }
+      }
+    }
+
+    const filter = cleanHolidayWhere(matchFilter);
+    const holidays = await prisma.holiday.findMany({ where: filter });
+
+    if (!groupByField) {
+      return holidays.map(h => new HolidayDocument(h));
+    }
+
+    const counts = {};
+    for (const item of holidays) {
+      const val = item[groupByField] || 'other';
+      counts[val] = (counts[val] || 0) + 1;
+    }
+
+    const result = Object.keys(counts).map(key => ({
+      _id: key,
+      count: counts[key]
+    }));
+
+    const sortStage = pipeline.find(s => s.$sort);
+    if (sortStage && sortStage.$sort) {
+      const sortKey = Object.keys(sortStage.$sort)[0];
+      const sortOrder = sortStage.$sort[sortKey];
+      if (sortKey === 'count') {
+        result.sort((a, b) => sortOrder === -1 ? b.count - a.count : a.count - b.count);
+      }
+    }
+
+    return result;
   }
 
   static async getHolidaysForYear(year) {
