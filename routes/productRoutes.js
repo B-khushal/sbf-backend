@@ -26,6 +26,9 @@ const {
   updateSectionProductsOrder,
   bulkUpdateSectionProducts,
   resetSectionProductsOrder,
+  bulkReorderProducts,
+  getOrderAuditLogs,
+  rollbackOrderChanges,
   getSharePreview,
   getVideoSitemap,
   getProductsByOccasionSlug,
@@ -161,6 +164,9 @@ router.post('/admin/bulk-valentine', protect, admin, bulkUpdateValentineSettings
 // Display order management routes (admin only)
 router.get('/order/:section', protect, admin, getSectionProductsForSorting);
 router.put('/order/update', protect, admin, updateSectionProductsOrder);
+router.put('/order/bulk-reorder', protect, admin, bulkReorderProducts);
+router.get('/order/audit-logs', protect, admin, getOrderAuditLogs);
+router.post('/order/rollback', protect, admin, rollbackOrderChanges);
 router.put('/order/bulk-update', protect, admin, bulkUpdateSectionProducts);
 router.post('/order/reset', protect, admin, resetSectionProductsOrder);
 

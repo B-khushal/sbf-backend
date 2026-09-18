@@ -6,6 +6,8 @@ const Review = require('../models/Review');
 const SectionSortingPreference = require('../models/SectionSortingPreference');
 const asyncHandler = require('express-async-handler');
 const mongoose = require('mongoose');
+const ActivityLog = require('../models/ActivityLog');
+const prisma = require('../config/prisma');
 
 // Helper function to clean product data before saving
 const cleanProductData = (product) => {
@@ -1366,6 +1368,64 @@ const getProductsForSectionQuery = (section) => {
   return query;
 };
 
+// Helper to fetch products for a specific occasion by slug or name
+const getProductsForOccasion = async (slug) => {
+  const Occasion = require('../models/Occasion');
+  const Category = require('../models/Category');
+
+  const cleanSlug = (slug || '').toLowerCase().trim();
+  let occasionDoc = await Occasion.findOne({ slug: cleanSlug });
+  let occasionData = occasionDoc ? (typeof occasionDoc.toObject === 'function' ? occasionDoc.toObject() : occasionDoc) : null;
+
+  if (!occasionData) {
+    const cat = await Category.findOne({ slug: cleanSlug });
+    if (cat) {
+      occasionData = typeof cat.toObject === 'function' ? cat.toObject() : cat;
+    }
+  }
+
+  const allProducts = await Product.find({});
+  const target = cleanSlug.replace(/-/g, ' ').replace(/s$/, '');
+
+  let linkedProductIds = new Set();
+  if (occasionData && (occasionData.id || occasionData._id)) {
+    try {
+      const poLinks = await prisma.productOccasion.findMany({
+        where: { occasionId: String(occasionData.id || occasionData._id) },
+        select: { productId: true }
+      });
+      poLinks.forEach(l => linkedProductIds.add(l.productId));
+    } catch (e) {}
+  }
+
+  return allProducts.filter(p => {
+    const pid = String(p._id || p.id);
+    if (linkedProductIds.has(pid)) return true;
+
+    const pTitle = (p.title || p.name || '').toLowerCase();
+    const pCat = (p.category || '').toLowerCase().replace(/-/g, ' ').replace(/s$/, '');
+    const pSubCat = (p.subcategory || '').toLowerCase().replace(/-/g, ' ').replace(/s$/, '');
+    const pCats = Array.isArray(p.categories)
+      ? p.categories.map(c => (typeof c === 'string' ? c : c.name || c.slug || '').toLowerCase().replace(/-/g, ' ').replace(/s$/, ''))
+      : [];
+    const pTags = Array.isArray(p.tags)
+      ? p.tags.map(t => (typeof t === 'string' ? t : t.tag || '').toLowerCase().replace(/-/g, ' '))
+      : [];
+    const pOccasions = Array.isArray(p.occasions)
+      ? p.occasions.map(o => (typeof o === 'string' ? o : o.name || o.slug || '').toLowerCase().replace(/-/g, ' ').replace(/s$/, ''))
+      : [];
+
+    return (
+      (pCat && (pCat.includes(target) || target.includes(pCat))) ||
+      (pSubCat && (pSubCat.includes(target) || target.includes(pSubCat))) ||
+      pCats.some(c => c && (c.includes(target) || target.includes(c))) ||
+      pTags.some(t => t && (t.includes(target) || target.includes(t))) ||
+      pOccasions.some(o => o && (o.includes(target) || target.includes(o))) ||
+      pTitle.includes(target)
+    );
+  });
+};
+
 // Helper to get display order sequence number of a product for a given section
 const getDisplayOrderValue = (product, section) => {
   if (!product || !product.displayOrders) return 0;
@@ -1379,6 +1439,10 @@ const getDisplayOrderValue = (product, section) => {
   
   if (dobj.occasions && typeof dobj.occasions === 'object') {
     if (dobj.occasions[secKey] !== undefined) return Number(dobj.occasions[secKey]) || 0;
+    const camel = secKey.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+    if (dobj.occasions[camel] !== undefined) return Number(dobj.occasions[camel]) || 0;
+    const kebab = secKey.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase();
+    if (dobj.occasions[kebab] !== undefined) return Number(dobj.occasions[kebab]) || 0;
   }
 
   if (dobj.categories) {
@@ -1481,8 +1545,14 @@ const getSectionProductsForSorting = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'Section is required' });
   }
   
-  const query = getProductsForSectionQuery(section);
-  const products = await Product.find(query);
+  let products = [];
+  if (section.startsWith('occasion:')) {
+    const slug = section.substring(9).trim().toLowerCase();
+    products = await getProductsForOccasion(slug);
+  } else {
+    const query = getProductsForSectionQuery(section);
+    products = await Product.find(query);
+  }
   
   const preference = await SectionSortingPreference.findOne({ section }) || {
     sortBy: 'custom',
@@ -1507,14 +1577,52 @@ const getSectionProductsForSorting = asyncHandler(async (req, res) => {
 // @desc Update product sequence numbers and sorting preferences
 // @route PUT /api/products/order/update
 // @access Private/Admin
+// Helper to cleanly apply section display order to a product's displayOrders object
+const setProductSectionOrder = (displayOrders, section, numOrder) => {
+  const dobj = displayOrders && typeof displayOrders === 'object' && !Array.isArray(displayOrders) ? { ...displayOrders } : {};
+  const orderVal = Number(numOrder);
+
+  if (section === 'featured') {
+    dobj.featured = orderVal;
+  } else if (section === 'shop' || section === 'none') {
+    dobj.shop = orderVal;
+  } else if (section === 'newArrivals' || section === 'new') {
+    dobj.newArrivals = orderVal;
+  } else if (section === 'recommended') {
+    dobj.recommended = orderVal;
+  } else if (section.startsWith('category:')) {
+    const categoryName = section.substring(9).trim().toLowerCase();
+    if (!dobj.categories || typeof dobj.categories !== 'object' || Array.isArray(dobj.categories)) {
+      dobj.categories = {};
+    }
+    dobj.categories[categoryName] = orderVal;
+  } else {
+    // Occasion or custom section
+    const occSlug = section.startsWith('occasion:')
+      ? section.substring(9).trim().toLowerCase()
+      : section.trim().toLowerCase();
+    if (!dobj.occasions || typeof dobj.occasions !== 'object' || Array.isArray(dobj.occasions)) {
+      dobj.occasions = {};
+    }
+    dobj.occasions[occSlug] = orderVal;
+
+    const camel = occSlug.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+    dobj.occasions[camel] = orderVal;
+  }
+
+  return dobj;
+};
+
+// @desc Update single or multiple section product orders
+// @route PUT /api/products/order/update
+// @access Private/Admin
 const updateSectionProductsOrder = asyncHandler(async (req, res) => {
-  const { section, displayOrders, sortBy, sortDirection } = req.body;
+  const { section, displayOrders, sortBy, sortDirection, auditMetadata } = req.body;
   
   if (!section) {
     return res.status(400).json({ message: 'Section is required' });
   }
   
-  // Update/Save sorting preference
   if (sortBy) {
     await SectionSortingPreference.findOneAndUpdate(
       { section },
@@ -1523,56 +1631,266 @@ const updateSectionProductsOrder = asyncHandler(async (req, res) => {
     );
   }
   
-  // Update sequence numbers
   if (displayOrders && typeof displayOrders === 'object') {
-    for (const [productId, orderNumber] of Object.entries(displayOrders)) {
-      const product = await Product.findById(productId);
-      if (product) {
-        if (!product.displayOrders) {
-          product.displayOrders = {};
-        }
-        
-        const numOrder = Number(orderNumber);
-        
-        if (section === 'featured') product.displayOrders.featured = numOrder;
-        else if (section === 'shop') product.displayOrders.shop = numOrder;
-        else if (section === 'newArrivals' || section === 'new') product.displayOrders.newArrivals = numOrder;
-        else if (section === 'recommended') product.displayOrders.recommended = numOrder;
-        else if (section === 'valentine' || section === 'valentines-day') {
-          if (!product.displayOrders.occasions) product.displayOrders.occasions = {};
-          product.displayOrders.occasions.valentine = numOrder;
-        } else if (section === 'mothersDay' || section === 'mothers-day') {
-          if (!product.displayOrders.occasions) product.displayOrders.occasions = {};
-          product.displayOrders.occasions.mothersDay = numOrder;
-        } else if (section === 'fathersDay' || section === 'fathers-day') {
-          if (!product.displayOrders.occasions) product.displayOrders.occasions = {};
-          product.displayOrders.occasions.fathersDay = numOrder;
-        } else if (section === 'friendshipDay' || section === 'friendship-day') {
-          if (!product.displayOrders.occasions) product.displayOrders.occasions = {};
-          product.displayOrders.occasions.friendshipDay = numOrder;
-        } else if (section === 'rakhi' || section === 'raksha-bandhan') {
-          if (!product.displayOrders.occasions) product.displayOrders.occasions = {};
-          product.displayOrders.occasions.rakhi = numOrder;
-        } else if (section === 'diwali') {
-          if (!product.displayOrders.occasions) product.displayOrders.occasions = {};
-          product.displayOrders.occasions.diwali = numOrder;
-        } else if (section === 'newYear' || section === 'new-year') {
-          if (!product.displayOrders.occasions) product.displayOrders.occasions = {};
-          product.displayOrders.occasions.newYear = numOrder;
-        } else if (section.startsWith('category:')) {
-          const categoryName = section.substring(9).trim();
-          if (!product.displayOrders.categories) {
-            product.displayOrders.categories = new Map();
+    const entries = Object.entries(displayOrders);
+    if (entries.length > 0) {
+      const productIds = entries.map(([id]) => id);
+      const existingProducts = await prisma.product.findMany({
+        where: { id: { in: productIds } },
+        select: { id: true, displayOrders: true }
+      });
+      const productMap = new Map(existingProducts.map(p => [p.id, p]));
+
+      const chunk = 50;
+      for (let i = 0; i < entries.length; i += chunk) {
+        const batch = entries.slice(i, i + chunk);
+        const operations = batch.map(([productId, orderNumber]) => {
+          const currentProduct = productMap.get(productId);
+          const currentOrders = currentProduct ? currentProduct.displayOrders : {};
+          const updatedOrders = setProductSectionOrder(currentOrders, section, orderNumber);
+          return prisma.product.update({
+            where: { id: productId },
+            data: { displayOrders: updatedOrders }
+          });
+        });
+        await prisma.$transaction(operations);
+      }
+
+      try {
+        const { clearSearchCache } = require('./searchController');
+        clearSearchCache();
+      } catch (e) {}
+
+      // Record reorder audit log
+      try {
+        await ActivityLog.create({
+          userId: req.user?.id || req.user?._id || 'admin',
+          userName: req.user?.name || auditMetadata?.adminName || 'Admin',
+          email: req.user?.email || null,
+          action: 'bulk_reorder',
+          actionType: 'bulk_reorder',
+          module: 'product_order_arrangement',
+          details: {
+            section,
+            previousPositions: auditMetadata?.previousPositions || {},
+            newPositions: displayOrders,
+            affectedCount: auditMetadata?.affectedCount || entries.length,
+            description: auditMetadata?.actionDescription || `Updated order for ${entries.length} products in section: ${section}`,
+            productIds,
+            timestamp: new Date()
           }
-          product.displayOrders.categories.set(categoryName, numOrder);
-        }
-        
-        await product.save();
+        });
+      } catch (logErr) {
+        console.error('⚠️ Failed to save ordering audit log:', logErr.message);
       }
     }
   }
   
   res.json({ success: true, message: 'Display order updated successfully' });
+});
+
+// @desc Enterprise Bulk Reorder with atomic transactions, sequence validation and audit logging
+// @route PUT /api/products/order/bulk-reorder
+// @access Private/Admin
+const bulkReorderProducts = asyncHandler(async (req, res) => {
+  const { section, displayOrders, sortBy, sortDirection, auditMetadata } = req.body;
+
+  if (!section) {
+    return res.status(400).json({ message: 'Section is required' });
+  }
+
+  if (!displayOrders || typeof displayOrders !== 'object') {
+    return res.status(400).json({ message: 'displayOrders mapping is required' });
+  }
+
+  if (sortBy) {
+    await SectionSortingPreference.findOneAndUpdate(
+      { section },
+      { sortBy, sortDirection: sortDirection || 'asc' },
+      { upsert: true, new: true }
+    );
+  }
+
+  const entries = Object.entries(displayOrders);
+  if (entries.length === 0) {
+    return res.json({ success: true, message: 'No order updates provided' });
+  }
+
+  const productIds = entries.map(([id]) => id);
+  const products = await prisma.product.findMany({
+    where: { id: { in: productIds } },
+    select: { id: true, displayOrders: true }
+  });
+  const productMap = new Map(products.map(p => [p.id, p]));
+
+  // Batch updates in chunks of 50 via prisma transactions
+  const chunk = 50;
+  for (let i = 0; i < entries.length; i += chunk) {
+    const batch = entries.slice(i, i + chunk);
+    const operations = batch.map(([productId, orderNum]) => {
+      const existing = productMap.get(productId);
+      const currentOrders = existing ? existing.displayOrders : {};
+      const newDisplayOrders = setProductSectionOrder(currentOrders, section, Number(orderNum));
+      return prisma.product.update({
+        where: { id: productId },
+        data: { displayOrders: newDisplayOrders }
+      });
+    });
+    await prisma.$transaction(operations);
+  }
+
+  try {
+    const { clearSearchCache } = require('./searchController');
+    clearSearchCache();
+  } catch (e) {}
+
+  let auditLog = null;
+  try {
+    auditLog = await ActivityLog.create({
+      userId: req.user?.id || req.user?._id || 'admin',
+      userName: req.user?.name || auditMetadata?.adminName || 'Admin',
+      email: req.user?.email || null,
+      action: 'bulk_reorder',
+      actionType: 'bulk_reorder',
+      module: 'product_order_arrangement',
+      details: {
+        section,
+        previousPositions: auditMetadata?.previousPositions || {},
+        newPositions: displayOrders,
+        affectedCount: auditMetadata?.affectedCount || entries.length,
+        description: auditMetadata?.actionDescription || `Bulk reordered ${entries.length} products in section: ${section}`,
+        productIds,
+        timestamp: new Date()
+      }
+    });
+  } catch (logErr) {
+    console.error('⚠️ Failed to save ordering audit log:', logErr.message);
+  }
+
+  return res.json({
+    success: true,
+    message: `Display order successfully updated for ${entries.length} products in section: ${section}`,
+    auditLogId: auditLog?.id || null,
+    updatedCount: entries.length
+  });
+});
+
+// @desc Get audit logs for product reordering history
+// @route GET /api/products/order/audit-logs
+// @access Private/Admin
+const getOrderAuditLogs = asyncHandler(async (req, res) => {
+  const { section, limit = 25 } = req.query;
+
+  const logs = await ActivityLog.find({
+    module: 'product_order_arrangement',
+    action: { $in: ['bulk_reorder', 'rollback_reorder'] }
+  });
+
+  let formatted = logs.map(l => {
+    const details = l.details || {};
+    return {
+      id: l.id || l._id,
+      _id: l.id || l._id,
+      adminName: l.userName || 'Admin',
+      email: l.email || null,
+      action: l.action,
+      timestamp: l.createdAt || l.timestamp,
+      section: details.section || 'global',
+      description: details.description || 'Reorder operation',
+      affectedCount: details.affectedCount || 0,
+      previousPositions: details.previousPositions || {},
+      newPositions: details.newPositions || {},
+      productIds: details.productIds || []
+    };
+  });
+
+  if (section && section !== 'all') {
+    formatted = formatted.filter(l => l.section === section);
+  }
+
+  formatted.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+  return res.json({
+    success: true,
+    logs: formatted.slice(0, parseInt(limit, 10))
+  });
+});
+
+// @desc Rollback product order changes to a previous audit checkpoint
+// @route POST /api/products/order/rollback
+// @access Private/Admin
+const rollbackOrderChanges = asyncHandler(async (req, res) => {
+  const { auditLogId } = req.body;
+
+  if (!auditLogId) {
+    return res.status(400).json({ message: 'auditLogId is required for rollback' });
+  }
+
+  const log = await prisma.activityLog.findFirst({
+    where: { id: String(auditLogId) }
+  });
+
+  if (!log || !log.details) {
+    return res.status(404).json({ message: 'Audit log record not found' });
+  }
+
+  const details = typeof log.details === 'object' ? log.details : JSON.parse(log.details);
+  const { section, previousPositions } = details;
+
+  if (!section || !previousPositions || Object.keys(previousPositions).length === 0) {
+    return res.status(400).json({ message: 'Audit log does not contain restorable previous positions' });
+  }
+
+  const entries = Object.entries(previousPositions);
+  const productIds = entries.map(([id]) => id);
+
+  const products = await prisma.product.findMany({
+    where: { id: { in: productIds } },
+    select: { id: true, displayOrders: true }
+  });
+  const productMap = new Map(products.map(p => [p.id, p]));
+
+  const chunk = 50;
+  for (let i = 0; i < entries.length; i += chunk) {
+    const batch = entries.slice(i, i + chunk);
+    const operations = batch.map(([productId, orderNum]) => {
+      const existing = productMap.get(productId);
+      const currentOrders = existing ? existing.displayOrders : {};
+      const newDisplayOrders = setProductSectionOrder(currentOrders, section, Number(orderNum));
+      return prisma.product.update({
+        where: { id: productId },
+        data: { displayOrders: newDisplayOrders }
+      });
+    });
+    await prisma.$transaction(operations);
+  }
+
+  try {
+    const { clearSearchCache } = require('./searchController');
+    clearSearchCache();
+  } catch (e) {}
+
+  await ActivityLog.create({
+    userId: req.user?.id || req.user?._id || 'admin',
+    userName: req.user?.name || 'Admin',
+    email: req.user?.email || null,
+    action: 'rollback_reorder',
+    actionType: 'rollback_reorder',
+    module: 'product_order_arrangement',
+    details: {
+      section,
+      rolledBackAuditLogId: auditLogId,
+      restoredCount: entries.length,
+      description: `Rolled back order changes for ${entries.length} products to checkpoint from ${log.createdAt || log.timestamp}`,
+      timestamp: new Date()
+    }
+  });
+
+  return res.json({
+    success: true,
+    message: `Successfully rolled back ${entries.length} products in section: ${section}`,
+    restoredCount: entries.length
+  });
 });
 
 // @desc Perform bulk operations (Move/Remove Featured, Change Category/Visibility, Update Display Order)
@@ -2026,43 +2344,7 @@ const getProductsByOccasionSlug = async (req, res) => {
       }
     }
 
-    const allProducts = await Product.find({});
-    const target = slug.toLowerCase().replace(/-/g, ' ').replace(/s$/, '');
-
-    let linkedProductIds = new Set();
-    if (occasionData && (occasionData.id || occasionData._id)) {
-      try {
-        const poLinks = await prisma.productOccasion.findMany({
-          where: { occasionId: String(occasionData.id || occasionData._id) },
-          select: { productId: true }
-        });
-        poLinks.forEach(l => linkedProductIds.add(l.productId));
-      } catch (e) {}
-    }
-
-    let matchingProducts = allProducts.filter(p => {
-      if (p.hidden) return false;
-      const pid = String(p._id || p.id);
-      if (linkedProductIds.has(pid)) return true;
-
-      const pTitle = (p.title || p.name || '').toLowerCase();
-      const pCat = (p.category || '').toLowerCase().replace(/-/g, ' ').replace(/s$/, '');
-      const pSubCat = (p.subcategory || '').toLowerCase().replace(/-/g, ' ').replace(/s$/, '');
-      const pCats = Array.isArray(p.categories)
-        ? p.categories.map(c => (typeof c === 'string' ? c : c.name || c.slug || '').toLowerCase().replace(/-/g, ' ').replace(/s$/, ''))
-        : [];
-      const pTags = Array.isArray(p.tags)
-        ? p.tags.map(t => (typeof t === 'string' ? t : t.tag || '').toLowerCase().replace(/-/g, ' '))
-        : [];
-
-      return (
-        (pCat && (pCat.includes(target) || target.includes(pCat))) ||
-        (pSubCat && (pSubCat.includes(target) || target.includes(pSubCat))) ||
-        pCats.some(c => c && (c.includes(target) || target.includes(c))) ||
-        pTags.some(t => t && (t.includes(target) || target.includes(t))) ||
-        pTitle.includes(target)
-      );
-    });
+    const matchingProducts = (await getProductsForOccasion(slug)).filter(p => !p.hidden);
 
     // Keep exact matching products without fallback slice so empty occasions return empty list
     const sortedProducts = await applySavedSortingToProducts(matchingProducts, `occasion:${slug}`);
@@ -2392,6 +2674,9 @@ module.exports = {
   updateSectionProductsOrder,
   bulkUpdateSectionProducts,
   resetSectionProductsOrder,
+  bulkReorderProducts,
+  getOrderAuditLogs,
+  rollbackOrderChanges,
   applySavedSortingToProducts,
   getSharePreview,
   getVideoSitemap,
