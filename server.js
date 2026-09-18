@@ -258,6 +258,14 @@ const startServer = async () => {
       console.error('⚠️ Seasonal Campaign seeding failed:', campaignSeedErr);
     }
 
+    // Initialize Marketing Intelligence Database
+    try {
+      const { initMarketingDB } = require('./services/marketingAnalyticsInit');
+      await initMarketingDB();
+    } catch (mktDbErr) {
+      console.error('⚠️ Marketing Intelligence DB init failed:', mktDbErr);
+    }
+
     // Initialize default occasions
     try {
       const Occasion = require('./models/Occasion');
@@ -669,6 +677,7 @@ const startServer = async () => {
     app.use('/api/settings', settingsRoutes);
     app.use('/api/newsletter', newsletterRoutes);
     app.use('/api/mappls', require('./routes/mapplsRoutes'));
+    app.use('/api/marketing', require('./routes/marketingRoutes'));
 
     app.get('/', (req, res) => {
       const origin = req.get('Origin');

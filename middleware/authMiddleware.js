@@ -66,6 +66,39 @@ const admin = (req, res, next) => {
   }
 };
 
+// Marketing Panel access middleware (Marketing Head, Marketing Team, Platform Admin, Store Owner, Admin)
+const marketingAccess = (req, res, next) => {
+  const allowedMarketingRoles = [
+    'platform_admin',
+    'store_owner',
+    'store_manager',
+    'admin',
+    'marketing_head',
+    'marketing_team',
+    'marketing'
+  ];
+  if (req.user && allowedMarketingRoles.includes(req.user.role)) {
+    next();
+  } else {
+    res.status(403).json({ message: 'Not authorized. Marketing access required.' });
+  }
+};
+
+// Marketing Head ONLY middleware (for settings, segment creation, exports, and integrations)
+const marketingHeadOnly = (req, res, next) => {
+  const allowedHeadRoles = [
+    'platform_admin',
+    'store_owner',
+    'admin',
+    'marketing_head'
+  ];
+  if (req.user && allowedHeadRoles.includes(req.user.role)) {
+    next();
+  } else {
+    res.status(403).json({ message: 'Not authorized. Marketing Head privileges required.' });
+  }
+};
+
 // Admin or Vendor middleware
 const adminOrVendor = (req, res, next) => {
   const allowedAdminRoles = ['platform_admin', 'store_owner', 'store_manager', 'delivery_manager', 'support_staff', 'inventory_staff', 'finance_staff', 'admin'];
@@ -99,4 +132,11 @@ const optionalProtect = async (req, res, next) => {
   next();
 };
 
-module.exports = { protect, admin, adminOrVendor, optionalProtect };
+module.exports = {
+  protect,
+  admin,
+  marketingAccess,
+  marketingHeadOnly,
+  adminOrVendor,
+  optionalProtect
+};
