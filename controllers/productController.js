@@ -2535,13 +2535,193 @@ const executeBulkAction = asyncHandler(async (req, res) => {
       modifiedCount = delRes.deletedCount;
       break;
     case 'category':
-      if (!payload?.category) {
+    case 'bulk_category_taxonomy': {
+      const {
+        primaryCategory,
+        changePrimaryCategory,
+        subcategory,
+        changeSubcategory,
+        clearSubcategory,
+        isNewSubcategory,
+        additionalCategories,
+        changeAdditionalCategories,
+        additionalCategoriesMode = 'append',
+        catalogType,
+      } = payload || {};
+
+      // Support simple legacy payload { category: "..." } or new structured payload
+      const effectivePrimaryCategory = primaryCategory || payload?.category;
+      const willChangePrimary = changePrimaryCategory !== undefined ? Boolean(changePrimaryCategory) : Boolean(payload?.category);
+      const willChangeSubcategory = Boolean(changeSubcategory);
+      const willChangeAdditional = Boolean(changeAdditionalCategories);
+
+      if (!willChangePrimary && !willChangeSubcategory && !willChangeAdditional) {
         res.status(400);
-        throw new Error('Category required for bulk category assignment');
+        throw new Error('No taxonomy updates specified (select primary category, subcategory, or additional categories to update).');
       }
-      const catRes = await Product.updateMany({ _id: { $in: productIds } }, { category: payload.category });
-      modifiedCount = catRes.modifiedCount;
+
+      // 1. Fetch DB Categories from Prisma for relation matching & auto-creation
+      const prismaClient = require('../config/prisma');
+      const allDbCategories = await prismaClient.category.findMany({
+        select: { id: true, name: true, slug: true, parentId: true }
+      });
+
+      const catMap = new Map();
+      allDbCategories.forEach(c => {
+        catMap.set(c.id.toLowerCase(), c.id);
+        catMap.set(c.name.toLowerCase().trim(), c.id);
+        catMap.set(c.slug.toLowerCase().trim(), c.id);
+      });
+
+      // 2. If isNewSubcategory is true and subcategory is provided, ensure it's registered in Category table
+      if (isNewSubcategory && subcategory && subcategory.trim()) {
+        const subName = subcategory.trim();
+        const subSlug = subName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+
+        let existingSub = allDbCategories.find(c =>
+          c.slug.toLowerCase() === subSlug || c.name.toLowerCase() === subName.toLowerCase()
+        );
+
+        if (!existingSub) {
+          let parentCatId = null;
+          if (effectivePrimaryCategory) {
+            const matchedParent = allDbCategories.find(c =>
+              c.name.toLowerCase() === effectivePrimaryCategory.toLowerCase().trim() ||
+              c.slug.toLowerCase() === effectivePrimaryCategory.toLowerCase().trim()
+            );
+            if (matchedParent) parentCatId = matchedParent.id;
+          }
+
+          try {
+            const newCat = await prismaClient.category.create({
+              data: {
+                id: `cat_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+                name: subName,
+                slug: subSlug,
+                parentId: parentCatId,
+                isActive: true,
+                displayOrder: 0
+              }
+            });
+            catMap.set(newCat.name.toLowerCase().trim(), newCat.id);
+            catMap.set(newCat.slug.toLowerCase().trim(), newCat.id);
+          } catch (createCatErr) {
+            console.warn('Could not auto-create subcategory in Category model:', createCatErr.message);
+          }
+        }
+      }
+
+      // 3. Fetch all products to update
+      const productsToUpdate = await Product.find({ _id: { $in: productIds } });
+
+      for (const prod of productsToUpdate) {
+        let detailsObj = (prod.details && typeof prod.details === 'object') ? { ...prod.details } : {};
+        let updatedCategories = Array.isArray(prod.categories) ? [...prod.categories] : (prod.category ? [prod.category] : []);
+
+        // A. Primary Category Update
+        if (willChangePrimary && effectivePrimaryCategory) {
+          const cleanPrim = String(effectivePrimaryCategory).trim();
+          prod.category = cleanPrim;
+          if (catalogType) {
+            prod.catalogType = catalogType;
+          }
+          if (!updatedCategories.some(c => String(c).toLowerCase().trim() === cleanPrim.toLowerCase())) {
+            updatedCategories.unshift(cleanPrim);
+          }
+        }
+
+        // B. Subcategory Update
+        if (willChangeSubcategory) {
+          if (clearSubcategory) {
+            prod.subcategory = '';
+            detailsObj.subcategory = '';
+          } else if (subcategory) {
+            const cleanSub = String(subcategory).trim();
+            prod.subcategory = cleanSub;
+            detailsObj.subcategory = cleanSub;
+          }
+        }
+
+        // C. Additional Categories Update
+        if (willChangeAdditional && Array.isArray(additionalCategories)) {
+          const cleanAdditional = additionalCategories
+            .map(c => String(c).trim())
+            .filter(Boolean);
+
+          if (additionalCategoriesMode === 'replace') {
+            const primary = prod.category ? [prod.category] : [];
+            const combined = [...primary, ...cleanAdditional];
+            const seen = new Set();
+            updatedCategories = [];
+            for (const item of combined) {
+              const lower = item.toLowerCase();
+              if (!seen.has(lower)) {
+                seen.add(lower);
+                updatedCategories.push(item);
+              }
+            }
+          } else {
+            const seen = new Set(updatedCategories.map(c => String(c).toLowerCase().trim()));
+            for (const item of cleanAdditional) {
+              const lower = item.toLowerCase();
+              if (!seen.has(lower)) {
+                seen.add(lower);
+                updatedCategories.push(item);
+              }
+            }
+          }
+        }
+
+        // Apply updated categories list
+        prod.categories = updatedCategories;
+        detailsObj.categories = updatedCategories;
+        prod.details = detailsObj;
+
+        // Add audit activity log
+        if (!Array.isArray(prod.activityLogs)) {
+          prod.activityLogs = [];
+        }
+        prod.activityLogs.push({
+          action: 'bulk_category_taxonomy_updated',
+          performedBy: req.user ? req.user.name : 'Admin',
+          details: `Bulk Taxonomy Update: Primary='${prod.category}', Subcategory='${prod.subcategory || 'None'}', Total Categories=${prod.categories.length}`,
+          timestamp: new Date()
+        });
+
+        await prod.save();
+
+        // 4. Synchronize Prisma ProductCategory join table records
+        try {
+          const targetCategoryIds = new Set();
+          for (const catName of prod.categories) {
+            const matchedId = catMap.get(String(catName).toLowerCase().trim());
+            if (matchedId) {
+              targetCategoryIds.add(matchedId);
+            }
+          }
+
+          if (targetCategoryIds.size > 0) {
+            await prismaClient.productCategory.deleteMany({
+              where: { productId: String(prod._id || prod.id) }
+            });
+
+            for (const cId of targetCategoryIds) {
+              await prismaClient.productCategory.create({
+                data: {
+                  productId: String(prod._id || prod.id),
+                  categoryId: cId
+                }
+              }).catch(() => {});
+            }
+          }
+        } catch (syncErr) {
+          console.warn(`ProductCategory sync error for ${prod._id}:`, syncErr.message);
+        }
+
+        modifiedCount++;
+      }
       break;
+    }
     case 'discount':
       if (typeof payload?.discount !== 'number') {
         res.status(400);

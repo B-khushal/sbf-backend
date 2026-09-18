@@ -211,6 +211,7 @@ function sanitizeProductDataForPrisma(data = {}) {
   }
   if (data.sameDay !== undefined) detailsObj.sameDay = Boolean(data.sameDay);
   if (data.categories !== undefined) detailsObj.categories = data.categories;
+  if (data.subcategory !== undefined) detailsObj.subcategory = data.subcategory;
   if (data.careInstructions !== undefined) detailsObj.careInstructions = data.careInstructions;
   if (data.displayOrders !== undefined) detailsObj.displayOrders = data.displayOrders;
   if (data.seasonalCampaigns !== undefined) detailsObj.seasonalCampaigns = data.seasonalCampaigns;
