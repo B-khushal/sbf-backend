@@ -633,11 +633,9 @@ const getSalesAnalytics = async (req, res) => {
 
     const paymentMap = {};
     paymentMethodsRaw.forEach(item => {
-      let method = item._id.method || 'cash';
-      if (method === 'razorpay') {
+      let method = item._id.method || 'razorpay';
+      if (method === 'razorpay' || method === 'online' || method === 'cod' || method === 'cash') {
         method = getRazorpaySubMethod(item._id.razorpayPaymentId);
-      } else if (method === 'cash') {
-        method = 'COD';
       } else if (method === 'credit-card') {
         method = 'Card';
       } else {

@@ -342,12 +342,43 @@ exports.updateOrderDeliveryState = async (req, res) => {
         const proofDoc = await DeliveryProof.findOne({ assignmentId: assignment._id });
         console.log(`[Delivery Controller]   Proof photo found: ${proofDoc ? 'Yes (' + proofDoc.imageUrl + ')' : 'No'}`);
         
-        console.log(`[Delivery Controller] 📤 Triggering sendDeliveryConfirmationWithInvoice for order #${order.orderNumber}`);
+        const isValidEmailStr = (em) => em && typeof em === 'string' && !['n/a', 'na', 'null', 'undefined', 'none', ''].includes(em.trim().toLowerCase()) && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em.trim());
+
+        let customerEmail = isValidEmailStr(order.shippingDetails?.email) ? order.shippingDetails.email.trim() : null;
+        let customerName = order.shippingDetails?.fullName || order.customerName || null;
+        let customerPhone = order.shippingDetails?.phone || order.customerPhone || null;
+
+        if (!customerEmail) {
+          if (isValidEmailStr(order.customerEmail)) {
+            customerEmail = order.customerEmail.trim();
+          } else if (isValidEmailStr(order.shippingAddress?.email)) {
+            customerEmail = order.shippingAddress.email.trim();
+          } else if (isValidEmailStr(order.giftDetails?.recipientEmail)) {
+            customerEmail = order.giftDetails.recipientEmail.trim();
+          }
+        }
+
+        const targetUserId = typeof order.user === 'object' ? (order.user?._id || order.user?.id) : (order.userId || order.user);
+        if ((!customerEmail || !customerName) && targetUserId) {
+          try {
+            const User = require('../models/User');
+            const userDoc = await User.findById(targetUserId);
+            if (userDoc) {
+              if (!customerEmail && isValidEmailStr(userDoc.email)) customerEmail = userDoc.email.trim();
+              if (!customerName && userDoc.name) customerName = userDoc.name.trim();
+              if (!customerPhone && userDoc.phone) customerPhone = userDoc.phone;
+            }
+          } catch (uErr) {
+            console.warn('[Delivery Controller] User lookup error:', uErr.message);
+          }
+        }
+
+        console.log(`[Delivery Controller] 📤 Triggering sendDeliveryConfirmationWithInvoice for order #${order.orderNumber} to "${customerEmail}"`);
         const emailResult = await sendDeliveryConfirmationWithInvoice({
           customer: {
-            name: order.shippingDetails?.fullName,
-            email: order.shippingDetails?.email,
-            phone: order.shippingDetails?.phone
+            name: customerName || 'Customer',
+            email: customerEmail,
+            phone: customerPhone || ''
           },
           order,
           partner,
@@ -1011,11 +1042,43 @@ exports.updateDeliveryStatusNew = async (req, res) => {
       // Trigger Delivered email notification
       try {
         const proofDoc = await DeliveryProof.findOne({ assignmentId: assignment._id });
+
+        const isValidEmailStr = (em) => em && typeof em === 'string' && !['n/a', 'na', 'null', 'undefined', 'none', ''].includes(em.trim().toLowerCase()) && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em.trim());
+
+        let customerEmail = isValidEmailStr(order.shippingDetails?.email) ? order.shippingDetails.email.trim() : null;
+        let customerName = order.shippingDetails?.fullName || order.customerName || null;
+        let customerPhone = order.shippingDetails?.phone || order.customerPhone || null;
+
+        if (!customerEmail) {
+          if (isValidEmailStr(order.customerEmail)) {
+            customerEmail = order.customerEmail.trim();
+          } else if (isValidEmailStr(order.shippingAddress?.email)) {
+            customerEmail = order.shippingAddress.email.trim();
+          } else if (isValidEmailStr(order.giftDetails?.recipientEmail)) {
+            customerEmail = order.giftDetails.recipientEmail.trim();
+          }
+        }
+
+        const targetUserId = typeof order.user === 'object' ? (order.user?._id || order.user?.id) : (order.userId || order.user);
+        if ((!customerEmail || !customerName) && targetUserId) {
+          try {
+            const User = require('../models/User');
+            const userDoc = await User.findById(targetUserId);
+            if (userDoc) {
+              if (!customerEmail && isValidEmailStr(userDoc.email)) customerEmail = userDoc.email.trim();
+              if (!customerName && userDoc.name) customerName = userDoc.name.trim();
+              if (!customerPhone && userDoc.phone) customerPhone = userDoc.phone;
+            }
+          } catch (uErr) {
+            console.warn('[Delivery Controller] User lookup error:', uErr.message);
+          }
+        }
+
         await sendDeliveryConfirmationWithInvoice({
           customer: {
-            name: order.shippingDetails?.fullName,
-            email: order.shippingDetails?.email,
-            phone: order.shippingDetails?.phone
+            name: customerName || 'Customer',
+            email: customerEmail,
+            phone: customerPhone || ''
           },
           order,
           partner,

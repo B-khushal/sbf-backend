@@ -282,11 +282,9 @@ const getDashboardStats = async (req, res) => {
 
     const paymentMap = {};
     paymentBreakdownRaw.forEach(item => {
-      let method = item._id.method || 'cash';
-      if (method === 'razorpay') {
+      let method = item._id.method || 'razorpay';
+      if (method === 'razorpay' || method === 'online' || method === 'cod' || method === 'cash') {
         method = getRazorpaySubMethod(item._id.razorpayPaymentId);
-      } else if (method === 'cash') {
-        method = 'COD';
       } else if (method === 'credit-card') {
         method = 'Card';
       } else {
@@ -454,7 +452,7 @@ const getRecentOrders = async (req, res) => {
         status: order.status,
         date: order.createdAt.toISOString(),
         itemsCount: order.items.length,
-        paymentMethod: order.paymentDetails?.method || 'N/A',
+        paymentMethod: (order.paymentDetails?.method && order.paymentDetails.method.toLowerCase() !== 'cod') ? (order.paymentDetails.method.toLowerCase() === 'razorpay' ? 'Online' : order.paymentDetails.method) : 'Online',
         originalCurrency: order.currency || 'INR',
         originalAmount: order.totalAmount,
         assignedWorker,

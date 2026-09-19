@@ -140,6 +140,16 @@ const formatTime = (timeSlot) => {
   return timeSlot;
 };
 
+// Format payment method helper to ensure consistent display
+const formatPaymentMethod = (method) => {
+  if (!method || typeof method !== 'string') return 'Online Payment (Razorpay)';
+  const lower = method.trim().toLowerCase();
+  if (lower === 'razorpay' || lower === 'online' || lower === 'cod' || lower === 'cash' || lower === 'prepaid') {
+    return 'Online Payment (Razorpay)';
+  }
+  return method.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+};
+
 // Generate PDF from HTML
 const generateInvoicePDF = async (htmlContent, orderNumber) => {
   // Ensure PhantomJS binary is present (self-healing runtime check)
@@ -679,8 +689,9 @@ const generateInvoiceHTML = (orderData) => {
     : (shipping.zipCode || '');
 
   // Payment details (supports both Order and InvoiceOrder interfaces)
-  const paymentMethod = order.payment?.method || order.paymentDetails?.method || 'Online Payment';
-  const paymentStatus = order.payment?.status || order.paymentDetails?.status || 'Completed';
+  const rawMethod = order.payment?.method || order.paymentDetails?.method || order.paymentMethod;
+  const paymentMethod = formatPaymentMethod(rawMethod);
+  const paymentStatus = order.payment?.status || order.paymentDetails?.status || order.paymentStatus || 'Completed';
   const transactionId = order.payment?.transactionId || order.paymentDetails?.transactionId || order.paymentDetails?.razorpayPaymentId || order.paymentDetails?.paymentId || '';
 
   const itemRows = items.map((item, index) => {
@@ -1005,8 +1016,9 @@ const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
   const deliveryDate = formatDate(order.shippingDetails?.deliveryDate || new Date());
   const deliveryTimeSlot = formatTime(order.shippingDetails?.timeSlot);
 
-  const paymentMethod = order.paymentDetails?.method || 'Online Payment';
-  const paymentStatus = order.paymentDetails?.status || 'Completed';
+  const rawMethod = order.paymentDetails?.method || order.paymentMethod;
+  const paymentMethod = formatPaymentMethod(rawMethod);
+  const paymentStatus = order.paymentDetails?.status || order.paymentStatus || 'Completed';
   const paymentId = order.paymentDetails?.paymentId || order.paymentDetails?.razorpayPaymentId;
 
   const deliveryName = order.shippingDetails?.fullName || customer.name || 'Customer';
@@ -1461,11 +1473,132 @@ const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
   `;
 };
 
+// Helper to validate email format and reject placeholders
+const isValidRecipientEmail = (em) => {
+  if (!em || typeof em !== 'string') return false;
+  const clean = em.trim();
+  if (['n/a', 'na', 'null', 'undefined', 'none', ''].includes(clean.toLowerCase())) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean);
+};
+
 // Send delivery confirmation email with invoice
 const sendDeliveryConfirmationWithInvoice = async (orderData) => {
   console.log(`\n[Delivery Confirmation Email Trigger] 🚚 Triggered sendDeliveryConfirmationWithInvoice`);
   try {
-    const { customer, order } = orderData;
+    if (!orderData) {
+      console.error(`[Delivery Confirmation Email Trigger] ❌ orderData is missing`);
+      return { success: false, error: 'No order data provided' };
+    }
+
+    let { customer, order } = orderData;
+    if (!customer) {
+      customer = {};
+      orderData.customer = customer;
+    }
+    if (!order) {
+      console.error(`[Delivery Confirmation Email Trigger] ❌ Order object is missing in orderData`);
+      return { success: false, error: 'No order data provided' };
+    }
+
+    // Comprehensive customer email & details resolution
+    let resolvedEmail = isValidRecipientEmail(customer.email) ? customer.email.trim() : null;
+    let resolvedName = (customer.name && customer.name.trim() !== '' && customer.name !== 'Customer') ? customer.name.trim() : null;
+    let resolvedPhone = customer.phone || null;
+
+    // 1. Fallback to order fields
+    if (!resolvedEmail) {
+      if (isValidRecipientEmail(order.customerEmail)) {
+        resolvedEmail = order.customerEmail.trim();
+      } else if (isValidRecipientEmail(order.shippingDetails?.email)) {
+        resolvedEmail = order.shippingDetails.email.trim();
+      } else if (isValidRecipientEmail(order.shippingAddress?.email)) {
+        resolvedEmail = order.shippingAddress.email.trim();
+      } else if (isValidRecipientEmail(order.giftDetails?.recipientEmail)) {
+        resolvedEmail = order.giftDetails.recipientEmail.trim();
+      }
+    }
+
+    if (!resolvedName) {
+      resolvedName = order.customerName || order.shippingDetails?.fullName || order.shippingAddress?.fullName || null;
+    }
+    if (!resolvedPhone) {
+      resolvedPhone = order.customerPhone || order.shippingDetails?.phone || order.shippingAddress?.phone || null;
+    }
+
+    // 2. Fallback to linked User record
+    const targetUserId = typeof order.user === 'object' ? (order.user?._id || order.user?.id) : (order.userId || order.user);
+    if ((!resolvedEmail || !resolvedName) && targetUserId) {
+      try {
+        const User = require('../models/User');
+        const userDoc = await User.findById(targetUserId);
+        if (userDoc) {
+          if (!resolvedEmail && isValidRecipientEmail(userDoc.email)) {
+            resolvedEmail = userDoc.email.trim();
+            console.log(`[Delivery Confirmation Email Trigger] 👤 Resolved customer email from linked User ${targetUserId}: ${resolvedEmail}`);
+          }
+          if (!resolvedName && userDoc.name) {
+            resolvedName = userDoc.name.trim();
+          }
+          if (!resolvedPhone && userDoc.phone) {
+            resolvedPhone = userDoc.phone;
+          }
+        }
+      } catch (userLookupErr) {
+        console.warn('[Delivery Confirmation Email Trigger] ⚠️ User lookup error:', userLookupErr.message);
+      }
+    }
+
+    // 3. Fallback: Re-query Order from DB if missing critical fields
+    if (!resolvedEmail && (order._id || order.id || order.orderNumber)) {
+      try {
+        const Order = require('../models/Order');
+        const dbOrder = (order._id || order.id) 
+          ? await Order.findById(order._id || order.id) 
+          : await Order.findOne({ orderNumber: order.orderNumber });
+        if (dbOrder) {
+          if (isValidRecipientEmail(dbOrder.customerEmail)) {
+            resolvedEmail = dbOrder.customerEmail.trim();
+          } else if (isValidRecipientEmail(dbOrder.shippingDetails?.email)) {
+            resolvedEmail = dbOrder.shippingDetails.email.trim();
+          }
+
+          const dbUserId = typeof dbOrder.user === 'object' ? (dbOrder.user?._id || dbOrder.user?.id) : (dbOrder.userId || dbOrder.user);
+          if (!resolvedEmail && dbUserId) {
+            const User = require('../models/User');
+            const dbUser = await User.findById(dbUserId);
+            if (dbUser && isValidRecipientEmail(dbUser.email)) {
+              resolvedEmail = dbUser.email.trim();
+              if (!resolvedName && dbUser.name) resolvedName = dbUser.name.trim();
+              console.log(`[Delivery Confirmation Email Trigger] 👤 Resolved customer email from DB Order linked User: ${resolvedEmail}`);
+            }
+          }
+        }
+      } catch (dbOrderErr) {
+        console.warn('[Delivery Confirmation Email Trigger] ⚠️ DB Order lookup error:', dbOrderErr.message);
+      }
+    }
+
+    // Finalize resolved values
+    customer.email = resolvedEmail;
+    customer.name = resolvedName || 'Customer';
+    customer.phone = resolvedPhone || '';
+
+    // If order was missing customerEmail in DB or had 'N/A', self-heal order in DB
+    if (resolvedEmail && (order._id || order.id || order.orderNumber) && (order.customerEmail !== resolvedEmail || order.shippingDetails?.email !== resolvedEmail)) {
+      try {
+        const Order = require('../models/Order');
+        const updateId = order._id || order.id;
+        if (updateId) {
+          await Order.findByIdAndUpdate(updateId, {
+            customerEmail: resolvedEmail,
+            'shippingDetails.email': resolvedEmail
+          });
+          console.log(`[Delivery Confirmation Email Trigger] 🔄 Self-healed order in DB with email: ${resolvedEmail}`);
+        }
+      } catch (healErr) {
+        console.warn('[Delivery Confirmation Email Trigger] ⚠️ Could not update healed email on order in DB:', healErr.message);
+      }
+    }
 
     const { checkIsPlaceholderCustomer } = require('../utils/testCustomerHelper');
     const check = checkIsPlaceholderCustomer(orderData);
@@ -1473,24 +1606,15 @@ const sendDeliveryConfirmationWithInvoice = async (orderData) => {
       console.log(`Customer notifications skipped:\nReason: ${check.reason}\nOrder: ${order?.orderNumber || 'Unknown'}\nEmail: ${customer?.email || 'N/A'}`);
       return { success: true, message: 'Skipped delivery confirmation email for placeholder customer.' };
     }
-    
-    if (!customer) {
-      console.error(`[Delivery Confirmation Email Trigger] ❌ Customer object is missing in orderData`);
-      return { success: false, error: 'No customer data provided' };
-    }
-    if (!order) {
-      console.error(`[Delivery Confirmation Email Trigger] ❌ Order object is missing in orderData`);
-      return { success: false, error: 'No order data provided' };
-    }
 
     console.log(`[Delivery Confirmation Email Trigger]   Order Number: ${order.orderNumber}`);
     console.log(`[Delivery Confirmation Email Trigger]   Customer Name: ${customer.name}`);
     console.log(`[Delivery Confirmation Email Trigger]   Customer Email: ${customer.email}`);
     console.log(`[Delivery Confirmation Email Trigger]   Customer Phone: ${customer.phone}`);
 
-    if (!customer.email) {
-      console.warn(`[Delivery Confirmation Email Trigger] ⚠️ Skipping delivery email: No customer email address provided`);
-      return { success: false, error: 'No customer email address provided' };
+    if (!customer.email || !isValidRecipientEmail(customer.email)) {
+      console.warn(`[Delivery Confirmation Email Trigger] ⚠️ Skipping delivery email: No valid customer email address could be resolved for order #${order.orderNumber}`);
+      return { success: false, error: 'No valid customer email address provided' };
     }
 
     console.log('📄 Generating PDF invoice...');
@@ -1905,5 +2029,6 @@ module.exports = {
   formatTime,
   sendDeliveryConfirmationWithInvoice,
   generateInvoiceHTML,
-  generateInvoicePDF
+  generateInvoicePDF,
+  generateDeliveryConfirmationWithInvoiceEmail
 };

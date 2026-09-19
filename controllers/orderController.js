@@ -57,6 +57,64 @@ const trackPromoCodeConversion = async (promoCodeObj) => {
   }
 };
 
+// Helper to validate email format and reject placeholders
+const isValidEmailStr = (em) => {
+  if (!em || typeof em !== 'string') return false;
+  const clean = em.trim();
+  if (['n/a', 'na', 'null', 'undefined', 'none', ''].includes(clean.toLowerCase())) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean);
+};
+
+// Robust helper to resolve customer details from order, shipping, gift, or User model
+const resolveOrderCustomerDetails = async (order) => {
+  const User = require('../models/User');
+  let customer = null;
+  let customerEmail = null;
+  let customerName = null;
+  let customerPhone = null;
+
+  // 1. Try order fields
+  if (isValidEmailStr(order.customerEmail)) {
+    customerEmail = order.customerEmail.trim();
+  } else if (isValidEmailStr(order.shippingDetails?.email)) {
+    customerEmail = order.shippingDetails.email.trim();
+  } else if (isValidEmailStr(order.shippingAddress?.email)) {
+    customerEmail = order.shippingAddress.email.trim();
+  } else if (isValidEmailStr(order.giftDetails?.recipientEmail)) {
+    customerEmail = order.giftDetails.recipientEmail.trim();
+  }
+
+  customerName = order.customerName || order.shippingDetails?.fullName || order.shippingAddress?.fullName || null;
+  customerPhone = order.customerPhone || order.shippingDetails?.phone || order.shippingAddress?.phone || null;
+
+  // 2. Try User model
+  const targetUserId = typeof order.user === 'object' ? (order.user?._id || order.user?.id) : (order.userId || order.user);
+  if (targetUserId) {
+    try {
+      customer = await User.findById(targetUserId);
+      if (customer) {
+        if (!customerEmail && isValidEmailStr(customer.email)) {
+          customerEmail = customer.email.trim();
+        }
+        if (!customerName && customer.name) {
+          customerName = customer.name.trim();
+        }
+        if (!customerPhone && customer.phone) {
+          customerPhone = customer.phone;
+        }
+      }
+    } catch (err) {
+      console.warn('[Order Controller] User lookup error:', err.message);
+    }
+  }
+
+  return {
+    customer,
+    customerEmail,
+    customerName: customerName || 'Customer',
+    customerPhone: customerPhone || ''
+  };
+};
 
 // Helper function to recursively flatten arrays and extract strings
 const flattenToStrings = (value) => {
@@ -305,7 +363,13 @@ const createOrder = async (req, res) => {
 
     const items = req.body.items || req.body.orderItems || [];
     const shippingDetails = req.body.shippingDetails || req.body.shippingAddress || {};
-    const paymentDetails = req.body.paymentDetails || { method: req.body.paymentMethod || 'cod' };
+    const rawMethod = (req.body.paymentDetails?.method || req.body.paymentMethod || '').toLowerCase();
+    const finalMethod = (rawMethod && rawMethod !== 'cod' && rawMethod !== 'cash') ? (req.body.paymentDetails?.method || req.body.paymentMethod) : 'razorpay';
+    const paymentDetails = {
+      ...(req.body.paymentDetails || {}),
+      method: finalMethod,
+      status: req.body.paymentDetails?.status || req.body.paymentStatus || 'completed'
+    };
     const totalAmount = req.body.totalAmount || req.body.totalPrice || 0;
     const { giftDetails, currency, currencyRate, originalCurrency } = req.body;
 
@@ -424,14 +488,29 @@ const createOrder = async (req, res) => {
       });
     }
 
+    // Resolve customer details with robust fallbacks
+    const effectiveCustomerEmail = (isValidEmailStr(shippingDetails.email) && shippingDetails.email.trim())
+      || (isValidEmailStr(req.user?.email) && req.user.email.trim())
+      || (isValidEmailStr(giftDetails?.recipientEmail) && giftDetails.recipientEmail.trim())
+      || null;
+
+    const effectiveCustomerName = (shippingDetails.fullName && shippingDetails.fullName.trim() !== '' && shippingDetails.fullName !== 'Customer')
+      ? shippingDetails.fullName.trim()
+      : (req.user?.name || giftDetails?.recipientName || 'Customer');
+
+    const effectiveCustomerPhone = shippingDetails.phone || req.user?.phone || giftDetails?.recipientPhone || null;
+
     // Create the order object with all required fields
     const orderData = {
       orderNumber,
       user: userId,
+      customerName: effectiveCustomerName,
+      customerEmail: effectiveCustomerEmail,
+      customerPhone: effectiveCustomerPhone,
       shippingDetails: {
-        fullName: shippingDetails.fullName,
-        email: shippingDetails.email,
-        phone: shippingDetails.phone,
+        fullName: effectiveCustomerName,
+        email: effectiveCustomerEmail,
+        phone: effectiveCustomerPhone,
         address: shippingDetails.address,
         apartment: shippingDetails.apartment || '',
         city: shippingDetails.city,
@@ -475,11 +554,14 @@ const createOrder = async (req, res) => {
           characterCount: item.characterCount || item.customizations?.personalization?.characterCount || 0
         };
       }),
+      paymentMethod: paymentDetails.method,
+      paymentStatus: paymentDetails.status,
       paymentDetails: {
         method: paymentDetails.method,
-        razorpayOrderId: paymentDetails.razorpayOrderId,
-        razorpayPaymentId: paymentDetails.razorpayPaymentId,
-        razorpaySignature: paymentDetails.razorpaySignature
+        status: paymentDetails.status,
+        razorpayOrderId: paymentDetails.razorpayOrderId || null,
+        razorpayPaymentId: paymentDetails.razorpayPaymentId || null,
+        razorpaySignature: paymentDetails.razorpaySignature || null
       },
       totalAmount: finalTotal,
       subtotal: subtotalCalculated,
@@ -909,26 +991,23 @@ const updateOrderToDelivered = async (req, res) => {
       }
 
       try {
-        // Get customer details - try User model first, then fallback to shipping details
-        const User = require('../models/User');
-        let customer = null;
-        let customerEmail = null;
-        let customerName = null;
-
-        if (order.user) {
-          customer = await User.findById(order.user);
-          if (customer && customer.email) {
-            customerEmail = customer.email;
-            customerName = customer.name;
-          }
-        }
-
-        if (!customerEmail) {
-          customerEmail = order.customerEmail || order.shippingDetails?.email || order.shippingAddress?.email;
-          customerName = order.customerName || order.shippingDetails?.fullName || order.shippingAddress?.fullName;
-        }
+        const resolvedDetails = await resolveOrderCustomerDetails(order);
+        const { customer, customerEmail, customerName, customerPhone } = resolvedDetails;
 
         if (customerEmail) {
+          // Self-heal order if missing email in DB or was 'N/A'
+          if (order.customerEmail !== customerEmail || order.shippingDetails?.email !== customerEmail) {
+            try {
+              await Order.findByIdAndUpdate(order._id, {
+                customerEmail: customerEmail,
+                'shippingDetails.email': customerEmail
+              });
+              console.log(`[Order Controller] 🔄 Self-healed order #${order.orderNumber} customerEmail to: ${customerEmail}`);
+            } catch (healErr) {
+              console.warn('[Order Controller] Could not persist healed email to order:', healErr.message);
+            }
+          }
+
           // Populate product details for delivery email
           const populatedOrder = await Order.findById(order._id)
             .populate({
@@ -938,16 +1017,16 @@ const updateOrderToDelivered = async (req, res) => {
 
           // Prepare delivery notification data
           const deliveryNotificationData = {
-            order: populatedOrder,
+            order: populatedOrder || order,
             customer: {
-              name: customerName || order.shippingDetails?.fullName || 'Customer',
+              name: customerName,
               email: customerEmail,
-              phone: customer?.phone || order.shippingDetails?.phone || order.customerPhone
+              phone: customerPhone
             },
-            items: populatedOrder.items
+            items: (populatedOrder && populatedOrder.items) || order.items || []
           };
 
-          console.log(`[Order Controller] 👤 Customer details resolved: Name="${customer.name}", Email="${customer.email}"`);
+          console.log(`[Order Controller] 👤 Customer details resolved: Name="${customerName}", Email="${customerEmail}"`);
           console.log(`[Order Controller] 📤 Triggering sendDeliveryConfirmationWithInvoice for order #${order.orderNumber}`);
 
           // Send delivery confirmation email with invoice
@@ -957,13 +1036,12 @@ const updateOrderToDelivered = async (req, res) => {
           console.log(`[Order Controller] 📧 sendDeliveryConfirmationWithInvoice output for order #${order.orderNumber}:`, emailResult);
 
           if (emailResult.success) {
-            console.log(`[Order Controller] ✅ Delivery confirmation email with invoice sent successfully to: ${customer.email}`);
+            console.log(`[Order Controller] ✅ Delivery confirmation email with invoice sent successfully to: ${customerEmail}`);
           } else {
             console.error(`[Order Controller] ❌ Failed to send delivery confirmation email:`, emailResult.error);
           }
         } else {
-          console.warn('⚠️  No customer email found for delivery confirmation');
-          console.warn('Customer object:', customer);
+          console.warn(`⚠️ [Order Controller] No valid customer email found for delivery confirmation of order #${order.orderNumber}`);
         }
       } catch (deliveryEmailError) {
         console.error('❌ Error sending delivery confirmation email:', deliveryEmailError);
@@ -1454,32 +1532,23 @@ const updateOrderStatus = async (req, res) => {
       }
 
       try {
-        // Get customer details - try User model first, then fallback to shipping details
-        const User = require('../models/User');
-        let customer = null;
-        let customerEmail = null;
-        let customerName = null;
-
-        // Try to get customer from User model
-        if (order.user) {
-          customer = await User.findById(order.user);
-          console.log('👤 Customer lookup result:', customer ? 'Found' : 'Not found');
-          console.log('📧 Customer email from User model:', customer?.email);
-
-          if (customer && customer.email) {
-            customerEmail = customer.email;
-            customerName = customer.name;
-          }
-        }
-
-        // Fallback to shipping details email if User model email not found
-        if (!customerEmail && order.shippingDetails && order.shippingDetails.email) {
-          customerEmail = order.shippingDetails.email;
-          customerName = order.shippingDetails.fullName;
-          console.log('📧 Using email from shipping details:', customerEmail);
-        }
+        const resolvedDetails = await resolveOrderCustomerDetails(order);
+        const { customer, customerEmail, customerName, customerPhone } = resolvedDetails;
 
         if (customerEmail) {
+          // Self-heal order if missing email in DB or was 'N/A'
+          if (order.customerEmail !== customerEmail || order.shippingDetails?.email !== customerEmail) {
+            try {
+              await Order.findByIdAndUpdate(order._id, {
+                customerEmail: customerEmail,
+                'shippingDetails.email': customerEmail
+              });
+              console.log(`[Order Controller] 🔄 Self-healed order #${order.orderNumber} customerEmail to: ${customerEmail}`);
+            } catch (healErr) {
+              console.warn('[Order Controller] Could not persist healed email to order:', healErr.message);
+            }
+          }
+
           // Populate product details for delivery email
           const populatedOrder = await Order.findById(order._id)
             .populate({
@@ -1489,16 +1558,16 @@ const updateOrderStatus = async (req, res) => {
 
           // Prepare delivery notification data
           const deliveryNotificationData = {
-            order: populatedOrder,
+            order: populatedOrder || order,
             customer: {
-              name: customerName || order.shippingDetails.fullName,
+              name: customerName,
               email: customerEmail,
-              phone: customer?.phone || order.shippingDetails.phone
+              phone: customerPhone
             },
-            items: populatedOrder.items
+            items: (populatedOrder && populatedOrder.items) || order.items || []
           };
 
-          console.log(`[Order Controller] 👤 Customer details resolved: Name="${customerName || order.shippingDetails.fullName}", Email="${customerEmail}"`);
+          console.log(`[Order Controller] 👤 Customer details resolved: Name="${customerName}", Email="${customerEmail}"`);
           console.log(`[Order Controller] 📤 Triggering sendDeliveryConfirmationWithInvoice for order #${order.orderNumber}`);
 
           // Send delivery confirmation email with invoice
@@ -1513,9 +1582,7 @@ const updateOrderStatus = async (req, res) => {
             console.error(`[Order Controller] ❌ Failed to send delivery confirmation email:`, emailResult.error);
           }
         } else {
-          console.warn('⚠️  No customer email found for delivery confirmation');
-          console.warn('⚠️  Order user ID:', order.user);
-          console.warn('⚠️  Shipping details email:', order.shippingDetails?.email);
+          console.warn(`⚠️ [Order Controller] No valid customer email found for delivery confirmation of order #${order.orderNumber}`);
         }
       } catch (deliveryEmailError) {
         console.error('❌ Error sending delivery confirmation email:', deliveryEmailError);
@@ -1763,19 +1830,38 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
         });
       }
 
+      // Resolve customer details with robust fallbacks
+      const effectiveCustomerEmail = (isValidEmailStr(orderData.customerEmail) && orderData.customerEmail.trim())
+        || (isValidEmailStr(orderData.shippingDetails?.email) && orderData.shippingDetails.email.trim())
+        || (isValidEmailStr(req.user?.email) && req.user.email.trim())
+        || (isValidEmailStr(orderData.giftDetails?.recipientEmail) && orderData.giftDetails.recipientEmail.trim())
+        || null;
+
+      const effectiveCustomerName = (orderData.customerName && orderData.customerName !== 'Customer')
+        ? orderData.customerName
+        : ((orderData.shippingDetails?.fullName && orderData.shippingDetails.fullName !== 'Customer')
+          ? orderData.shippingDetails.fullName
+          : (req.user?.name || orderData.giftDetails?.recipientName || 'Customer'));
+
+      const effectiveCustomerPhone = orderData.customerPhone 
+        || orderData.shippingDetails?.phone 
+        || req.user?.phone 
+        || orderData.giftDetails?.recipientPhone 
+        || null;
+
       // Create the order object with all required fields
       const orderDbData = {
         orderNumber,
         user: userId,
-        customerName: orderData.shippingDetails.fullName || 'Customer',
-        customerEmail: orderData.shippingDetails.email || 'N/A',
-        customerPhone: orderData.shippingDetails.phone || 'N/A',
+        customerName: effectiveCustomerName,
+        customerEmail: effectiveCustomerEmail,
+        customerPhone: effectiveCustomerPhone,
         shippingDetails: {
-          fullName: orderData.shippingDetails.fullName,
+          fullName: effectiveCustomerName,
           firstName: orderData.shippingDetails.firstName,
           lastName: orderData.shippingDetails.lastName,
-          email: orderData.shippingDetails.email,
-          phone: orderData.shippingDetails.phone,
+          email: effectiveCustomerEmail,
+          phone: effectiveCustomerPhone,
           address: orderData.shippingDetails.address,
           apartment: orderData.shippingDetails.apartment || '',
           city: orderData.shippingDetails.city,
@@ -1807,8 +1893,11 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
           finalPrice: item.finalPrice,
           customizations: item.customizations || null
         })),
+        paymentMethod: 'razorpay',
+        paymentStatus: 'completed',
         paymentDetails: {
           method: 'razorpay',
+          status: 'completed',
           razorpayOrderId: razorpay_order_id,
           razorpayPaymentId: razorpay_payment_id,
           razorpaySignature: razorpay_signature
@@ -2190,35 +2279,15 @@ const testDeliveryEmail = async (req, res) => {
       return res.status(404).json({ message: 'Order not found' });
     }
 
-    // Get customer details - try User model first, then fallback to shipping details
-    const User = require('../models/User');
-    let customer = null;
-    let customerEmail = null;
-    let customerName = null;
-
-    // Try to get customer from User model
-    if (order.user) {
-      customer = await User.findById(order.user);
-      console.log('👤 Customer lookup result:', customer ? 'Found' : 'Not found');
-      console.log('📧 Customer email from User model:', customer?.email);
-
-      if (customer && customer.email) {
-        customerEmail = customer.email;
-        customerName = customer.name;
-      }
-    }
-
-    // Fallback to shipping details email if User model email not found
-    if (!customerEmail && order.shippingDetails && order.shippingDetails.email) {
-      customerEmail = order.shippingDetails.email;
-      customerName = order.shippingDetails.fullName;
-      console.log('📧 Using email from shipping details:', customerEmail);
-    }
+    // Resolve customer details using robust fallbacks
+    const resolvedDetails = await resolveOrderCustomerDetails(order);
+    const { customer, customerEmail, customerName, customerPhone } = resolvedDetails;
 
     if (!customerEmail) {
       return res.status(400).json({
-        message: 'Customer email not found in User model or shipping details',
-        orderUser: order.user,
+        message: 'Customer email could not be resolved from Order, User model, or shipping details',
+        orderUser: order.user || order.userId,
+        orderCustomerEmail: order.customerEmail,
         shippingEmail: order.shippingDetails?.email
       });
     }
@@ -2230,14 +2299,14 @@ const testDeliveryEmail = async (req, res) => {
     const deliveryNotificationData = {
       order: order,
       customer: {
-        name: customerName || order.shippingDetails.fullName,
+        name: customerName,
         email: customerEmail,
-        phone: customer?.phone || order.shippingDetails.phone
+        phone: customerPhone
       },
-      items: order.items
+      items: order.items || []
     };
 
-    console.log(`[Order Controller] 👤 Resolved customer for test: Name="${customerName || order.shippingDetails.fullName}", Email="${customerEmail}"`);
+    console.log(`[Order Controller] 👤 Resolved customer for test: Name="${customerName}", Email="${customerEmail}"`);
     console.log(`[Order Controller] 📤 Triggering sendDeliveryConfirmationWithInvoice for test order #${order.orderNumber}`);
 
     // Send delivery confirmation email with invoice

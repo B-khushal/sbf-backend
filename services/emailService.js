@@ -60,6 +60,22 @@ const sendEmail = async ({
   fromOverride,
   fromNameOverride,
 }) => {
+  const isValidEmail = (em) => {
+    if (!em || typeof em !== 'string') return false;
+    const clean = em.trim();
+    if (['n/a', 'na', 'null', 'undefined', 'none', ''].includes(clean.toLowerCase())) return false;
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean);
+  };
+
+  const recipientToCheck = Array.isArray(to) ? to[0] : to;
+  if (!isValidEmail(recipientToCheck)) {
+    console.error(`[Email Service] ❌ Aborting sendEmail: Recipient email address "${to}" is invalid or a placeholder. Subject: "${subject}"`);
+    return {
+      success: false,
+      error: `Invalid recipient address: "${to}"`
+    };
+  }
+
   console.log(`\n[Email Service] 📤 getTransporter() called to retrieve SMTP transporter`);
   const activeTransporter = getTransporter();
   

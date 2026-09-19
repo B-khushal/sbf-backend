@@ -88,9 +88,16 @@ class OrderDocument {
       ? data.shippingAddress
       : ((data.shippingDetails && typeof data.shippingDetails === 'object') ? data.shippingDetails : {});
 
+    const isValidEmailStr = (em) => em && typeof em === 'string' && !['n/a', 'na', 'null', 'undefined', 'none', ''].includes(em.trim().toLowerCase()) && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em.trim());
+
     this.customerName = data.customerName || rawShip.fullName || (uObj ? uObj.name : null) || 'Customer';
-    this.customerEmail = data.customerEmail || rawShip.email || (uObj ? uObj.email : null) || 'N/A';
-    this.customerPhone = data.customerPhone || rawShip.phone || (uObj ? uObj.phone : null) || 'N/A';
+    const resolvedEmail = (isValidEmailStr(data.customerEmail) && data.customerEmail.trim())
+      || (isValidEmailStr(rawShip.email) && rawShip.email.trim())
+      || (isValidEmailStr(uObj?.email) && uObj.email.trim())
+      || (isValidEmailStr(data.shippingDetails?.email) && data.shippingDetails.email.trim())
+      || null;
+    this.customerEmail = resolvedEmail;
+    this.customerPhone = data.customerPhone || rawShip.phone || (uObj ? uObj.phone : null) || null;
 
     this.subtotal = parseFloat(data.subtotal || data.totalAmount || data.finalTotal || (Array.isArray(data.items) ? data.items.reduce((s, i) => s + (parseFloat(i.price || 0) * parseInt(i.quantity || i.qty || 1)), 0) : 0));
     this.shippingFee = parseFloat(data.shippingFee || data.deliveryCharge || 0);
@@ -125,10 +132,20 @@ class OrderDocument {
       floor: rawShip.floor || ''
     };
 
+    const resolvedMethod = (data.paymentMethod && data.paymentMethod.toLowerCase() !== 'cod')
+      ? data.paymentMethod
+      : (data.paymentDetails?.method && data.paymentDetails.method.toLowerCase() !== 'cod'
+        ? data.paymentDetails.method
+        : 'razorpay');
+    const resolvedStatus = data.paymentStatus || data.paymentDetails?.status || 'completed';
+
+    this.paymentMethod = resolvedMethod;
+    this.paymentStatus = resolvedStatus;
     this.paymentDetails = {
-      method: data.paymentMethod || 'razorpay',
-      razorpayPaymentId: data.razorpayPaymentId || null,
-      status: data.paymentStatus || 'completed'
+      method: resolvedMethod,
+      razorpayPaymentId: data.razorpayPaymentId || data.paymentDetails?.razorpayPaymentId || null,
+      razorpayOrderId: data.razorpayOrderId || data.paymentDetails?.razorpayOrderId || null,
+      status: resolvedStatus
     };
 
     if (Array.isArray(data.timeline)) {
@@ -234,8 +251,8 @@ class OrderDocument {
       where: { id: orderId },
       update: {
         orderStatus: this.status || this.orderStatus || 'pending',
-        paymentStatus: this.paymentStatus || 'pending',
-        paymentMethod: this.paymentMethod || 'cod',
+        paymentStatus: this.paymentStatus || this.paymentDetails?.status || 'completed',
+        paymentMethod: (this.paymentMethod && this.paymentMethod.toLowerCase() !== 'cod') ? this.paymentMethod : (this.paymentDetails?.method && this.paymentDetails.method.toLowerCase() !== 'cod' ? this.paymentDetails.method : 'razorpay'),
         razorpayOrderId: this.razorpayOrderId || null,
         razorpayPaymentId: this.razorpayPaymentId || null,
         razorpaySignature: this.razorpaySignature || null,
@@ -254,23 +271,27 @@ class OrderDocument {
         deliveryCharge: this.shippingFee ? parseFloat(this.shippingFee) : undefined,
         discount: this.discountAmount ? parseFloat(this.discountAmount) : undefined,
         finalTotal: this.totalAmount ? parseFloat(this.totalAmount) : undefined,
-        trackingHistory: this.trackingHistory || undefined
+        trackingHistory: this.trackingHistory || undefined,
+        customerName: this.customerName || undefined,
+        customerEmail: this.customerEmail || undefined,
+        customerPhone: this.customerPhone || undefined,
+        userId: userId || undefined
       },
       create: {
         id: orderId,
         orderNumber: orderNum,
         userId: userId,
         customerName: this.customerName || this.shippingDetails?.fullName || 'Customer',
-        customerEmail: this.customerEmail || this.shippingDetails?.email || 'N/A',
-        customerPhone: this.customerPhone || this.shippingDetails?.phone || 'N/A',
+        customerEmail: this.customerEmail || this.shippingDetails?.email || null,
+        customerPhone: this.customerPhone || this.shippingDetails?.phone || null,
         totalAmount: this.totalAmount ? parseFloat(this.totalAmount) : 0,
         subtotal: this.subtotal ? parseFloat(this.subtotal) : 0,
         shippingFee: this.shippingFee ? parseFloat(this.shippingFee) : 0,
         taxAmount: this.taxAmount ? parseFloat(this.taxAmount) : 0,
         discountAmount: this.discountAmount ? parseFloat(this.discountAmount) : 0,
         orderStatus: this.status || this.orderStatus || 'pending',
-        paymentStatus: this.paymentStatus || 'pending',
-        paymentMethod: this.paymentMethod || 'cod',
+        paymentStatus: this.paymentStatus || this.paymentDetails?.status || 'completed',
+        paymentMethod: (this.paymentMethod && this.paymentMethod.toLowerCase() !== 'cod') ? this.paymentMethod : (this.paymentDetails?.method && this.paymentDetails.method.toLowerCase() !== 'cod' ? this.paymentDetails.method : 'razorpay'),
         razorpayOrderId: this.razorpayOrderId || null,
         razorpayPaymentId: this.razorpayPaymentId || null,
         razorpaySignature: this.razorpaySignature || null,
@@ -412,7 +433,8 @@ class OrderModel {
         totalAmount: parseFloat(data.totalAmount || data.total || 0),
         subtotal: parseFloat(data.subtotal || data.totalAmount || 0),
         orderStatus: data.orderStatus || data.status || 'pending',
-        paymentStatus: data.paymentStatus || 'pending'
+        paymentStatus: data.paymentStatus || data.paymentDetails?.status || 'completed',
+        paymentMethod: (data.paymentMethod && data.paymentMethod.toLowerCase() !== 'cod') ? data.paymentMethod : (data.paymentDetails?.method && data.paymentDetails.method.toLowerCase() !== 'cod' ? data.paymentDetails.method : 'razorpay')
       }
     });
 

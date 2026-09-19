@@ -5,7 +5,16 @@ const User = require('../models/User');
 // @access  Private/Admin
 const getUsers = async (req, res) => {
   try {
-    const users = await User.find({}).select('-password');
+    const { role, customersOnly } = req.query;
+    const filter = {};
+
+    if (role === 'customer' || role === 'user' || customersOnly === 'true') {
+      filter.role = { $in: ['user', 'customer'] };
+    } else if (role && role !== 'all') {
+      filter.role = role;
+    }
+
+    const users = await User.find(filter).select('-password');
     res.json(users);
   } catch (error) {
     console.error('Error fetching users:', error);

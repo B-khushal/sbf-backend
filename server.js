@@ -262,8 +262,10 @@ const startServer = async () => {
     try {
       const { initMarketingDB } = require('./services/marketingAnalyticsInit');
       await initMarketingDB();
+      const { syncRealStoreToMarketing } = require('./services/marketingSyncService');
+      await syncRealStoreToMarketing();
     } catch (mktDbErr) {
-      console.error('⚠️ Marketing Intelligence DB init failed:', mktDbErr);
+      console.error('⚠️ Marketing Intelligence DB init/sync failed:', mktDbErr);
     }
 
     // Initialize default occasions
