@@ -97,67 +97,89 @@ const sendPushNotification = async (token, notification, data = {}, options = {}
       throw new Error('Invalid device token');
     }
 
-    if (!notification || !notification.title || !notification.body) {
-      throw new Error('Notification must include title and body');
-    }
+    const notifTitle = (notification && notification.title) || data.title || '🎉 New Order Received!';
+    const notifBody = (notification && notification.body) || data.body || 'Order received';
 
-    // Build message payload - Data-only message format
-    // App handles notification display from data payload
-    // FCM requires all data values to be strings
-    const dataPayload = Object.keys(data).reduce((acc, key) => {
-      acc[key] = String(data[key]);
-      return acc;
-    }, {});
+    // Build data payload - all values must be strings
+    const orderIdStr = String(data.orderId || data.orderNumber || `ORD-${Date.now()}`);
+    const orderNumberStr = String(data.orderNumber || orderIdStr);
+    const customerNameStr = String(data.customerName || 'Customer');
+    const amountStr = String(data.amount || '0');
+    const typeStr = String(data.type || 'NEW_ORDER');
 
-    const message = {
-      token: token,
-      notification: {
-        title: String(notification.title),
-        body: String(notification.body)
-      },
-      data: {
-        title: String(notification.title),
-        body: String(notification.body),
-        ...dataPayload
-      },
-      android: {
-        priority: 'high',
-        notification: {
-          sound: options.sound || 'default',
-          channelId: 'orders_channel'
+    const dataPayload = {
+      title: String(notifTitle),
+      body: String(notifBody),
+      orderId: orderIdStr,
+      orderNumber: orderNumberStr,
+      customerName: customerNameStr,
+      amount: amountStr,
+      type: typeStr,
+      ...Object.keys(data || {}).reduce((acc, key) => {
+        if (data[key] !== undefined && data[key] !== null) {
+          acc[key] = String(data[key]);
         }
-      },
-      apns: {
-        payload: {
-          aps: {
-            alert: {
-              title: notification.title,
-              body: notification.body
-            },
-            sound: options.sound || 'default',
-            badge: options.badge || 1,
-            contentAvailable: true,
-            ...(options.category && { category: options.category })
+        return acc;
+      }, {})
+    };
+
+    const deviceType = (options.deviceType || options.platform || 'android').toLowerCase();
+
+    let message;
+    if (deviceType === 'web' || deviceType === 'ios') {
+      message = {
+        token: token,
+        notification: {
+          title: String(notifTitle),
+          body: String(notifBody)
+        },
+        data: dataPayload,
+        apns: {
+          payload: {
+            aps: {
+              alert: {
+                title: String(notifTitle),
+                body: String(notifBody)
+              },
+              sound: options.sound || 'default',
+              badge: options.badge || 1,
+              contentAvailable: true,
+              ...(options.category && { category: options.category })
+            }
+          },
+          headers: {
+            'apns-priority': '10',
+            'apns-push-type': 'alert'
           }
         },
-        headers: {
-          'apns-priority': '10',
-          'apns-push-type': 'alert'
+        webpush: {
+          notification: {
+            title: String(notifTitle),
+            body: String(notifBody),
+            requireInteraction: true
+          }
         }
-      },
-      webpush: {
-        notification: {
-          title: String(notification.title),
-          body: String(notification.body),
-          requireInteraction: true
+      };
+    } else {
+      // ANDROID APP (D:\SBF-APP):
+      // DATA-ONLY message. Do NOT include top-level 'notification' or 'android.notification'.
+      // This ensures MyFirebaseMessagingService.onMessageReceived() in the Android app handles
+      // the notification in ALL states (foreground, background, killed, lock screen) to trigger
+      // R.raw.order_recive sound (3x), max volume boost, 3-cycle vibration, and local storage.
+      message = {
+        token: token,
+        data: dataPayload,
+        android: {
+          priority: 'high',
+          ttl: 3600 * 1000
         }
-      }
-    };
+      };
+    }
 
     // Send the message
     const response = await admin.messaging().send(message);
     
-    console.log('✅ Push notification sent successfully:', response);
+    console.log(`✅ Push notification sent successfully to ${deviceType} (${deviceType === 'android' ? 'data-only' : 'standard'}):`, response);
     return { success: true, messageId: response };
   } catch (error) {
     console.error('❌ Error sending push notification:', error.message);
@@ -195,9 +217,8 @@ const sendMulticastNotification = async (tokens, notification, data = {}, option
       throw new Error('Tokens must be a non-empty array');
     }
 
-    if (!notification || !notification.title || !notification.body) {
-      throw new Error('Notification must include title and body');
-    }
+    const notifTitle = (notification && notification.title) || data.title || '🎉 New Order Received!';
+    const notifBody = (notification && notification.body) || data.body || 'Order received';
 
     // Filter out invalid tokens
     const validTokens = tokens.filter(token => token && typeof token === 'string');
@@ -206,58 +227,37 @@ const sendMulticastNotification = async (tokens, notification, data = {}, option
       throw new Error('No valid tokens provided');
     }
 
-    console.log(`📤 Sending multicast notification to ${validTokens.length} devices`);
+    const orderIdStr = String(data.orderId || data.orderNumber || `ORD-${Date.now()}`);
+    const orderNumberStr = String(data.orderNumber || orderIdStr);
+    const customerNameStr = String(data.customerName || 'Customer');
+    const amountStr = String(data.amount || '0');
+    const typeStr = String(data.type || 'NEW_ORDER');
 
-    // Build message payload - Data-only message format
-    // App handles notification display from data payload
+    const dataPayload = {
+      title: String(notifTitle),
+      body: String(notifBody),
+      orderId: orderIdStr,
+      orderNumber: orderNumberStr,
+      customerName: customerNameStr,
+      amount: amountStr,
+      type: typeStr,
+      ...Object.keys(data || {}).reduce((acc, key) => {
+        if (data[key] !== undefined && data[key] !== null) {
+          acc[key] = String(data[key]);
+        }
+        return acc;
+      }, {})
+    };
+
+    console.log(`📤 Sending data-only multicast notification to ${validTokens.length} devices`);
+
+    // Build data-only message payload for Android app
     const message = {
       tokens: validTokens,
-      notification: {
-        title: String(notification.title),
-        body: String(notification.body)
-      },
-      data: {
-        title: String(notification.title),
-        body: String(notification.body),
-        ...data,
-        ...Object.keys(data).reduce((acc, key) => {
-          if (key !== 'title' && key !== 'body') {
-            acc[key] = String(data[key]);
-          }
-          return acc;
-        }, {})
-      },
+      data: dataPayload,
       android: {
         priority: 'high',
-        notification: {
-          sound: options.sound || 'default',
-          channelId: 'orders_channel'
-        }
-      },
-      apns: {
-        payload: {
-          aps: {
-            alert: {
-              title: notification.title,
-              body: notification.body
-            },
-            sound: options.sound || 'default',
-            badge: options.badge || 1,
-            contentAvailable: true,
-            ...(options.category && { category: options.category })
-          }
-        },
-        headers: {
-          'apns-priority': '10',
-          'apns-push-type': 'alert'
-        }
-      },
-      webpush: {
-        notification: {
-          title: String(notification.title),
-          body: String(notification.body),
-          requireInteraction: true
-        }
+        ttl: 3600 * 1000
       }
     };
 
@@ -314,98 +314,16 @@ const sendOrderNotificationToAdmins = async (orderData) => {
 
   try {
     console.log('📱 Sending order notification to admins:', orderData.orderNumber);
-
-    // Import models (avoiding circular dependency issues)
-    const User = require('../models/User');
-    const DeviceToken = require('../models/DeviceToken');
-
-    // Find all admin users
-    const admins = await User.find({ role: 'admin', status: 'active' }).select('_id name email');
-    
-    if (!admins || admins.length === 0) {
-      console.warn('⚠️  No admin users found');
-      return { success: false, error: 'No admin users found' };
-    }
-
-    console.log(`👥 Found ${admins.length} admin user(s)`);
-
-    // Get admin user IDs
-    const adminIds = admins.map(admin => admin._id);
-
-    // Find all active device tokens for admins
-    const deviceTokens = await DeviceToken.find({
-      userId: { $in: adminIds },
-      isActive: true
-    });
-
-    if (!deviceTokens || deviceTokens.length === 0) {
-      console.warn('⚠️  No active device tokens found for admins');
-      return { success: false, error: 'No admin device tokens found' };
-    }
-
-    console.log(`📱 Found ${deviceTokens.length} active device token(s)`);
-
-    // Extract token strings
-    const tokens = deviceTokens.map(dt => dt.token);
-
-    // Prepare notification payload
-    const notification = {
+    // Delegate to sendToAllAdmins which sends data-only push to Android devices
+    return await sendToAllAdmins({
       title: '🎉 New Order Received!',
-      body: `Order #${orderData.orderNumber} - ₹${orderData.totalAmount || 0}`
-    };
-
-    // Prepare data payload for deep linking (matches app's expected format)
-    const data = {
-      type: 'NEW_ORDER',
-      orderId: String(orderData.orderId),
+      body: `Order #${orderData.orderNumber} - ₹${orderData.totalAmount || 0}`,
+      orderId: String(orderData.orderId || orderData._id || orderData.id || `ORD-${orderData.orderNumber}`),
       orderNumber: String(orderData.orderNumber),
       customerName: String(orderData.customerName || 'Customer'),
-      amount: String(orderData.totalAmount || 0)
-    };
-
-    // Send multicast notification
-    const result = await sendMulticastNotification(tokens, notification, data, {
-      sound: 'default'
+      amount: String(orderData.totalAmount || 0),
+      type: 'NEW_ORDER'
     });
-
-    // Clean up invalid tokens
-    if (result.invalidTokens && result.invalidTokens.length > 0) {
-      console.log(`🗑️  Cleaning up ${result.invalidTokens.length} invalid token(s)`);
-      
-      try {
-        await DeviceToken.updateMany(
-          { token: { $in: result.invalidTokens } },
-          { $set: { isActive: false } }
-        );
-        console.log('✅ Invalid tokens marked as inactive');
-      } catch (cleanupError) {
-        console.error('❌ Error cleaning up invalid tokens:', cleanupError.message);
-      }
-    }
-
-    // Update lastUsed for successfully sent tokens
-    if (result.successCount > 0) {
-      try {
-        const successfulTokens = tokens.filter(token => !result.invalidTokens.includes(token));
-        await DeviceToken.updateMany(
-          { token: { $in: successfulTokens } },
-          { $set: { lastUsed: new Date() } }
-        );
-      } catch (updateError) {
-        console.error('❌ Error updating token lastUsed:', updateError.message);
-      }
-    }
-
-    console.log('✅ Order notification process completed');
-    console.log(`   Sent to: ${result.successCount}/${result.totalTokens} devices`);
-    
-    return {
-      success: result.success,
-      successCount: result.successCount,
-      failureCount: result.failureCount,
-      totalTokens: result.totalTokens,
-      invalidTokensRemoved: result.invalidTokens.length
-    };
   } catch (error) {
     console.error('❌ Error sending order notification to admins:', error.message);
     return { success: false, error: error.message };
@@ -442,62 +360,103 @@ const sendToAllAdmins = async (data) => {
     for (const tokenDoc of adminTokens) {
       const notifTitle = data.title || '🎉 New Order Received!';
       const notifBody = data.body || `Order #${data.orderNumber} placed`;
+      const devType = (tokenDoc.deviceType || 'android').toLowerCase();
 
-      const message = {
-        token: tokenDoc.token,
-        notification: {
-          title: notifTitle,
-          body: notifBody
-        },
-        data: {
-          title: String(notifTitle),
-          body: String(notifBody),
-          orderId: String(data.orderId || ''),
-          orderNumber: String(data.orderNumber || ''),
-          customerName: String(data.customerName || ''),
-          amount: String(data.amount || ''),
-          type: String(data.type || 'NEW_ORDER')
-        },
-        android: {
-          priority: 'high',
-          ttl: 3600 * 1000,
-          notification: {
-            sound: 'default',
-            channelId: 'orders_channel'
+      const orderIdStr = String(data.orderId || data.orderNumber || `ORD-${Date.now()}`);
+      const orderNumberStr = String(data.orderNumber || orderIdStr);
+      const customerNameStr = String(data.customerName || 'Customer');
+      const amountStr = String(data.amount || '0');
+      const typeStr = String(data.type || 'NEW_ORDER');
+
+      const dataPayload = {
+        title: String(notifTitle),
+        body: String(notifBody),
+        orderId: orderIdStr,
+        orderNumber: orderNumberStr,
+        customerName: customerNameStr,
+        amount: amountStr,
+        type: typeStr,
+        ...Object.keys(data || {}).reduce((acc, k) => {
+          if (data[k] !== undefined && data[k] !== null) {
+            acc[k] = String(data[k]);
           }
-        },
-        apns: {
-          payload: {
-            aps: {
-              alert: {
-                title: notifTitle,
-                body: notifBody
-              },
-              sound: 'default',
-              badge: 1,
-              contentAvailable: true
-            }
-          }
-        },
-        webpush: {
+          return acc;
+        }, {})
+      };
+
+      let message;
+      if (devType === 'web' || devType === 'ios') {
+        message = {
+          token: tokenDoc.token,
           notification: {
             title: notifTitle,
-            body: notifBody,
-            requireInteraction: true
+            body: notifBody
+          },
+          data: dataPayload,
+          apns: {
+            payload: {
+              aps: {
+                alert: {
+                  title: notifTitle,
+                  body: notifBody
+                },
+                sound: 'default',
+                badge: 1,
+                contentAvailable: true
+              }
+            }
+          },
+          webpush: {
+            notification: {
+              title: notifTitle,
+              body: notifBody,
+              requireInteraction: true
+            }
           }
-        }
-      };
+        };
+      } else {
+        // ANDROID APP (D:\SBF-APP):
+        // DATA-ONLY message. Do NOT include 'notification' or 'android.notification'.
+        // This ensures MyFirebaseMessagingService.onMessageReceived() triggers in ALL states
+        // (foreground, background, killed, locked) to run the custom notification,
+        // 3-cycle MediaPlayer sound using R.raw.order_recive, max volume, 3x vibration, and local store.
+        message = {
+          token: tokenDoc.token,
+          data: dataPayload,
+          android: {
+            priority: 'high',
+            ttl: 3600 * 1000
+          }
+        };
+      }
       
+      const recipientInfo = {
+        deviceId: tokenDoc.id || tokenDoc._id,
+        userName: tokenDoc.user?.name || (typeof tokenDoc.userId === 'object' ? tokenDoc.userId?.name : null) || 'Admin',
+        userEmail: tokenDoc.user?.email || (typeof tokenDoc.userId === 'object' ? tokenDoc.userId?.email : null) || '',
+        userRole: tokenDoc.user?.role || (typeof tokenDoc.userId === 'object' ? tokenDoc.userId?.role : null) || 'admin',
+        deviceType: tokenDoc.deviceType || 'android',
+        tokenPreview: tokenDoc.token ? `${tokenDoc.token.substring(0, 10)}...${tokenDoc.token.slice(-6)}` : ''
+      };
+
       try {
         const response = await admin.messaging().send(message);
-        results.push({ success: true, messageId: response });
+        results.push({
+          ...recipientInfo,
+          success: true,
+          messageId: response
+        });
         console.log(`✅ Sent to device: ${tokenDoc.token.substring(0, 20)}...`);
         
         // Update last used timestamp
         await tokenDoc.updateLastUsed();
       } catch (error) {
         console.error(`❌ Failed to send to device:`, error.message);
-        results.push({ success: false, error: error.message });
+        results.push({
+          ...recipientInfo,
+          success: false,
+          error: error.message
+        });
         
         // Remove invalid tokens
         if (error.code === 'messaging/invalid-registration-token' ||
@@ -518,7 +477,8 @@ const sendToAllAdmins = async (data) => {
       success: true,
       total: adminTokens.length,
       sent: successCount,
-      failed: failedCount
+      failed: failedCount,
+      recipients: results
     };
     
   } catch (error) {

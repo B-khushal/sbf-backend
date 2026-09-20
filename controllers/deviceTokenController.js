@@ -142,15 +142,17 @@ const getUserDeviceTokens = async (req, res) => {
 const deleteDeviceToken = async (req, res) => {
   try {
     const tokenId = req.params.id;
-    const userId = req.user._id;
+    const userId = req.user?._id || req.user?.id;
+    const isAdmin = req.user?.role && ['admin', 'super_admin', 'platform_admin', 'store_owner'].includes(req.user.role);
 
     console.log('🗑️  Deleting device token:', tokenId);
 
-    // Find the token and verify ownership
-    const deviceToken = await DeviceToken.findOne({
-      _id: tokenId,
-      userId: userId
-    });
+    // Find the token (admins can delete any token, normal users only their own)
+    const filter = { _id: tokenId };
+    if (!isAdmin) {
+      filter.userId = userId;
+    }
+    const deviceToken = await DeviceToken.findOne(filter);
 
     if (!deviceToken) {
       return res.status(404).json({
@@ -184,15 +186,17 @@ const deleteDeviceToken = async (req, res) => {
 const deactivateDeviceToken = async (req, res) => {
   try {
     const tokenId = req.params.id;
-    const userId = req.user._id;
+    const userId = req.user?._id || req.user?.id;
+    const isAdmin = req.user?.role && ['admin', 'super_admin', 'platform_admin', 'store_owner'].includes(req.user.role);
 
     console.log('⏸️  Deactivating device token:', tokenId);
 
-    // Find the token and verify ownership
-    const deviceToken = await DeviceToken.findOne({
-      _id: tokenId,
-      userId: userId
-    });
+    // Find the token and verify ownership or admin rights
+    const filter = { _id: tokenId };
+    if (!isAdmin) {
+      filter.userId = userId;
+    }
+    const deviceToken = await DeviceToken.findOne(filter);
 
     if (!deviceToken) {
       return res.status(404).json({
@@ -232,32 +236,53 @@ const getAdminDeviceTokens = async (req, res) => {
   try {
     console.log('📱 Fetching all admin device tokens...');
 
-    // Get all active device tokens with populated user info
-    const tokens = await DeviceToken.find({ isActive: true })
+    // Get all device tokens with populated user info
+    const tokens = await DeviceToken.find()
       .populate('userId', 'name email role')
       .sort({ lastUsed: -1 });
 
-    // Filter admin users only
-    const adminTokens = tokens.filter(t => 
-      t.userId && (t.userId.role === 'admin' || t.userId.role === 'super_admin')
-    );
+    const adminRoles = [
+      'platform_admin',
+      'store_owner',
+      'store_manager',
+      'delivery_manager',
+      'support_staff',
+      'inventory_staff',
+      'finance_staff',
+      'admin',
+      'super_admin'
+    ];
+
+    // Filter admin users only (include unassigned or general admin devices)
+    const adminTokens = tokens.filter(t => {
+      const user = t.user || (typeof t.userId === 'object' ? t.userId : null);
+      if (!user) return true; // Include testing or device tokens without user reference
+      return !user.role || adminRoles.includes(user.role);
+    });
 
     console.log(`✅ Found ${adminTokens.length} admin device(s)`);
 
     res.json({
       success: true,
       count: adminTokens.length,
-      data: adminTokens.map(token => ({
-        id: token._id,
-        deviceType: token.deviceType,
-        deviceInfo: token.deviceInfo,
-        lastUsed: token.lastUsed,
-        createdAt: token.createdAt,
-        user: {
-          name: token.userId?.name || 'Unknown',
-          email: token.userId?.email || 'Unknown'
-        }
-      }))
+      data: adminTokens.map(token => {
+        const user = token.user || (typeof token.userId === 'object' ? token.userId : null);
+        return {
+          id: token._id || token.id,
+          deviceType: token.deviceType || 'android',
+          deviceInfo: token.deviceInfo || {},
+          lastUsed: token.lastUsed || token.updatedAt,
+          createdAt: token.createdAt,
+          isActive: token.isActive,
+          tokenPreview: token.token ? `${token.token.substring(0, 10)}...${token.token.slice(-6)}` : '',
+          user: {
+            id: user?.id || user?._id || (typeof token.userId === 'string' ? token.userId : null),
+            name: user?.name || 'Administrator',
+            email: user?.email || 'admin@sbflorist.com',
+            role: user?.role || 'admin'
+          }
+        };
+      })
     });
   } catch (error) {
     console.error('❌ Error fetching admin devices:', error.message);
@@ -282,8 +307,8 @@ const testPushNotificationById = async (req, res) => {
       title, 
       body, 
       data,
-      userId: req.user._id,
-      userRole: req.user.role
+      userId: req.user?._id || req.user?.id,
+      userRole: req.user?.role
     });
 
     if (!deviceId) {
@@ -304,12 +329,16 @@ const testPushNotificationById = async (req, res) => {
       });
     }
 
-    if (!deviceToken.isActive) {
-      console.log('❌ Device token is inactive:', deviceId);
+    if (!deviceToken.token) {
+      console.log('❌ Device token has empty token value:', deviceId);
       return res.status(400).json({
         success: false,
-        message: 'Device token is inactive'
+        message: 'Device token has no FCM registration token string'
       });
+    }
+
+    if (!deviceToken.isActive) {
+      console.log('⚠️ Device token is marked inactive, verifying via test ping:', deviceId);
     }
 
     console.log('📱 Sending test notification to device:', deviceId);
@@ -322,26 +351,31 @@ const testPushNotificationById = async (req, res) => {
     };
 
     const testData = {
-      type: 'NEW_ORDER',
-      orderId: 'test123',
-      orderNumber: '123',
-      customerName: 'Test Customer',
-      amount: '500',
+      type: (data && data.type) || 'NEW_ORDER',
+      orderId: String((data && data.orderId) || (data && data.orderNumber) || `ORD-${Date.now().toString().slice(-6)}`),
+      orderNumber: String((data && data.orderNumber) || '123'),
+      customerName: String((data && data.customerName) || 'Test Customer'),
+      amount: String((data && data.amount) || '500'),
       timestamp: new Date().toISOString(),
       source: 'admin_panel',
       ...(data || {})
     };
 
-    console.log('📤 Sending notification with payload:', { notification, testData });
+    console.log('📤 Sending notification with payload:', { notification, testData, deviceType: deviceToken.deviceType });
 
-    const result = await sendPushNotification(deviceToken.token, notification, testData);
+    const result = await sendPushNotification(deviceToken.token, notification, testData, {
+      deviceType: deviceToken.deviceType || 'android'
+    });
 
     console.log('📥 FCM Response:', result);
 
     if (result.success) {
-      // Update last used
+      // Re-activate if was inactive and update last used
+      deviceToken.isActive = true;
       await deviceToken.updateLastUsed();
       
+      const user = deviceToken.user || (typeof deviceToken.userId === 'object' ? deviceToken.userId : null);
+
       console.log('✅ Test notification sent successfully');
       res.json({
         success: true,
@@ -349,7 +383,10 @@ const testPushNotificationById = async (req, res) => {
         data: {
           messageId: result.messageId,
           deviceType: deviceToken.deviceType,
-          sentAt: new Date().toISOString()
+          sentAt: new Date().toISOString(),
+          recipient: user?.name || 'Administrator',
+          email: user?.email || '',
+          tokenPreview: deviceToken.token ? `${deviceToken.token.substring(0, 10)}...${deviceToken.token.slice(-6)}` : ''
         }
       });
     } else {
@@ -367,14 +404,14 @@ const testPushNotificationById = async (req, res) => {
         
         return res.status(400).json({
           success: false,
-          message: 'Device token is no longer valid and has been deactivated',
+          message: 'Device token is no longer valid on Firebase and has been deactivated',
           error: result.error
         });
       }
 
       res.status(400).json({
         success: false,
-        message: 'Failed to send test notification',
+        message: `Failed to send test notification: ${result.error || 'Unknown FCM error'}`,
         error: result.error
       });
     }
@@ -383,7 +420,7 @@ const testPushNotificationById = async (req, res) => {
     console.error('🔍 Full error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to test push notification',
+      message: `Failed to test push notification: ${error.message}`,
       error: error.message
     });
   }
@@ -527,11 +564,11 @@ const testNotificationToAll = async (req, res) => {
     const result = await sendToAllAdmins({
       title: title || '🧪 Test Notification',
       body: body || 'This is a test notification to all admin devices',
-      orderId: 'TEST-' + Date.now(),
-      orderNumber: 'TEST-' + Date.now().toString().slice(-6),
-      customerName: 'Test Customer',
-      amount: '999',
-      type: 'NEW_ORDER',
+      orderId: (data && data.orderId) || (data && data.orderNumber) || 'TEST-' + Date.now(),
+      orderNumber: (data && data.orderNumber) || 'TEST-' + Date.now().toString().slice(-6),
+      customerName: (data && data.customerName) || 'Test Customer',
+      amount: String((data && data.amount) || '999'),
+      type: (data && data.type) || 'NEW_ORDER',
       ...(data || {})
     });
 

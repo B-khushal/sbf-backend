@@ -827,16 +827,36 @@ const updateOrderToPaid = async (req, res) => {
     const order = await Order.findById(req.params.id);
 
     if (order) {
+      const wasPaid = order.isPaid;
       order.isPaid = true;
       order.paidAt = Date.now();
       order.paymentResult = {
         id: req.body.id,
         status: req.body.status,
         update_time: req.body.update_time,
-        email_address: req.body.payer.email_address,
+        email_address: req.body.payer?.email_address,
       };
 
       const updatedOrder = await order.save();
+
+      // Send FCM push notification to all admins if newly marked as paid
+      if (!wasPaid) {
+        try {
+          const customerName = order.customerName || order.shippingDetails?.fullName || 'Customer';
+          await sendToAllAdmins({
+            title: '🎉 Order Payment Confirmed!',
+            body: `Order #${order.orderNumber} paid - ₹${order.totalAmount}`,
+            orderId: order._id.toString(),
+            orderNumber: order.orderNumber,
+            customerName: customerName,
+            amount: order.totalAmount.toString(),
+            type: 'NEW_ORDER'
+          });
+        } catch (fcmErr) {
+          console.warn('⚠️ FCM notification failed in updateOrderToPaid:', fcmErr.message);
+        }
+      }
+
       res.json(updatedOrder);
     } else {
       res.status(404).json({ message: 'Order not found' });
@@ -1360,8 +1380,8 @@ const updateOrderStatus = async (req, res) => {
     order.status = status;
     order.orderStatus = status;
 
-    // Send FCM push notification to all admins when order is confirmed (received status)
-    if (status === 'received' && previousStatus !== 'received') {
+    // Send FCM push notification to all admins when order is confirmed (received or confirmed status)
+    if ((status === 'received' || status === 'confirmed') && !['received', 'confirmed'].includes(previousStatus)) {
       console.log('🔔 Order confirmed! Sending push notification to all admins...');
       try {
         const notificationResult = await sendToAllAdmins({

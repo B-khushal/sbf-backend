@@ -5,7 +5,8 @@ class DeviceTokenDocument {
     Object.assign(this, data);
     this.id = data.id || data._id || `tok_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
     this._id = this.id;
-    this.userId = data.userId || (data.user ? data.user.id || data.user : null);
+    this.user = data.user || null;
+    this.userId = data.user ? { ...data.user, _id: data.user.id } : (data.userId || null);
     this.token = data.token || '';
     this.deviceType = data.deviceType || 'android';
     this.deviceInfo = data.deviceInfo || {};
@@ -23,8 +24,27 @@ class DeviceTokenDocument {
     return this.save();
   }
 
+  async deleteOne() {
+    try {
+      await prisma.deviceToken.deleteMany({
+        where: {
+          OR: [
+            { id: String(this.id) },
+            { token: String(this.token) }
+          ]
+        }
+      });
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
   async save() {
-    let validUserId = this.userId || null;
+    let validUserId = (typeof this.userId === 'object' && this.userId !== null) 
+      ? (this.userId.id || this.userId._id) 
+      : (this.userId || null);
+
     if (validUserId) {
       try {
         const userExists = await prisma.user.findUnique({ where: { id: String(validUserId) }, select: { id: true } });
@@ -62,6 +82,7 @@ class QueryChain {
   skip() { return this; }
   limit() { return this; }
   select() { return this; }
+  populate() { return this; }
   exec() { return this.then(r => r); }
 
   async then(resolve, reject) {
@@ -87,16 +108,73 @@ class DeviceTokenModel {
     if (where.isActive !== undefined) {
       filter.isActive = Boolean(where.isActive);
     }
-    const query = prisma.deviceToken.findMany({ where: filter, orderBy: { updatedAt: 'desc' } });
+    if (where._id || where.id) {
+      filter.id = String(where._id || where.id);
+    }
+    if (where.token) {
+      filter.token = String(where.token);
+    }
+    const query = prisma.deviceToken.findMany({ 
+      where: filter, 
+      include: { user: { select: { id: true, name: true, email: true, role: true, phone: true } } },
+      orderBy: { updatedAt: 'desc' } 
+    });
     return new QueryChain(query);
   }
 
   static findOne(where = {}) {
     const filter = {};
-    if (where.token) filter.token = where.token;
+    if (where.token) filter.token = String(where.token);
     if (where._id || where.id) filter.id = String(where._id || where.id);
-    const query = prisma.deviceToken.findFirst({ where: filter });
+    if (where.userId) filter.userId = String(where.userId);
+    if (where.isActive !== undefined) filter.isActive = Boolean(where.isActive);
+    const query = prisma.deviceToken.findFirst({ 
+      where: filter,
+      include: { user: { select: { id: true, name: true, email: true, role: true, phone: true } } }
+    });
     return new QueryChain(query);
+  }
+
+  static findById(id) {
+    if (!id) return new QueryChain(Promise.resolve(null));
+    const rawId = typeof id === 'object' ? (id._id || id.id) : String(id);
+    const query = prisma.deviceToken.findFirst({
+      where: {
+        OR: [
+          { id: rawId },
+          { token: rawId }
+        ]
+      },
+      include: { user: { select: { id: true, name: true, email: true, role: true, phone: true } } }
+    });
+    return new QueryChain(query);
+  }
+
+  static async findByIdAndUpdate(id, update, options = {}) {
+    const filterId = typeof id === 'object' ? (id._id || id.id) : String(id);
+    const dataToSet = update.$set ? update.$set : update;
+    try {
+      await prisma.deviceToken.updateMany({
+        where: { id: filterId },
+        data: dataToSet
+      });
+      return await this.findById(filterId);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  static async findByIdAndDelete(id) {
+    const filterId = typeof id === 'object' ? (id._id || id.id) : String(id);
+    try {
+      const doc = await this.findById(filterId);
+      if (doc) {
+        await prisma.deviceToken.deleteMany({ where: { id: filterId } });
+      }
+      return doc;
+    } catch (e) {
+      return null;
+    }
   }
 
   static async create(data) {
@@ -108,6 +186,7 @@ class DeviceTokenModel {
   static async updateOne(where = {}, update = {}) {
     const filter = {};
     if (where.token) filter.token = where.token;
+    if (where._id || where.id) filter.id = String(where._id || where.id);
     const dataToSet = update.$set ? update.$set : update;
     try {
       const updated = await prisma.deviceToken.updateMany({
@@ -117,6 +196,18 @@ class DeviceTokenModel {
       return updated;
     } catch (e) {
       return { modifiedCount: 0 };
+    }
+  }
+
+  static async deleteOne(where = {}) {
+    const filter = {};
+    if (where.token) filter.token = where.token;
+    if (where._id || where.id) filter.id = String(where._id || where.id);
+    try {
+      const deleted = await prisma.deviceToken.deleteMany({ where: filter });
+      return { deletedCount: deleted.count };
+    } catch (e) {
+      return { deletedCount: 0 };
     }
   }
 
@@ -160,12 +251,12 @@ class DeviceTokenModel {
   }
 
   static async getActiveTokensForUser(userId) {
-    return await this.find({ userId: String(userId) });
+    return await this.find({ userId: String(userId), isActive: true });
   }
 
   static async getActiveTokensForUsers(userIds) {
     const ids = userIds.map(String);
-    return await this.find({ userId: { $in: ids } });
+    return await this.find({ userId: { $in: ids }, isActive: true });
   }
 
   static async deactivateToken(token) {
@@ -173,8 +264,19 @@ class DeviceTokenModel {
   }
 
   static async getActiveAdminTokens() {
+    const adminRoles = [
+      'platform_admin',
+      'store_owner',
+      'store_manager',
+      'delivery_manager',
+      'support_staff',
+      'inventory_staff',
+      'finance_staff',
+      'admin',
+      'super_admin'
+    ];
     const User = require('./User');
-    const admins = await User.find({ role: 'admin', status: 'active' });
+    const admins = await User.find({ role: { $in: adminRoles } });
     const adminIds = (admins || []).map(a => String(a._id || a.id));
 
     if (adminIds.length > 0) {
