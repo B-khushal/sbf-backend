@@ -11,6 +11,10 @@ class SettingDocument {
     this.key = data.key || 'global';
   }
 
+  markModified(field) {
+    return true;
+  }
+
   async save() {
     const rawData = { ...this };
     delete rawData._id;

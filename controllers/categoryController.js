@@ -34,19 +34,36 @@ const getCategories = asyncHandler(async (req, res) => {
   // Dynamically attach product count for each category
   const categoriesWithCounts = await Promise.all(
     categories.map(async (cat) => {
-      const count = await Product.countDocuments({
-        $or: [
-          { category: cat.name },
-          { category: cat.slug },
-          { categories: cat.name },
-          { categories: cat.slug },
-        ],
-        hidden: { $ne: true },
-        $or: [
-          { approvalStatus: 'approved' },
-          { approvalStatus: { $exists: false } }
-        ]
-      });
+      let count = 0;
+      if (cat.slug === 'budget-friendly' || (cat.name && cat.name.toLowerCase() === 'budget friendly')) {
+        const eligibleProducts = await Product.find({
+          hidden: { $ne: true },
+          $or: [
+            { approvalStatus: 'approved' },
+            { approvalStatus: { $exists: false } }
+          ]
+        });
+        count = eligibleProducts.filter(p => {
+          const basePrice = parseFloat(p.price || 0);
+          const discount = parseFloat(p.discount || 0);
+          const finalPrice = discount > 0 ? Math.round(basePrice * (1 - discount / 100)) : basePrice;
+          return finalPrice > 0 && finalPrice <= 1000 && p.isAvailable !== false;
+        }).length;
+      } else {
+        count = await Product.countDocuments({
+          $or: [
+            { category: cat.name },
+            { category: cat.slug },
+            { categories: cat.name },
+            { categories: cat.slug },
+          ],
+          hidden: { $ne: true },
+          $or: [
+            { approvalStatus: 'approved' },
+            { approvalStatus: { $exists: false } }
+          ]
+        });
+      }
 
       return {
         ...cat.toObject(),

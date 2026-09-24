@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const {
   getProducts,
+  getBudgetFriendlyProducts,
   getProductById,
   createProduct,
   updateProduct,
@@ -114,6 +115,7 @@ router.get('/seo/video-sitemap', getVideoSitemap);
 router.get('/share-preview/:type/:idOrSlug', getSharePreview);
 
 router.get('/category/:category', getProductsByCategory);
+router.get('/budget-friendly', getBudgetFriendlyProducts);
 
 router.route('/:id')
   .get(getProductById)

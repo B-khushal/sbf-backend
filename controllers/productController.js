@@ -103,6 +103,16 @@ const addReviewStats = async (products) => {
   return Array.isArray(products) ? productArray : productArray[0];
 };
 
+// Helper function to calculate final selling price (considering discounts)
+const calculateFinalSellingPrice = (p) => {
+  const basePrice = parseFloat(p.price || 0);
+  const discount = parseFloat(p.discount || 0);
+  if (discount > 0) {
+    return Math.round(basePrice * (1 - discount / 100));
+  }
+  return basePrice;
+};
+
 // @desc Fetch all products (with pagination and filtering)
 // @route GET /api/products
 // @access Public
@@ -110,7 +120,13 @@ const getProducts = async (req, res) => {
   try {
     const query = { hidden: false };
 
-    if (req.query.category) {
+    const isBudgetCategory = req.query.category && (
+      req.query.category.trim().toLowerCase() === 'budget-friendly' ||
+      req.query.category.trim().toLowerCase() === 'budget friendly' ||
+      req.query.category.trim().toLowerCase() === 'under-1000'
+    );
+
+    if (req.query.category && !isBudgetCategory) {
       const cat = req.query.category.trim();
       const catRegex = new RegExp(`^${cat}$`, 'i');
       query.$or = [
@@ -121,6 +137,13 @@ const getProducts = async (req, res) => {
     }
 
     let products = await Product.find(query);
+
+    if (isBudgetCategory) {
+      products = products.filter(p => {
+        const finalPrice = calculateFinalSellingPrice(p);
+        return finalPrice > 0 && finalPrice <= 1000 && p.isAvailable !== false;
+      });
+    }
 
     if (req.query.search) {
       const term = req.query.search.toLowerCase().trim();
@@ -135,6 +158,8 @@ const getProducts = async (req, res) => {
     if (req.query.isValentineProduct === 'true' || req.query.productType === 'valentine') {
       section = 'valentine';
       products = products.filter(p => p.isValentineProduct || p.productType === 'valentine');
+    } else if (isBudgetCategory) {
+      section = 'category:budget-friendly';
     } else if (req.query.category) {
       section = `category:${req.query.category}`;
     }
@@ -146,6 +171,27 @@ const getProducts = async (req, res) => {
   } catch (error) {
     console.error("❌ Error fetching products:", error);
     return res.status(500).json({ message: "Server Error: Failed to fetch products" });
+  }
+};
+
+// @desc Fetch budget-friendly products (price <= ₹1,000)
+// @route GET /api/products/budget-friendly
+// @access Public
+const getBudgetFriendlyProducts = async (req, res) => {
+  try {
+    let products = await Product.find({ hidden: false });
+    products = products.filter(p => {
+      const finalPrice = calculateFinalSellingPrice(p);
+      return finalPrice > 0 && finalPrice <= 1000 && p.isAvailable !== false;
+    });
+
+    products = await applySavedSortingToProducts(products, 'category:budget-friendly');
+    const productsWithReviews = await addReviewStats(products);
+
+    return res.json({ products: productsWithReviews, total: productsWithReviews.length });
+  } catch (error) {
+    console.error("❌ Error fetching budget friendly products:", error);
+    return res.status(500).json({ message: "Server Error: Failed to fetch budget friendly products" });
   }
 };
 
@@ -2827,7 +2873,9 @@ const restoreProductVersion = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
+  calculateFinalSellingPrice,
   getProducts,
+  getBudgetFriendlyProducts,
   getProductById,
   createProduct,
   updateProduct,

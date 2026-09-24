@@ -49,6 +49,34 @@ const ensureOccasionsSection = async (settings) => {
   }
 };
 
+const ensureBudgetFriendlySection = async (settings) => {
+  if (!settings) return;
+  const hasBudgetFriendly = (settings.homeSections || []).some(s => s.type === 'budget_friendly');
+  if (!hasBudgetFriendly) {
+    console.log('⚡ Migrating: Adding budget_friendly section to homeSections');
+    const list = [...(settings.homeSections || [])];
+    list.push({
+      id: 'budget_friendly',
+      type: 'budget_friendly',
+      enabled: true,
+      order: 3.5,
+      title: 'Beautiful Gifts, Thoughtfully Priced',
+      subtitle: 'Discover elegant bouquets and gifts starting from ₹399 — all thoughtfully selected under ₹1,000.',
+      content: {
+        ctaText: 'Explore Budget Friendly →',
+        ctaLink: '/shop/budget-friendly',
+        maxProducts: 8,
+      }
+    });
+    list.sort((a, b) => a.order - b.order);
+    settings.homeSections = list;
+    if (typeof settings.markModified === 'function') {
+      settings.markModified('homeSections');
+    }
+    await settings.save();
+  }
+};
+
 // Get all hero slides
 exports.getHeroSlides = async (req, res) => {
   try {
@@ -99,6 +127,7 @@ exports.getHomeSections = async (req, res) => {
     }
 
     await ensureOccasionsSection(settings);
+    await ensureBudgetFriendlySection(settings);
 
     res.json(settings.homeSections);
   } catch (error) {
@@ -168,6 +197,7 @@ exports.getAllSettings = async (req, res) => {
     }
 
     await ensureOccasionsSection(settings);
+    await ensureBudgetFriendlySection(settings);
 
     if (settings && settings.footerSettings && settings.footerSettings.contactInfo && settings.footerSettings.contactInfo.email === '2006sbf@gmail.com') {
       settings.footerSettings.contactInfo.email = 'contact@sbflorist.in';

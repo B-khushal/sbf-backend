@@ -231,8 +231,12 @@ class ProductDocument {
     this.id = prodId;
     this.title = data.title || data.name || 'Flower Product';
     this.name = data.name || data.title || 'Flower Product';
-    this.countInStock = data.stock !== undefined ? parseInt(data.stock) : (data.countInStock || 10);
+    this.countInStock = (data.stock !== undefined && data.stock !== null)
+      ? parseInt(data.stock)
+      : (data.countInStock !== undefined && data.countInStock !== null ? parseInt(data.countInStock) : 10);
     this.stock = this.countInStock;
+    this.isAvailable = data.isAvailable !== false;
+    this.isOutOfStock = !this.isAvailable || this.stock <= 0;
 
     if (data.hidden !== undefined) {
       this.isVisible = !Boolean(data.hidden);
@@ -251,6 +255,8 @@ class ProductDocument {
     }
 
     const detailsObj = (data.details && typeof data.details === 'object') ? data.details : {};
+    this.discount = data.discount !== undefined ? parseFloat(data.discount) : (detailsObj.discount !== undefined ? parseFloat(detailsObj.discount) : 0);
+    this.comparePrice = data.comparePrice !== undefined ? data.comparePrice : (detailsObj.comparePrice !== undefined ? detailsObj.comparePrice : null);
     this.sameDay = detailsObj.sameDay !== false;
     this.isSameDay = this.sameDay;
     this.displayOrders = data.displayOrders || detailsObj.displayOrders || {};
@@ -315,6 +321,8 @@ class ProductDocument {
       slug: this.slug,
       description: this.description,
       price: parseFloat(this.price || 0),
+      discount: parseFloat(this.discount || 0),
+      comparePrice: this.comparePrice ? parseFloat(this.comparePrice) : null,
       countInStock: this.countInStock,
       stock: this.stock,
       category: this.category,
@@ -327,6 +335,7 @@ class ProductDocument {
       rating: parseFloat(this.rating || 0),
       reviewCount: parseInt(this.reviewCount || 0),
       isAvailable: this.isAvailable !== false,
+      isOutOfStock: this.isOutOfStock,
       isVisible: this.isVisible,
       hidden: this.hidden,
       isFeatured: !!this.isFeatured,
