@@ -1536,64 +1536,54 @@ exports.getActivityLogs = async (req, res) => {
   }
 };
 
+const reportService = require('../services/reportService');
+
 // -------------------------------------------------------------
-// 17. Reports Export
+// 17. Live Report Data Preview
+// -------------------------------------------------------------
+exports.getReportData = async (req, res) => {
+  try {
+    const { reportType = 'daily_summary', timeframe = '30d', startDate, endDate, search, page, limit } = req.query;
+    const data = await reportService.getReportData({
+      reportType,
+      timeframe,
+      startDate,
+      endDate,
+      search,
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 100
+    });
+    return res.json({ success: true, ...data });
+  } catch (error) {
+    console.error('Get Report Data Error:', error);
+    return res.status(500).json({ message: 'Failed to generate report data', error: error.message });
+  }
+};
+
+// -------------------------------------------------------------
+// 18. Reports Export (CSV / JSON)
 // -------------------------------------------------------------
 exports.exportReport = async (req, res) => {
   try {
-    const { reportType = 'daily_summary', format = 'csv', timeframe = '30d' } = req.query;
-    const { start, end } = getDateRange(timeframe);
+    const { reportType = 'daily_summary', format = 'csv', timeframe = '30d', startDate, endDate } = req.query;
 
     // Audit log for report export (Requirement #31)
     await prisma.$executeRawUnsafe(`
       INSERT INTO "marketing_activity_logs" ("id", "userId", "userName", "userRole", "action", "entityType", "entityId", "details")
       VALUES ($1, $2, $3, $4, 'Exported Marketing Report', 'report', $5, $6::jsonb);
-    `, `log_${Date.now()}`, req.user?.id || 'admin', req.user?.name || 'Marketing Head', req.user?.role || 'marketing_head', reportType, JSON.stringify({ format, timeframe }));
+    `, `log_${Date.now()}`, req.user?.id || 'admin', req.user?.name || 'Marketing Head', req.user?.role || 'marketing_head', reportType, JSON.stringify({ format, timeframe, startDate, endDate }));
 
-    let csvContent = 'Date,Visitors,PageViews,AddCart,Checkouts,Orders,Revenue\n';
-    const rows = await prisma.$queryRawUnsafe(`
-      SELECT 
-        TO_CHAR(d.day, 'YYYY-MM-DD') as "date",
-        COALESCE(o."revenue", 0)::NUMERIC as "revenue",
-        COALESCE(o."orders", 0)::INT as "orders",
-        COALESCE(e."visitors", 0)::INT as "visitors",
-        COALESCE(e."pageViews", 0)::INT as "pageViews",
-        COALESCE(e."addCart", 0)::INT as "addCart",
-        COALESCE(e."checkouts", 0)::INT as "checkouts"
-      FROM GENERATE_SERIES($1::timestamptz, $2::timestamptz, '1 day'::interval) d(day)
-      LEFT JOIN (
-        SELECT 
-          DATE_TRUNC('day', "createdAt") as "orderDay",
-          SUM("totalAmount") as "revenue",
-          COUNT(*) as "orders"
-        FROM "Order"
-        WHERE "createdAt" >= $1::timestamptz AND "createdAt" <= $2::timestamptz
-          AND "orderStatus" NOT IN ('cancelled', 'failed')
-          AND "isTestOrder" = false
-        GROUP BY DATE_TRUNC('day', "createdAt")
-      ) o ON DATE_TRUNC('day', d.day) = o."orderDay"
-      LEFT JOIN (
-        SELECT 
-          DATE_TRUNC('day', "timestamp") as "evDay",
-          COUNT(DISTINCT "visitorId") as "visitors",
-          COUNT(CASE WHEN "eventType" = 'page_view' THEN 1 END) as "pageViews",
-          COUNT(CASE WHEN "eventType" = 'add_to_cart' THEN 1 END) as "addCart",
-          COUNT(CASE WHEN "eventType" = 'checkout_started' THEN 1 END) as "checkouts"
-        FROM "analytics_events"
-        WHERE "timestamp" >= $1::timestamptz AND "timestamp" <= $2::timestamptz
-        GROUP BY DATE_TRUNC('day', "timestamp")
-      ) e ON DATE_TRUNC('day', d.day) = e."evDay"
-      ORDER BY "date" DESC;
-    `, start, end);
+    if (format === 'json') {
+      const data = await reportService.getReportData({ reportType, timeframe, startDate, endDate });
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', `attachment; filename=sbf_${reportType}_${timeframe}_${Date.now()}.json`);
+      return res.status(200).json(data);
+    }
 
-    rows.forEach(r => {
-      csvContent += `${r.date},${r.visitors},${r.pageViews},${r.addCart},${r.checkouts},${r.orders},${r.revenue}\n`;
-    });
-
-
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename=sbf_marketing_report_${reportType}_${Date.now()}.csv`);
-    return res.status(200).send(csvContent);
+    const { filename, csv } = await reportService.generateReportCsv({ reportType, timeframe, startDate, endDate });
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return res.status(200).send(csv);
   } catch (error) {
     console.error('Export Report Error:', error);
     return res.status(500).json({ message: 'Failed to export report', error: error.message });

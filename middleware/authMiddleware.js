@@ -9,10 +9,13 @@ const protect = async (req, res, next) => {
     req.headers.authorization &&
     req.headers.authorization.startsWith('Bearer')
   ) {
-    try {
-      // Get token from header
-      token = req.headers.authorization.split(' ')[1];
+    token = req.headers.authorization.split(' ')[1];
+  } else if (req.query && req.query.token) {
+    token = req.query.token;
+  }
 
+  if (token) {
+    try {
       // Verify token
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
@@ -24,9 +27,11 @@ const protect = async (req, res, next) => {
       }
 
       // Check if session has been revoked
-      const session = req.user.login_history.find(s => s.token === token);
-      if (session && session.status === 'revoked') {
-        return res.status(401).json({ message: 'Not authorized, session has been revoked' });
+      if (req.user.login_history && Array.isArray(req.user.login_history)) {
+        const session = req.user.login_history.find(s => s.token === token);
+        if (session && session.status === 'revoked') {
+          return res.status(401).json({ message: 'Not authorized, session has been revoked' });
+        }
       }
 
       // Compile permissions by merging role and custom permissions
@@ -44,16 +49,14 @@ const protect = async (req, res, next) => {
       }
       req.user.permissions = mergedPermissions;
 
-      next();
+      return next();
     } catch (error) {
       console.error('Auth Middleware Error:', error);
       return res.status(401).json({ message: 'Not authorized, token failed' });
     }
   }
 
-  if (!token) {
-    return res.status(401).json({ message: 'Not authorized, no token' });
-  }
+  return res.status(401).json({ message: 'Not authorized, no token' });
 };
 
 // Admin-only middleware

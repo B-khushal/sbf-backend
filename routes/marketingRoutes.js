@@ -32,6 +32,7 @@ const {
   getSettings,
   updateSettings,
   getActivityLogs,
+  getReportData,
   exportReport
 } = require('../controllers/marketingController');
 
@@ -60,12 +61,13 @@ router.get('/retention', protect, marketingAccess, getRetention);
 router.get('/opportunities', protect, marketingAccess, getOpportunities);
 router.get('/events-feed', protect, marketingAccess, getEventsFeed);
 router.get('/settings', protect, marketingAccess, getSettings);
+router.get('/reports/data', protect, marketingAccess, getReportData);
+router.get('/reports/export', protect, marketingAccess, exportReport);
 
 // 4. Marketing Head Privileged Actions (Protected by marketingHeadOnly)
 router.put('/settings', protect, marketingHeadOnly, updateSettings);
 router.post('/campaigns', protect, marketingHeadOnly, createCampaign);
 router.post('/segments', protect, marketingHeadOnly, createSegment);
-router.get('/reports/export', protect, marketingHeadOnly, exportReport);
 router.get('/activity-logs', protect, marketingHeadOnly, getActivityLogs);
 
 module.exports = router;
