@@ -74,6 +74,36 @@ class RedirectModel {
     });
     return new RedirectDocument(created);
   }
+
+  static async deleteMany(where = {}) {
+    const filter = {};
+    if (where.$or && Array.isArray(where.$or)) {
+      const orConditions = where.$or.map(cond => {
+        const c = {};
+        if (cond.fromUrl || cond.sourceUrl) {
+          const val = cond.fromUrl || cond.sourceUrl;
+          if (typeof val === 'object' && val.$in) {
+            c.sourceUrl = { in: val.$in };
+          } else {
+            c.sourceUrl = val;
+          }
+        }
+        if (cond.toUrl || cond.targetUrl) {
+          const val = cond.toUrl || cond.targetUrl;
+          if (typeof val === 'object' && val.$in) {
+            c.targetUrl = { in: val.$in };
+          } else {
+            c.targetUrl = val;
+          }
+        }
+        return c;
+      }).filter(c => Object.keys(c).length > 0);
+      if (orConditions.length > 0) {
+        filter.OR = orConditions;
+      }
+    }
+    return await prisma.redirect.deleteMany({ where: filter });
+  }
 }
 
 module.exports = RedirectModel;

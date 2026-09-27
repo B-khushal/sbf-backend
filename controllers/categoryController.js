@@ -109,17 +109,18 @@ const createCategory = asyncHandler(async (req, res) => {
 
   // Generate categoryUrl based on parentId
   let parentSlug = '';
-  if (parentId) {
-    const parent = await Category.findById(parentId);
+  const cleanParentId = (parentId && parentId !== 'null' && String(parentId).trim() !== '') ? String(parentId).trim() : null;
+  if (cleanParentId) {
+    const parent = await Category.findById(cleanParentId);
     if (parent) {
       parentSlug = parent.slug;
     }
   }
 
-  const categoryUrl = parentId ? `/${parentSlug}/${categorySlug}` : `/${categorySlug}`;
+  const categoryUrl = (cleanParentId && parentSlug) ? `/${parentSlug}/${categorySlug}` : `/${categorySlug}`;
 
   // Check unique categoryUrl
-  const urlExists = await Category.findOne({ categoryUrl });
+  const urlExists = await Category.findOne({ categoryUrl, exactUrlOnly: true });
   if (urlExists) {
     res.status(400);
     throw new Error('A category with this URL already exists.');
@@ -135,7 +136,7 @@ const createCategory = asyncHandler(async (req, res) => {
     categoryUrl,
     status: status || 'active',
     sortOrder: sortOrder || 0,
-    parentId: parentId || null,
+    parentId: cleanParentId,
     showInShop: showInShop !== undefined ? showInShop : true,
   });
 
@@ -175,7 +176,10 @@ const updateCategory = asyncHandler(async (req, res) => {
 
   // Generate new categoryUrl
   let parentSlug = '';
-  const resolvedParentId = parentId !== undefined ? parentId : category.parentId;
+  const rawParentId = parentId !== undefined ? parentId : category.parentId;
+  const resolvedParentId = (typeof rawParentId === 'object' && rawParentId !== null)
+    ? (rawParentId._id || rawParentId.id || null)
+    : (rawParentId && rawParentId !== 'null' && String(rawParentId).trim() !== '' ? String(rawParentId).trim() : null);
   
   if (resolvedParentId) {
     const parent = await Category.findById(resolvedParentId);
@@ -184,11 +188,11 @@ const updateCategory = asyncHandler(async (req, res) => {
     }
   }
 
-  const newUrl = resolvedParentId ? `/${parentSlug}/${newSlug}` : `/${newSlug}`;
+  const newUrl = (resolvedParentId && parentSlug) ? `/${parentSlug}/${newSlug}` : `/${newSlug}`;
 
   // Verify unique URL if changed
   if (newUrl !== oldUrl) {
-    const urlExists = await Category.findOne({ categoryUrl: newUrl });
+    const urlExists = await Category.findOne({ categoryUrl: newUrl, exactUrlOnly: true });
     if (urlExists && String(urlExists._id || urlExists.id) !== String(req.params.id)) {
       res.status(400);
       throw new Error('A category with this URL already exists.');
