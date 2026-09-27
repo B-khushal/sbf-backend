@@ -210,8 +210,12 @@ function sanitizeProductDataForPrisma(data = {}) {
     detailsObj = Array.isArray(data.details) ? { items: data.details } : { ...data.details };
   }
   if (data.sameDay !== undefined) detailsObj.sameDay = Boolean(data.sameDay);
-  if (data.categories !== undefined) detailsObj.categories = data.categories;
-  if (data.subcategory !== undefined) detailsObj.subcategory = data.subcategory;
+  if (data.category !== undefined) detailsObj.category = String(data.category);
+  if (data.categories !== undefined) detailsObj.categories = Array.isArray(data.categories) ? data.categories : [data.categories];
+  if (data.subcategory !== undefined) detailsObj.subcategory = String(data.subcategory);
+  if (data.images !== undefined && Array.isArray(data.images)) {
+    detailsObj.images = data.images.map(img => typeof img === 'string' ? img : (img?.url || img));
+  }
   if (data.careInstructions !== undefined) detailsObj.careInstructions = data.careInstructions;
   if (data.displayOrders !== undefined) detailsObj.displayOrders = data.displayOrders;
   if (data.seasonalCampaigns !== undefined) detailsObj.seasonalCampaigns = data.seasonalCampaigns;
@@ -221,6 +225,172 @@ function sanitizeProductDataForPrisma(data = {}) {
   }
 
   return cleanData;
+}
+
+async function syncProductRelations(productId, productData) {
+  if (!productId) return;
+
+  // 1. Sync Images
+  const rawImages = productData.images !== undefined
+    ? productData.images
+    : (productData.details && productData.details.images ? productData.details.images : null);
+
+  if (Array.isArray(rawImages)) {
+    try {
+      await prisma.productImage.deleteMany({ where: { productId } });
+      const validImages = rawImages
+        .map((img, i) => {
+          const url = typeof img === 'string' ? img : (img && img.url ? img.url : '');
+          if (!url || typeof url !== 'string' || !url.trim()) return null;
+          return {
+            id: `img_${productId}_${i}_${Date.now()}`,
+            productId,
+            url: url.trim(),
+            displayOrder: i,
+            isPrimary: i === 0,
+            alt: typeof img === 'object' && img.alt ? img.alt : null,
+            publicId: typeof img === 'object' && img.publicId ? img.publicId : null,
+          };
+        })
+        .filter(Boolean);
+
+      if (validImages.length > 0) {
+        await prisma.productImage.createMany({
+          data: validImages
+        });
+      }
+    } catch (imgErr) {
+      console.error('Error syncing productImage relations for product', productId, imgErr);
+    }
+  }
+
+  // 2. Sync Categories
+  const categoryTokens = new Set();
+  if (productData.category && typeof productData.category === 'string') {
+    categoryTokens.add(productData.category.trim());
+  }
+  if (productData.subcategory && typeof productData.subcategory === 'string') {
+    categoryTokens.add(productData.subcategory.trim());
+  }
+  if (Array.isArray(productData.categories)) {
+    productData.categories.forEach(c => {
+      const val = typeof c === 'string' ? c : (c?.slug || c?.name || c?.categoryId || '');
+      if (val) categoryTokens.add(String(val).trim());
+    });
+  }
+  if (productData.details && Array.isArray(productData.details.categories)) {
+    productData.details.categories.forEach(c => {
+      if (c && typeof c === 'string') categoryTokens.add(c.trim());
+    });
+  }
+  if (productData.details && productData.details.subcategory && typeof productData.details.subcategory === 'string') {
+    categoryTokens.add(productData.details.subcategory.trim());
+  }
+  if (productData.details && productData.details.category && typeof productData.details.category === 'string') {
+    categoryTokens.add(productData.details.category.trim());
+  }
+
+  if (categoryTokens.size > 0) {
+    try {
+      const allCategories = await prisma.category.findMany();
+      const catMap = new Map();
+      allCategories.forEach(cat => {
+        catMap.set(cat.id.toLowerCase(), cat.id);
+        catMap.set(cat.slug.toLowerCase(), cat.id);
+        catMap.set(cat.name.toLowerCase(), cat.id);
+      });
+
+      const matchedCatIds = new Set();
+      for (const token of categoryTokens) {
+        const lower = token.toLowerCase();
+        let catId = catMap.get(lower);
+        if (!catId) {
+          const normalized = lower.replace(/\s+/g, '-');
+          catId = catMap.get(normalized);
+        }
+        if (catId) {
+          matchedCatIds.add(catId);
+        }
+      }
+
+      if (matchedCatIds.size > 0) {
+        await prisma.productCategory.deleteMany({ where: { productId } });
+        const catData = Array.from(matchedCatIds).map(categoryId => ({
+          productId,
+          categoryId
+        }));
+        await prisma.productCategory.createMany({
+          data: catData,
+          skipDuplicates: true
+        });
+      }
+    } catch (catErr) {
+      console.error('Error syncing productCategory relations for product', productId, catErr);
+    }
+  }
+
+  // 3. Sync Price Variants
+  const rawVariants = Array.isArray(productData.priceVariants) ? productData.priceVariants : null;
+  if (rawVariants !== null) {
+    try {
+      await prisma.productVariant.deleteMany({ where: { productId } });
+      if (rawVariants.length > 0) {
+        const variantData = rawVariants.map((v, i) => ({
+          id: (v.id && String(v.id).trim().length > 0) ? String(v.id) : `var_${productId}_${i}_${Date.now()}`,
+          productId,
+          name: String(v.label || v.name || v.size || 'Standard'),
+          size: String(v.size || v.label || v.name || 'Standard'),
+          price: parseFloat(v.price || 0),
+          stock: parseInt(v.stock || 0),
+          isDefault: i === 0
+        }));
+        await prisma.productVariant.createMany({
+          data: variantData
+        });
+      }
+    } catch (varErr) {
+      console.error('Error syncing productVariant relations for product', productId, varErr);
+    }
+  }
+
+  // 4. Sync Occasions
+  const rawOccasions = Array.isArray(productData.occasionIds)
+    ? productData.occasionIds
+    : (Array.isArray(productData.occasions) ? productData.occasions : null);
+  if (rawOccasions !== null) {
+    try {
+      await prisma.productOccasion.deleteMany({ where: { productId } });
+      if (rawOccasions.length > 0) {
+        const allOccasions = await prisma.occasion.findMany();
+        const occMap = new Map();
+        allOccasions.forEach(occ => {
+          occMap.set(occ.id.toLowerCase(), occ.id);
+          occMap.set(occ.slug.toLowerCase(), occ.id);
+          occMap.set(occ.name.toLowerCase(), occ.id);
+        });
+
+        const matchedOccIds = new Set();
+        for (const rawOcc of rawOccasions) {
+          const token = typeof rawOcc === 'string' ? rawOcc : (rawOcc?.id || rawOcc?._id || rawOcc?.slug || rawOcc?.name || '');
+          if (!token) continue;
+          const occId = occMap.get(String(token).toLowerCase());
+          if (occId) matchedOccIds.add(occId);
+        }
+
+        if (matchedOccIds.size > 0) {
+          await prisma.productOccasion.createMany({
+            data: Array.from(matchedOccIds).map(occasionId => ({
+              productId,
+              occasionId
+            })),
+            skipDuplicates: true
+          });
+        }
+      }
+    } catch (occErr) {
+      console.error('Error syncing productOccasion relations for product', productId, occErr);
+    }
+  }
 }
 
 class ProductDocument {
@@ -263,52 +433,70 @@ class ProductDocument {
     this.seasonalCampaigns = data.seasonalCampaigns || detailsObj.seasonalCampaigns || [];
     this.campaignSettings = data.campaignSettings || detailsObj.campaignSettings || {};
 
-    if (Array.isArray(data.categories)) {
-      this.categories = data.categories.map(c => {
+    // CATEGORIES
+    let parsedCategories = [];
+    if (Array.isArray(data.categories) && data.categories.length > 0) {
+      parsedCategories = data.categories.map(c => {
         if (typeof c === 'string') return c;
-        if (c.category && typeof c.category === 'object') return c.category.name || c.category.slug || '';
-        if (c.name) return c.name;
+        if (c.category && typeof c.category === 'object') return c.category.slug || c.category.name || '';
         if (c.slug) return c.slug;
+        if (c.name) return c.name;
         return c.categoryId || '';
       }).filter(Boolean);
-      this.category = this.categories[0] || 'flowers';
-    } else if (typeof data.category === 'string') {
-      this.category = data.category;
-      this.categories = [data.category];
-    } else {
-      this.category = 'flowers';
-      this.categories = ['flowers'];
+    } else if (Array.isArray(detailsObj.categories) && detailsObj.categories.length > 0) {
+      parsedCategories = detailsObj.categories.map(c => {
+        if (typeof c === 'string') return c;
+        return c?.slug || c?.name || '';
+      }).filter(Boolean);
+    } else if (typeof data.category === 'string' && data.category.trim()) {
+      parsedCategories = [data.category.trim()];
+    } else if (typeof detailsObj.category === 'string' && detailsObj.category.trim()) {
+      parsedCategories = [detailsObj.category.trim()];
     }
 
+    this.categories = parsedCategories;
+
+    // Primary category: preserve explicit data.category, else detailsObj.category, else first category, else 'flowers'
+    this.category = data.category || detailsObj.category || (this.categories.length > 0 ? this.categories[0] : 'flowers');
     this.subcategory = data.subcategory || detailsObj.subcategory || '';
     this.tags = data.tags || detailsObj.tags || [];
 
-    if (Array.isArray(data.occasions)) {
+    // OCCASIONS
+    if (Array.isArray(data.occasions) && data.occasions.length > 0) {
       this.occasions = data.occasions.map(o => {
         if (typeof o === 'string') return o;
-        if (o.occasion && typeof o.occasion === 'object') return o.occasion.name || o.occasion.slug || '';
-        if (o.name) return o.name;
+        if (o.occasion && typeof o.occasion === 'object') return o.occasion.slug || o.occasion.name || '';
         if (o.slug) return o.slug;
+        if (o.name) return o.name;
         return o.occasionId || '';
       }).filter(Boolean);
+    } else if (Array.isArray(detailsObj.occasions) && detailsObj.occasions.length > 0) {
+      this.occasions = detailsObj.occasions;
     } else {
       this.occasions = [];
     }
 
-    if (data.images) {
+    // IMAGES
+    if (Array.isArray(data.images) && data.images.length > 0) {
       this.images = data.images.map(img => typeof img === 'string' ? img : (img.url || img));
+    } else if (Array.isArray(detailsObj.images) && detailsObj.images.length > 0) {
+      this.images = detailsObj.images.map(img => typeof img === 'string' ? img : (img.url || img));
+    } else if (typeof data.image === 'string' && data.image.trim()) {
+      this.images = [data.image.trim()];
     } else {
       this.images = [];
     }
 
-    if (data.priceVariants) {
+    if (data.priceVariants && Array.isArray(data.priceVariants) && data.priceVariants.length > 0) {
       this.priceVariants = data.priceVariants.map(v => ({
         _id: String(v.id || v._id || ''),
         id: String(v.id || v._id || ''),
-        label: v.name || v.size,
-        price: parseFloat(v.price),
+        label: v.name || v.size || v.label,
+        price: parseFloat(v.price || 0),
         stock: v.stock || 0
       }));
+    } else {
+      this.priceVariants = [];
     }
   }
 
@@ -423,11 +611,24 @@ class ProductDocument {
       }
     });
 
-    Object.assign(this, updated);
-    this._id = updated.id;
-    this.id = updated.id;
-    this.hidden = !updated.isVisible;
-    this.isNew = updated.isNewArrival;
+    await syncProductRelations(productId, this);
+
+    const fullProduct = await prisma.product.findUnique({
+      where: { id: productId },
+      include: {
+        images: { orderBy: { displayOrder: 'asc' } },
+        priceVariants: { orderBy: { price: 'asc' } },
+        categories: { include: { category: true } },
+        occasions: { include: { occasion: true } }
+      }
+    });
+
+    const doc = new ProductDocument(fullProduct || updated);
+    Object.assign(this, doc);
+    this._id = doc.id;
+    this.id = doc.id;
+    this.hidden = !doc.isVisible;
+    this.isNew = doc.isNewArrival;
     return this;
   }
 }
@@ -505,9 +706,10 @@ class ProductModel extends ProductDocument {
     const promise = prisma.product.findUnique({
       where: { id: String(id) },
       include: {
-        images: true,
-        priceVariants: true,
-        categories: { include: { category: true } }
+        images: { orderBy: { displayOrder: 'asc' } },
+        priceVariants: { orderBy: { price: 'asc' } },
+        categories: { include: { category: true } },
+        occasions: { include: { occasion: true } }
       }
     });
     return new QueryChain(promise);
@@ -519,8 +721,8 @@ class ProductModel extends ProductDocument {
       where: prismaWhere,
       orderBy: { createdAt: 'desc' },
       include: {
-        images: true,
-        priceVariants: true,
+        images: { orderBy: { displayOrder: 'asc' } },
+        priceVariants: { orderBy: { price: 'asc' } },
         categories: { include: { category: true } },
         occasions: { include: { occasion: true } }
       }
@@ -535,7 +737,7 @@ class ProductModel extends ProductDocument {
     return products.map(p => ({
       _id: p.name,
       name: p.name,
-      categories: p.categories.map(c => c.category?.name).filter(Boolean)
+      categories: p.categories.map(c => c.category?.slug || c.category?.name).filter(Boolean)
     }));
   }
 
@@ -551,18 +753,44 @@ class ProductModel extends ProductDocument {
         ...cleanData
       }
     });
-    return new ProductDocument(created);
+
+    await syncProductRelations(productId, data);
+
+    const fullProduct = await prisma.product.findUnique({
+      where: { id: productId },
+      include: {
+        images: { orderBy: { displayOrder: 'asc' } },
+        priceVariants: { orderBy: { price: 'asc' } },
+        categories: { include: { category: true } },
+        occasions: { include: { occasion: true } }
+      }
+    });
+
+    return new ProductDocument(fullProduct || created);
   }
 
   static async findByIdAndUpdate(id, update, options = {}) {
     const dataToUpdate = update.$set ? update.$set : update;
     const cleanData = sanitizeProductDataForPrisma(dataToUpdate);
     try {
-      const updated = await prisma.product.update({
+      await prisma.product.update({
         where: { id: String(id) },
         data: cleanData
       });
-      return new ProductDocument(updated);
+
+      await syncProductRelations(String(id), dataToUpdate);
+
+      const fullProduct = await prisma.product.findUnique({
+        where: { id: String(id) },
+        include: {
+          images: { orderBy: { displayOrder: 'asc' } },
+          priceVariants: { orderBy: { price: 'asc' } },
+          categories: { include: { category: true } },
+          occasions: { include: { occasion: true } }
+        }
+      });
+
+      return new ProductDocument(fullProduct);
     } catch (e) {
       console.error('Product findByIdAndUpdate error:', e);
       return null;
