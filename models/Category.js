@@ -96,8 +96,16 @@ class CategoryDocument {
     this.sortOrder = typeof data.sortOrder === 'number' ? data.sortOrder : (typeof data.displayOrder === 'number' ? data.displayOrder : 0);
     this.displayOrder = this.sortOrder;
     this.categoryUrl = data.categoryUrl || (data.slug ? `/${data.slug}` : '');
-    this.showInShop = data.showInShop !== undefined ? Boolean(data.showInShop) : (data.isFeatured !== undefined ? Boolean(data.isFeatured) : true);
-    this.isFeatured = this.showInShop;
+    
+    let initialShowInShop = true;
+    if (data.showInShop !== undefined) {
+      initialShowInShop = Boolean(data.showInShop);
+    } else if (data.isFeatured !== undefined) {
+      initialShowInShop = Boolean(data.isFeatured);
+    }
+    this._showInShop = initialShowInShop;
+    this._isFeatured = initialShowInShop;
+
     this.seoTitle = data.seoTitle || data.metaTitle || data.name || '';
     this.seoDescription = data.seoDescription || data.metaDescription || data.description || '';
 
@@ -115,6 +123,24 @@ class CategoryDocument {
     } else {
       this.parentId = null;
     }
+  }
+
+  get showInShop() {
+    return this._showInShop !== undefined ? this._showInShop : Boolean(this._isFeatured);
+  }
+
+  set showInShop(val) {
+    const b = Boolean(val);
+    this._showInShop = b;
+    this._isFeatured = b;
+  }
+
+  get isFeatured() {
+    return this.showInShop;
+  }
+
+  set isFeatured(val) {
+    this.showInShop = val;
   }
 
   toJSON() {
@@ -165,6 +191,8 @@ class CategoryDocument {
       }
     }
 
+    const isFeaturedValue = this.showInShop;
+
     const updated = await prisma.category.upsert({
       where: { id: catId },
       update: {
@@ -178,7 +206,7 @@ class CategoryDocument {
         parentId: resolvedParentId,
         displayOrder: typeof this.displayOrder === 'number' ? this.displayOrder : (typeof this.sortOrder === 'number' ? this.sortOrder : 0),
         isActive: isAct,
-        isFeatured: this.showInShop === true || this.isFeatured === true,
+        isFeatured: isFeaturedValue,
         metaTitle: this.seoTitle || this.name || null,
         metaDescription: this.seoDescription || this.description || null
       },
@@ -194,7 +222,7 @@ class CategoryDocument {
         parentId: resolvedParentId,
         displayOrder: typeof this.displayOrder === 'number' ? this.displayOrder : (typeof this.sortOrder === 'number' ? this.sortOrder : 0),
         isActive: isAct,
-        isFeatured: this.showInShop === true || this.isFeatured === true,
+        isFeatured: isFeaturedValue,
         metaTitle: this.seoTitle || this.name || null,
         metaDescription: this.seoDescription || this.description || null
       },
@@ -298,7 +326,19 @@ class CategoryModel extends CategoryDocument {
   }
 
   static async findByIdAndUpdate(id, update, options = {}) {
-    const dataToUpdate = update.$set ? update.$set : update;
+    const dataToUpdate = update.$set ? { ...update.$set } : { ...update };
+    if (dataToUpdate.showInShop !== undefined) {
+      dataToUpdate.isFeatured = Boolean(dataToUpdate.showInShop);
+      delete dataToUpdate.showInShop;
+    }
+    if (dataToUpdate.status !== undefined) {
+      dataToUpdate.isActive = dataToUpdate.status !== 'inactive';
+      delete dataToUpdate.status;
+    }
+    if (dataToUpdate.sortOrder !== undefined) {
+      dataToUpdate.displayOrder = Number(dataToUpdate.sortOrder) || 0;
+      delete dataToUpdate.sortOrder;
+    }
     try {
       const updated = await prisma.category.update({
         where: { id: String(id) },
@@ -307,6 +347,7 @@ class CategoryModel extends CategoryDocument {
       });
       return new CategoryDocument(updated);
     } catch (e) {
+      console.error('Category findByIdAndUpdate error:', e);
       return null;
     }
   }

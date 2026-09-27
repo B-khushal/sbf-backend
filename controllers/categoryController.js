@@ -218,7 +218,11 @@ const updateCategory = asyncHandler(async (req, res) => {
   category.status = status || category.status;
   category.sortOrder = sortOrder !== undefined ? sortOrder : category.sortOrder;
   category.parentId = resolvedParentId || null;
-  category.showInShop = showInShop !== undefined ? showInShop : category.showInShop;
+  if (showInShop !== undefined) {
+    category.showInShop = Boolean(showInShop);
+  } else if (req.body.isFeatured !== undefined) {
+    category.isFeatured = Boolean(req.body.isFeatured);
+  }
   category.categoryUrl = newUrl;
 
   const updatedCategory = await category.save();
