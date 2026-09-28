@@ -88,6 +88,27 @@ async function runTests() {
   console.log('✅ Exported count:', prodRes.totalCount);
   if (prodRes.totalCount !== 1) throw new Error(`Expected 1 product, got ${prodRes.totalCount}`);
 
+  // Test 4: Staging URL sanitization (e.g. sbf-frontend.onrender.com -> sbflorist.in/product)
+  console.log('\n--- TEST 4: Domain Sanitization (onrender.com -> sbflorist.in/product) ---');
+  const oldEnv = process.env.FRONTEND_URL;
+  try {
+    process.env.FRONTEND_URL = 'https://sbf-frontend.onrender.com';
+    const renderRes = await generateProductCatalogCsv({ type: 'products', productIds: [sampleId] });
+    const renderLines = renderRes.csv.replace('\uFEFF', '').split('\r\n').filter(Boolean);
+    const renderRow = parseCsvRow(renderLines[1]);
+    const renderUrl = renderRow[7];
+    console.log('Product URL with onrender env:', renderUrl);
+    if (!renderUrl.startsWith('https://sbflorist.in/product/')) {
+      throw new Error(`Expected product URL to start with https://sbflorist.in/product/, got: ${renderUrl}`);
+    }
+    if (renderUrl.includes('onrender')) {
+      throw new Error(`Product URL contains onrender: ${renderUrl}`);
+    }
+    console.log('✅ Successfully sanitized onrender URL to https://sbflorist.in/product/...');
+  } finally {
+    process.env.FRONTEND_URL = oldEnv;
+  }
+
   console.log('\n🎉 ALL TESTS PASSED SUCCESSFULLY! Production-ready.');
   process.exit(0);
 }

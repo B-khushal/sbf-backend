@@ -64,6 +64,29 @@ function cleanDescription(text) {
   return str;
 }
 
+/**
+ * Resolves the public frontend base URL for product links and uploads.
+ * Strictly guarantees the official production custom domain (https://sbflorist.in),
+ * preventing staging/temporary hosting URLs like *.onrender.com, render.com, or localhost
+ * from leaking into Meta Ads, marketing catalogs, or public feeds.
+ */
+function resolvePublicFrontendUrl(customUrl) {
+  let url = (customUrl || process.env.FRONTEND_URL || 'https://sbflorist.in').trim().replace(/\/+$/, '');
+  if (
+    !url ||
+    url.includes('onrender.com') ||
+    url.includes('render.com') ||
+    url.includes('localhost') ||
+    url.includes('127.0.0.1')
+  ) {
+    return 'https://sbflorist.in';
+  }
+  if (url.startsWith('http://')) {
+    url = url.replace('http://', 'https://');
+  }
+  return url;
+}
+
 // Cache for backup original images (loaded once if needed)
 let backupOriginalMap = null;
 function getBackupOriginalMap() {
@@ -343,7 +366,7 @@ async function generateProductCatalogCsv(options = {}) {
     user
   } = options;
 
-  const frontendBaseUrl = (process.env.FRONTEND_URL || 'https://sbflorist.in').replace(/\/+$/, '');
+  const frontendBaseUrl = resolvePublicFrontendUrl(options.frontendBaseUrl || options.frontendUrl);
 
   // Parse category tokens
   let parsedCategoryTokens = [];
@@ -613,5 +636,6 @@ async function generateProductCatalogCsv(options = {}) {
 
 module.exports = {
   generateProductCatalogCsv,
-  CSV_HEADERS
+  CSV_HEADERS,
+  resolvePublicFrontendUrl
 };

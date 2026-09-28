@@ -2139,7 +2139,10 @@ const getSharePreview = async (req, res) => {
       }
     }
 
-    const frontendUrl = process.env.FRONTEND_URL || 'https://sbflorist.in';
+    let frontendUrl = (process.env.FRONTEND_URL || 'https://sbflorist.in').replace(/\/+$/, '');
+    if (frontendUrl.includes('onrender.com') || frontendUrl.includes('render.com') || frontendUrl.includes('localhost')) {
+      frontendUrl = 'https://sbflorist.in';
+    }
     const protocol = req.protocol;
     const host = req.get('host');
     const backendUrl = `${protocol}://${host}`;
@@ -2294,16 +2297,17 @@ const getVideoSitemap = async (req, res) => {
       videos: { $exists: true, $not: { $size: 0 } }
     });
 
-    const protocol = req.protocol;
-    const host = req.get('host');
-    const baseUrl = `${protocol}://${host}`;
+    const rawFrontend = (process.env.FRONTEND_URL || 'https://sbflorist.in').replace(/\/+$/, '');
+    const publicDomain = (rawFrontend.includes('onrender.com') || rawFrontend.includes('render.com') || rawFrontend.includes('localhost'))
+      ? 'https://sbflorist.in'
+      : rawFrontend;
 
     let xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
         xmlns:video="http://www.google.com/schemas/sitemap-video/1.1">`;
 
     for (const product of products) {
-      const loc = `${baseUrl}/product/${product._id}`;
+      const loc = `${publicDomain}/product/${product.slug || product._id}`;
       for (const video of product.videos) {
         const thumbnail = video.thumbnailUrl || (product.images && product.images[0]) || `${baseUrl}/images/placeholder.svg`;
         const title = video.title || product.title;
