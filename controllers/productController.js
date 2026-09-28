@@ -2872,6 +2872,55 @@ const restoreProductVersion = asyncHandler(async (req, res) => {
   res.json({ success: true, message: 'Product version restored successfully', product });
 });
 
+const { generateProductCatalogCsv } = require('../services/productExportService');
+
+/**
+ * @desc Export Product Catalog CSV for Meta Ads & Marketing
+ * @route GET /api/admin/products/export OR /api/products/export
+ * @access Private/Admin or Vendor
+ */
+const exportProductCatalog = async (req, res) => {
+  try {
+    const { type, categoryIds, productIds, format } = req.query;
+
+    const result = await generateProductCatalogCsv({
+      type: type || (productIds ? 'products' : (categoryIds ? 'categories' : 'all')),
+      categoryIds,
+      productIds,
+      user: req.user
+    });
+
+    if (format === 'json') {
+      return res.json({
+        success: true,
+        filename: result.filename,
+        totalCount: result.totalCount,
+        completeCount: result.completeCount,
+        warningCount: result.warningCount,
+        warnings: result.warnings,
+        csv: result.csv
+      });
+    }
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, X-Export-Total, X-Export-Complete, X-Export-Warnings-Count, X-Export-Warnings');
+    res.setHeader('X-Export-Total', String(result.totalCount));
+    res.setHeader('X-Export-Complete', String(result.completeCount));
+    res.setHeader('X-Export-Warnings-Count', String(result.warningCount));
+    res.setHeader('X-Export-Warnings', encodeURIComponent(JSON.stringify(result.warnings.slice(0, 50))));
+
+    return res.status(200).send(result.csv);
+  } catch (error) {
+    console.error('Error generating product catalog export:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to generate product catalog export',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   calculateFinalSellingPrice,
   getProducts,
@@ -2912,5 +2961,7 @@ module.exports = {
   getProductsByCatalogType,
   executeBulkAction,
   restoreProductVersion,
+  exportProductCatalog,
 };
+
 

@@ -37,7 +37,9 @@ const {
   getProductsByCatalogType,
   executeBulkAction,
   restoreProductVersion,
+  exportProductCatalog,
 } = require('../controllers/productController');
+
 
 const {
   createProductReview,
@@ -146,6 +148,8 @@ router.route('/:id/reviews')
   );
 
 // Admin routes for product management
+router.get('/admin/export', protect, adminOrVendor, exportProductCatalog);
+router.get('/export', protect, adminOrVendor, exportProductCatalog);
 router.get('/admin/overview-stats', protect, adminOrVendor, getOverviewStats);
 router.post('/admin/bulk-action', protect, adminOrVendor, executeBulkAction);
 router.get('/type/:type', getProductsByCatalogType);
@@ -153,6 +157,7 @@ router.post('/:id/restore-version', protect, adminOrVendor, restoreProductVersio
 router.get('/admin/list', protect, adminOrVendor, getAdminProducts);
 router.get('/admin/all', protect, adminOrVendor, getAdminProducts);
 router.get('/admin/products', protect, adminOrVendor, getAdminProducts);
+
 router.put('/admin/:id/toggle-visibility', protect, adminOrVendor, toggleProductVisibility);
 router.put('/:id/visibility', protect, adminOrVendor, toggleProductVisibility);
 router.put('/:id/toggle-visibility', protect, adminOrVendor, toggleProductVisibility);

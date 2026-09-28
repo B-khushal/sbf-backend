@@ -216,6 +216,8 @@ function sanitizeProductDataForPrisma(data = {}) {
   if (data.images !== undefined && Array.isArray(data.images)) {
     detailsObj.images = data.images.map(img => typeof img === 'string' ? img : (img?.url || img));
   }
+  if (data.originalImages !== undefined) detailsObj.originalImages = data.originalImages;
+  if (data.details && data.details.originalImages !== undefined) detailsObj.originalImages = data.details.originalImages;
   if (data.careInstructions !== undefined) detailsObj.careInstructions = data.careInstructions;
   if (data.displayOrders !== undefined) detailsObj.displayOrders = data.displayOrders;
   if (data.seasonalCampaigns !== undefined) detailsObj.seasonalCampaigns = data.seasonalCampaigns;
