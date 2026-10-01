@@ -7,6 +7,7 @@ const ActivityLog = require('../models/ActivityLog');
 const jwt = require('jsonwebtoken');
 const generateToken = require('../utils/generateToken');
 const bcrypt = require('bcryptjs');
+const { normalizeEmail } = require('../utils/emailNormalizer');
 
 // Seed default roles if not present
 const seedDefaultRoles = async () => {
@@ -187,7 +188,8 @@ exports.getStaff = async (req, res) => {
 // POST /api/staff
 exports.createStaff = async (req, res) => {
   try {
-    const { name, email, phone, role, password, assigned_store, assigned_zone, permissions, profilePhoto } = req.body;
+    const { name, phone, role, password, assigned_store, assigned_zone, permissions, profilePhoto } = req.body;
+    const email = req.body.email ? normalizeEmail(req.body.email) : undefined;
 
     const existingUser = await User.findOne({ email });
     if (existingUser) {
@@ -274,7 +276,7 @@ exports.updateStaff = async (req, res) => {
     }
 
     user.name = name || user.name;
-    user.email = email || user.email;
+    user.email = email ? normalizeEmail(email) : user.email;
     user.phone = phone || user.phone;
     user.role = role || user.role;
     user.status = status || user.status;

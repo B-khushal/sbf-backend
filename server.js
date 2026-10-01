@@ -634,6 +634,8 @@ const startServer = async () => {
 
     app.use(express.json({ limit: '50mb' }));
     app.use(express.urlencoded({ limit: '50mb', extended: true }));
+    const { emailNormalizerMiddleware } = require('./utils/emailNormalizer');
+    app.use(emailNormalizerMiddleware);
     app.use(morgan('dev', {
       skip: (req) => req.method === 'GET' && req.originalUrl.startsWith('/api/notifications'),
     }));

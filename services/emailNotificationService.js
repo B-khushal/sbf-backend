@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { getPdfOptions } = require('../utils/pdfHelper');
 const { sendEmail } = require('./emailService');
+const { normalizeEmail } = require('../utils/emailNormalizer');
 
 // Initialize email service
 let emailTransporter = null;
@@ -1476,7 +1477,7 @@ const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
 // Helper to validate email format and reject placeholders
 const isValidRecipientEmail = (em) => {
   if (!em || typeof em !== 'string') return false;
-  const clean = em.trim();
+  const clean = normalizeEmail(em).trim();
   if (['n/a', 'na', 'null', 'undefined', 'none', ''].includes(clean.toLowerCase())) return false;
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean);
 };
@@ -1501,20 +1502,20 @@ const sendDeliveryConfirmationWithInvoice = async (orderData) => {
     }
 
     // Comprehensive customer email & details resolution
-    let resolvedEmail = isValidRecipientEmail(customer.email) ? customer.email.trim() : null;
+    let resolvedEmail = isValidRecipientEmail(customer.email) ? normalizeEmail(customer.email) : null;
     let resolvedName = (customer.name && customer.name.trim() !== '' && customer.name !== 'Customer') ? customer.name.trim() : null;
     let resolvedPhone = customer.phone || null;
 
     // 1. Fallback to order fields
     if (!resolvedEmail) {
       if (isValidRecipientEmail(order.customerEmail)) {
-        resolvedEmail = order.customerEmail.trim();
+        resolvedEmail = normalizeEmail(order.customerEmail);
       } else if (isValidRecipientEmail(order.shippingDetails?.email)) {
-        resolvedEmail = order.shippingDetails.email.trim();
+        resolvedEmail = normalizeEmail(order.shippingDetails.email);
       } else if (isValidRecipientEmail(order.shippingAddress?.email)) {
-        resolvedEmail = order.shippingAddress.email.trim();
+        resolvedEmail = normalizeEmail(order.shippingAddress.email);
       } else if (isValidRecipientEmail(order.giftDetails?.recipientEmail)) {
-        resolvedEmail = order.giftDetails.recipientEmail.trim();
+        resolvedEmail = normalizeEmail(order.giftDetails.recipientEmail);
       }
     }
 
@@ -1720,6 +1721,10 @@ const sendEmailNotification = async (orderData) => {
     const { checkIsPlaceholderCustomer } = require('../utils/testCustomerHelper');
     const check = checkIsPlaceholderCustomer(orderData);
     
+    if (customer && customer.email) {
+      customer.email = normalizeEmail(customer.email);
+    }
+
     if (check.isPlaceholder) {
       console.log(`Customer notifications skipped:\nReason: ${check.reason}\nOrder: ${order.orderNumber}\nEmail: ${customer.email || 'N/A'}`);
       results.push({
@@ -1731,7 +1736,7 @@ const sendEmailNotification = async (orderData) => {
     } else if (customer.email) {
       try {
         const customerResult = await sendEmail({
-          to: customer.email,
+          to: normalizeEmail(customer.email),
           subject: `🎉 Order Confirmed #${order.orderNumber} - Spring Blossoms Florist`,
           html: generateOrderConfirmationEmail(orderData),
           type: 'order_confirmation',

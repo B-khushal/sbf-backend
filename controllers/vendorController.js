@@ -10,6 +10,7 @@ const path = require('path');
 const { getPdfOptions, getLogoBase64 } = require('../utils/pdfHelper');
 const { sendEmailNotification } = require('../services/emailNotificationService');
 const nodemailer = require('nodemailer');
+const { normalizeEmail, fixEmailTypo } = require('../utils/emailNormalizer');
 
 // Simple email helper for vendor-related notifications
 const sendSimpleEmail = async ({ to, subject, html }) => {
@@ -24,13 +25,14 @@ const sendSimpleEmail = async ({ to, subject, html }) => {
                 pass: process.env.EMAIL_PASS || process.env.ORDER_CONFIRMATION_EMAIL_PASS
             }
         });
+        const normalizedTo = normalizeEmail(to);
         await transporter.sendMail({
             from: { name: 'Spring Blossoms Florist', address: process.env.EMAIL_USER || process.env.ORDER_CONFIRMATION_EMAIL_USER || 'noreply@sbflorist.in' },
-            to,
+            to: normalizedTo,
             subject,
             html
         });
-        console.log('✅ Email sent to:', to);
+        console.log('✅ Email sent to:', normalizedTo);
     } catch (err) {
         console.error('⚠️ Failed to send email:', err.message);
     }
@@ -79,7 +81,7 @@ const applyVendor = async (req, res) => {
         const {
             fullName,
             businessName,
-            email,
+            email: rawEmail,
             phone,
             address,
             city,
@@ -89,6 +91,7 @@ const applyVendor = async (req, res) => {
             instagram,
             businessDescription
         } = vendorDetails;
+        const email = normalizeEmail(rawEmail);
 
         console.log('📋 Extracted vendor details:', {
             fullName: fullName || 'MISSING',

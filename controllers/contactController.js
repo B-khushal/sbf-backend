@@ -1,12 +1,14 @@
 const { sendEmail } = require('../services/emailService');
 const Notification = require('../models/Notification');
+const { normalizeEmail } = require('../utils/emailNormalizer');
 
 // @desc    Submit contact form
 // @route   POST /api/contact
 // @access  Public
 const submitContactForm = async (req, res) => {
   try {
-    const { firstName, lastName, email, message } = req.body;
+    const { firstName, lastName, message } = req.body;
+    const email = normalizeEmail(req.body.email);
 
     // Validate required fields
     if (!firstName || !lastName || !email || !message) {

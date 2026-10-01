@@ -1,5 +1,6 @@
 const nodemailer = require("nodemailer");
 const EmailLog = require("../models/EmailLog");
+const { normalizeEmail, fixEmailTypo } = require("../utils/emailNormalizer");
 
 let transporter = null;
 
@@ -60,6 +61,23 @@ const sendEmail = async ({
   fromOverride,
   fromNameOverride,
 }) => {
+  // Automatically fix typos like gmail.con -> gmail.com in recipient addresses
+  if (Array.isArray(to)) {
+    to = to.map(normalizeEmail);
+  } else if (typeof to === 'string') {
+    to = fixEmailTypo(to);
+  }
+
+  if (Array.isArray(cc)) {
+    cc = cc.map(normalizeEmail);
+  } else if (typeof cc === 'string') {
+    cc = fixEmailTypo(cc);
+  }
+
+  if (typeof replyTo === 'string') {
+    replyTo = fixEmailTypo(replyTo);
+  }
+
   const isValidEmail = (em) => {
     if (!em || typeof em !== 'string') return false;
     const clean = em.trim();

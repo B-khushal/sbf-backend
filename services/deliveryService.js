@@ -70,8 +70,10 @@ const calculateDeliveryFee = async ({ subtotal, timeSlot, userId, email, phone }
   const isFirstOrderFreeEnabled = deliverySettings.firstOrderFree !== false; 
   
   const timeSlots = deliverySettings.timeSlots || [];
-  const activeSlot = timeSlots.find(s => s.time === timeSlot && s.enabled);
-  const slotExtraCharge = activeSlot ? (activeSlot.extraCharge || 0) : (timeSlot === 'midnight' ? 150 : 0);
+  const activeSlot = timeSlots.find(s => (s.id === timeSlot || s.time === timeSlot) && s.enabled);
+  const isFixedSlot = ['morning', 'afternoon', 'late_afternoon', 'evening', 'fixed', 'fixed_time'].includes(timeSlot);
+  const defaultSlotExtra = timeSlot === 'midnight' ? 150 : (isFixedSlot ? 150 : 0);
+  const slotExtraCharge = activeSlot ? (activeSlot.extraCharge !== undefined ? activeSlot.extraCharge : defaultSlotExtra) : defaultSlotExtra;
 
   const rules = deliverySettings.deliveryChargeRules || [
     { minOrderAmount: 0, charge: 150 },

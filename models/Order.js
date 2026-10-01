@@ -1,39 +1,73 @@
 const prisma = require('../config/prisma');
+const { normalizeEmail } = require('../utils/emailNormalizer');
+
+function extractPattern(val) {
+  if (!val) return '';
+  if (val instanceof RegExp) return val.source;
+  if (typeof val === 'string') return val;
+  if (typeof val === 'object' && val.$regex) {
+    return val.$regex.source || String(val.$regex).replace(/^\/|\/[a-z]*$/g, '').replace(/\^|\$/g, '');
+  }
+  return String(val);
+}
 
 function cleanOrderWhere(where = {}) {
   if (!where || typeof where !== 'object') return {};
   const clean = {};
 
-  if (Array.isArray(where.$or)) {
-    const cleanOr = where.$or.map(cond => cleanOrderWhere(cond)).filter(c => Object.keys(c).length > 0);
+  if (Array.isArray(where.$or) || Array.isArray(where.OR)) {
+    const orArr = where.$or || where.OR;
+    const cleanOr = orArr.map(cond => cleanOrderWhere(cond)).filter(c => Object.keys(c).length > 0);
     if (cleanOr.length > 0) {
       clean.OR = cleanOr;
     }
   }
 
-  if (where.orderNumber) clean.orderNumber = String(where.orderNumber);
+  if (Array.isArray(where.$and) || Array.isArray(where.AND)) {
+    const andArr = where.$and || where.AND;
+    const cleanAnd = andArr.map(cond => cleanOrderWhere(cond)).filter(c => Object.keys(c).length > 0);
+    if (cleanAnd.length > 0) {
+      clean.AND = cleanAnd;
+    }
+  }
+
+  if (where.orderNumber) {
+    const pat = extractPattern(where.orderNumber);
+    clean.orderNumber = { contains: pat, mode: 'insensitive' };
+  }
+
   if (where.userId || where.user) clean.userId = String(where.userId || where.user);
   if (where._id || where.id) clean.id = String(where._id || where.id);
   if (where.razorpayOrderId) clean.razorpayOrderId = String(where.razorpayOrderId);
 
+  const nameVal = where.customerName || where['shippingDetails.fullName'] || where.fullName;
+  if (nameVal) {
+    const pat = extractPattern(nameVal);
+    clean.customerName = { contains: pat, mode: 'insensitive' };
+  }
+
+  const recipientVal = where.recipientName || where['giftDetails.recipientName'];
+  if (recipientVal) {
+    const pat = extractPattern(recipientVal);
+    clean.recipientName = { contains: pat, mode: 'insensitive' };
+  }
+
   const emailVal = where.customerEmail || where.email || where['shippingDetails.email'];
   if (emailVal) {
-    if (typeof emailVal === 'string') {
-      clean.customerEmail = { equals: emailVal, mode: 'insensitive' };
-    } else if (typeof emailVal === 'object' && emailVal.$regex) {
-      const pattern = emailVal.$regex.source || String(emailVal.$regex).replace(/^\/|\/[a-z]*$/g, '').replace(/\^|\$/g, '');
-      clean.customerEmail = { contains: pattern, mode: 'insensitive' };
-    }
+    const pat = extractPattern(emailVal);
+    clean.customerEmail = { contains: normalizeEmail(pat), mode: 'insensitive' };
   }
 
   const phoneVal = where.customerPhone || where.phone || where['shippingDetails.phone'];
   if (phoneVal) {
-    if (typeof phoneVal === 'string') {
-      clean.customerPhone = { contains: phoneVal };
-    } else if (typeof phoneVal === 'object' && phoneVal.$regex) {
-      const pattern = phoneVal.$regex.source || String(phoneVal.$regex).replace(/^\/|\/[a-z]*$/g, '').replace(/\^|\$/g, '');
-      clean.customerPhone = { contains: pattern };
-    }
+    const pat = extractPattern(phoneVal);
+    clean.customerPhone = { contains: pat };
+  }
+
+  const prodVal = where['items.productName'] || where.productName;
+  if (prodVal) {
+    const pat = extractPattern(prodVal);
+    clean.items = { some: { productName: { contains: pat, mode: 'insensitive' } } };
   }
 
   const statusFilter = where.orderStatus || where.status;
@@ -54,13 +88,27 @@ function cleanOrderWhere(where = {}) {
     clean.paymentStatus = where.paymentStatus;
   }
 
-  // Handle date filters
+  if (where.paymentMethod && typeof where.paymentMethod === 'string') {
+    clean.paymentMethod = where.paymentMethod;
+  }
+
+  // Handle createdAt date filter
   if (where.createdAt && typeof where.createdAt === 'object') {
     clean.createdAt = {};
-    if (where.createdAt.$gte) clean.createdAt.gte = new Date(where.createdAt.$gte);
-    if (where.createdAt.$lte) clean.createdAt.lte = new Date(where.createdAt.$lte);
-    if (where.createdAt.$gt) clean.createdAt.gt = new Date(where.createdAt.$gt);
-    if (where.createdAt.$lt) clean.createdAt.lt = new Date(where.createdAt.$lt);
+    if (where.createdAt.$gte || where.createdAt.gte) clean.createdAt.gte = new Date(where.createdAt.$gte || where.createdAt.gte);
+    if (where.createdAt.$lte || where.createdAt.lte) clean.createdAt.lte = new Date(where.createdAt.$lte || where.createdAt.lte);
+    if (where.createdAt.$gt || where.createdAt.gt) clean.createdAt.gt = new Date(where.createdAt.$gt || where.createdAt.gt);
+    if (where.createdAt.$lt || where.createdAt.lt) clean.createdAt.lt = new Date(where.createdAt.$lt || where.createdAt.lt);
+  }
+
+  // Handle deliveryDate date filter
+  const deliveryDateFilter = where.deliveryDate || where['shippingDetails.deliveryDate'];
+  if (deliveryDateFilter && typeof deliveryDateFilter === 'object') {
+    clean.deliveryDate = {};
+    if (deliveryDateFilter.$gte || deliveryDateFilter.gte) clean.deliveryDate.gte = new Date(deliveryDateFilter.$gte || deliveryDateFilter.gte);
+    if (deliveryDateFilter.$lte || deliveryDateFilter.lte) clean.deliveryDate.lte = new Date(deliveryDateFilter.$lte || deliveryDateFilter.lte);
+    if (deliveryDateFilter.$gt || deliveryDateFilter.gt) clean.deliveryDate.gt = new Date(deliveryDateFilter.$gt || deliveryDateFilter.gt);
+    if (deliveryDateFilter.$lt || deliveryDateFilter.lt) clean.deliveryDate.lt = new Date(deliveryDateFilter.$lt || deliveryDateFilter.lt);
   }
 
   if (where.giftDetails !== undefined) {
@@ -247,6 +295,17 @@ class OrderDocument {
 
     const userId = typeof this.user === 'object' ? this.user.id : (this.userId || this.user || null);
 
+    const resolvedCustomerEmail = this.customerEmail ? normalizeEmail(this.customerEmail) : (this.shippingDetails?.email ? normalizeEmail(this.shippingDetails.email) : null);
+    if (this.shippingDetails && this.shippingDetails.email) {
+      this.shippingDetails.email = normalizeEmail(this.shippingDetails.email);
+    }
+    if (this.shippingAddress && this.shippingAddress.email) {
+      this.shippingAddress.email = normalizeEmail(this.shippingAddress.email);
+    }
+    if (this.giftDetails && this.giftDetails.recipientEmail) {
+      this.giftDetails.recipientEmail = normalizeEmail(this.giftDetails.recipientEmail);
+    }
+
     const updated = await prisma.order.upsert({
       where: { id: orderId },
       update: {
@@ -273,7 +332,7 @@ class OrderDocument {
         finalTotal: this.totalAmount ? parseFloat(this.totalAmount) : undefined,
         trackingHistory: this.trackingHistory || undefined,
         customerName: this.customerName || undefined,
-        customerEmail: this.customerEmail || undefined,
+        customerEmail: resolvedCustomerEmail || undefined,
         customerPhone: this.customerPhone || undefined,
         userId: userId || undefined
       },
@@ -282,7 +341,7 @@ class OrderDocument {
         orderNumber: orderNum,
         userId: userId,
         customerName: this.customerName || this.shippingDetails?.fullName || 'Customer',
-        customerEmail: this.customerEmail || this.shippingDetails?.email || null,
+        customerEmail: resolvedCustomerEmail,
         customerPhone: this.customerPhone || this.shippingDetails?.phone || null,
         totalAmount: this.totalAmount ? parseFloat(this.totalAmount) : 0,
         subtotal: this.subtotal ? parseFloat(this.subtotal) : 0,

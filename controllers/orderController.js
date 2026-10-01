@@ -12,6 +12,7 @@ const { sendOrderNotificationToAdmins, sendToAllAdmins } = require('../services/
 const { logActivity } = require('../utils/activityLogger');
 const { calculateDeliveryFee } = require('../services/deliveryService');
 const Offer = require('../models/Offer');
+const { normalizeEmail } = require('../utils/emailNormalizer');
 
 // Helper to increment offer conversion if order has promo code
 const trackPromoCodeConversion = async (promoCodeObj) => {
@@ -60,7 +61,7 @@ const trackPromoCodeConversion = async (promoCodeObj) => {
 // Helper to validate email format and reject placeholders
 const isValidEmailStr = (em) => {
   if (!em || typeof em !== 'string') return false;
-  const clean = em.trim();
+  const clean = normalizeEmail(em).trim();
   if (['n/a', 'na', 'null', 'undefined', 'none', ''].includes(clean.toLowerCase())) return false;
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean);
 };
@@ -75,13 +76,13 @@ const resolveOrderCustomerDetails = async (order) => {
 
   // 1. Try order fields
   if (isValidEmailStr(order.customerEmail)) {
-    customerEmail = order.customerEmail.trim();
+    customerEmail = normalizeEmail(order.customerEmail);
   } else if (isValidEmailStr(order.shippingDetails?.email)) {
-    customerEmail = order.shippingDetails.email.trim();
+    customerEmail = normalizeEmail(order.shippingDetails.email);
   } else if (isValidEmailStr(order.shippingAddress?.email)) {
-    customerEmail = order.shippingAddress.email.trim();
+    customerEmail = normalizeEmail(order.shippingAddress.email);
   } else if (isValidEmailStr(order.giftDetails?.recipientEmail)) {
-    customerEmail = order.giftDetails.recipientEmail.trim();
+    customerEmail = normalizeEmail(order.giftDetails.recipientEmail);
   }
 
   customerName = order.customerName || order.shippingDetails?.fullName || order.shippingAddress?.fullName || null;
@@ -467,10 +468,14 @@ const createOrder = async (req, res) => {
     }
 
     // Validate delivery charge if sent
-    if (req.body.deliveryCharge !== undefined && Math.abs(req.body.deliveryCharge - deliveryChargeCalculated) > 1) {
+    let expectedDeliveryCharge = deliveryChargeCalculated;
+    if (shippingDetails.surpriseDelivery || req.body.giftDetails?.surpriseDelivery) {
+      expectedDeliveryCharge += 100;
+    }
+    if (req.body.deliveryCharge !== undefined && Math.abs(req.body.deliveryCharge - expectedDeliveryCharge) > 5) {
       return res.status(400).json({
         success: false,
-        message: `Invalid delivery charge. Expected ${deliveryChargeCalculated}, got ${req.body.deliveryCharge}`
+        message: `Invalid delivery charge. Expected ${expectedDeliveryCharge}, got ${req.body.deliveryCharge}`
       });
     }
 
@@ -489,9 +494,9 @@ const createOrder = async (req, res) => {
     }
 
     // Resolve customer details with robust fallbacks
-    const effectiveCustomerEmail = (isValidEmailStr(shippingDetails.email) && shippingDetails.email.trim())
-      || (isValidEmailStr(req.user?.email) && req.user.email.trim())
-      || (isValidEmailStr(giftDetails?.recipientEmail) && giftDetails.recipientEmail.trim())
+    const effectiveCustomerEmail = (isValidEmailStr(shippingDetails.email) && normalizeEmail(shippingDetails.email))
+      || (isValidEmailStr(req.user?.email) && normalizeEmail(req.user.email))
+      || (isValidEmailStr(giftDetails?.recipientEmail) && normalizeEmail(giftDetails.recipientEmail))
       || null;
 
     const effectiveCustomerName = (shippingDetails.fullName && shippingDetails.fullName.trim() !== '' && shippingDetails.fullName !== 'Customer')
@@ -1112,7 +1117,8 @@ const getOrders = async (req, res) => {
   try {
     const {
       page = 1,
-      limit = 20, // Increased default from 10 to 20
+      limit = 50, // Default 50 for operational dashboard
+      period = 'all', // 'today', 'tomorrow', 'past', 'custom', 'all'
       status,
       dateFrom,
       dateTo,
@@ -1125,66 +1131,156 @@ const getOrders = async (req, res) => {
 
     // Validate and set limits
     const pageNumber = Math.max(1, parseInt(page));
-    const pageSize = Math.min(100, Math.max(5, parseInt(limit))); // Allow 5-100 orders per page
+    const pageSize = Math.min(100, Math.max(5, parseInt(limit)));
 
-    // Build query object
-    let query = {};
+    // Helper for local day bounds (Indian Standard Time offset aware)
+    const getBoundsForDate = (baseDate) => {
+      const start = new Date(baseDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(baseDate);
+      end.setHours(23, 59, 59, 999);
+      return { start, end };
+    };
 
-    // Filter by status
-    if (status && status !== 'all') {
-      query.status = status;
+    const now = new Date();
+    const todayBounds = getBoundsForDate(now);
+
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowBounds = getBoundsForDate(tomorrow);
+
+    // Build base period query
+    let basePeriodQuery = {};
+
+    if (period === 'today') {
+      basePeriodQuery.$or = [
+        { deliveryDate: { $gte: todayBounds.start, $lte: todayBounds.end } },
+        { createdAt: { $gte: todayBounds.start, $lte: todayBounds.end } }
+      ];
+    } else if (period === 'tomorrow') {
+      basePeriodQuery.deliveryDate = { $gte: tomorrowBounds.start, $lte: tomorrowBounds.end };
+    } else if (period === 'past') {
+      basePeriodQuery.$or = [
+        { deliveryDate: { $lt: todayBounds.start } },
+        { createdAt: { $lt: todayBounds.start } }
+      ];
+    } else if (period === 'custom') {
+      if (dateFrom || dateTo) {
+        const fromDate = dateFrom ? new Date(dateFrom) : new Date(0);
+        let toDate = dateTo ? new Date(dateTo) : new Date();
+        toDate.setHours(23, 59, 59, 999);
+
+        basePeriodQuery.$or = [
+          { deliveryDate: { $gte: fromDate, $lte: toDate } },
+          { createdAt: { $gte: fromDate, $lte: toDate } }
+        ];
+      }
+    } else if (dateFrom || dateTo) {
+      const fromDate = dateFrom ? new Date(dateFrom) : new Date(0);
+      let toDate = dateTo ? new Date(dateTo) : new Date();
+      toDate.setHours(23, 59, 59, 999);
+      basePeriodQuery.createdAt = { $gte: fromDate, $lte: toDate };
     }
 
-    // Filter by first-order free delivery
+    if (deliveryDateFrom || deliveryDateTo) {
+      basePeriodQuery.deliveryDate = {};
+      if (deliveryDateFrom) basePeriodQuery.deliveryDate.$gte = new Date(deliveryDateFrom);
+      if (deliveryDateTo) {
+        const dEnd = new Date(deliveryDateTo);
+        dEnd.setHours(23, 59, 59, 999);
+        basePeriodQuery.deliveryDate.$lte = dEnd;
+      }
+    }
+
+    // Search functionality applied to base
+    if (search && search.trim()) {
+      const searchRegex = new RegExp(search.trim(), 'i');
+      const searchConditions = [
+        { orderNumber: searchRegex },
+        { customerName: searchRegex },
+        { recipientName: searchRegex },
+        { customerPhone: searchRegex },
+        { 'shippingDetails.fullName': searchRegex },
+        { 'shippingDetails.phone': searchRegex },
+        { 'shippingDetails.email': searchRegex },
+        { 'shippingDetails.city': searchRegex },
+        { 'items.productName': searchRegex }
+      ];
+
+      if (basePeriodQuery.$or) {
+        // combine with AND
+        basePeriodQuery = {
+          $and: [
+            { $or: basePeriodQuery.$or },
+            { $or: searchConditions }
+          ]
+        };
+      } else {
+        basePeriodQuery.$or = searchConditions;
+      }
+    }
+
+    // Compute period summary statistics across all orders matching the period & search (before status filtering)
+    let periodOrders = [];
+    try {
+      periodOrders = await Order.find(basePeriodQuery);
+    } catch (e) {
+      console.warn('[getOrders] Error calculating statusCounts:', e.message);
+    }
+
+    const statusCounts = {
+      total: periodOrders.length,
+      preparing: 0,
+      ready: 0,
+      out_for_delivery: 0,
+      delivered: 0,
+      cancelled: 0,
+      totalRevenue: 0
+    };
+
+    periodOrders.forEach(o => {
+      const st = String(o.orderStatus || o.status || '').toLowerCase().trim();
+      if (['being_made', 'received', 'pending', 'order_placed', 'processing', 'preparing'].includes(st)) {
+        statusCounts.preparing++;
+      } else if (st === 'ready') {
+        statusCounts.ready++;
+      } else if (st === 'out_for_delivery') {
+        statusCounts.out_for_delivery++;
+      } else if (['delivered', 'completed'].includes(st)) {
+        statusCounts.delivered++;
+      } else if (st === 'cancelled') {
+        statusCounts.cancelled++;
+      }
+      statusCounts.totalRevenue += parseFloat(o.totalAmount || 0);
+    });
+
+    // Now apply status filter to build final query
+    let query = { ...basePeriodQuery };
+
+    if (status && status !== 'all') {
+      const lowerStatus = status.toLowerCase();
+      if (lowerStatus === 'preparing') {
+        query.status = { $in: ['being_made', 'received', 'pending', 'order_placed', 'processing', 'preparing'] };
+      } else if (lowerStatus === 'ready') {
+        query.status = 'ready';
+      } else if (lowerStatus === 'out_for_delivery') {
+        query.status = 'out_for_delivery';
+      } else if (lowerStatus === 'delivered') {
+        query.status = { $in: ['delivered', 'completed'] };
+      } else if (lowerStatus === 'cancelled') {
+        query.status = 'cancelled';
+      } else {
+        query.status = status;
+      }
+    }
+
     if (firstOrderFreeDelivery === 'true') {
       query.isFirstOrderFreeDelivery = true;
     } else if (firstOrderFreeDelivery === 'false') {
       query.isFirstOrderFreeDelivery = false;
     }
 
-    // Filter by order creation date range
-    if (dateFrom || dateTo) {
-      query.createdAt = {};
-      if (dateFrom) {
-        query.createdAt.$gte = new Date(dateFrom);
-      }
-      if (dateTo) {
-        // Add 1 day to include the end date
-        const endDate = new Date(dateTo);
-        endDate.setDate(endDate.getDate() + 1);
-        query.createdAt.$lt = endDate;
-      }
-    }
-
-    // Filter by delivery date range
-    if (deliveryDateFrom || deliveryDateTo) {
-      query['shippingDetails.deliveryDate'] = {};
-      if (deliveryDateFrom) {
-        query['shippingDetails.deliveryDate'].$gte = new Date(deliveryDateFrom);
-      }
-      if (deliveryDateTo) {
-        const endDate = new Date(deliveryDateTo);
-        endDate.setDate(endDate.getDate() + 1);
-        query['shippingDetails.deliveryDate'].$lt = endDate;
-      }
-    }
-
-    // Search functionality
-    if (search) {
-      const searchRegex = new RegExp(search, 'i');
-      query.$or = [
-        { orderNumber: searchRegex },
-        { 'shippingDetails.fullName': searchRegex },
-        { 'shippingDetails.email': searchRegex },
-        { 'shippingDetails.phone': searchRegex },
-        { 'shippingDetails.city': searchRegex }
-      ];
-    }
-
-    console.log('Orders query:', JSON.stringify(query, null, 2));
-    console.log(`Pagination: Page ${pageNumber}, Size ${pageSize}`);
-
-    // Get total count for pagination
+    // Get total count for current status filter
     const total = await Order.countDocuments(query);
     const totalPages = Math.ceil(total / pageSize);
     const skip = (pageNumber - 1) * pageSize;
@@ -1209,42 +1305,6 @@ const getOrders = async (req, res) => {
       .skip(skip)
       .limit(pageSize);
 
-    // Add 3-day highlighting information if requested
-    let processedOrders = orders;
-    if (highlight3Days === 'true') {
-      const threeDaysFromNow = new Date();
-      threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
-      threeDaysFromNow.setHours(23, 59, 59, 999);
-
-      processedOrders = orders.map(order => {
-        const deliveryDate = order.shippingDetails?.deliveryDate;
-        let highlight = null;
-
-        if (deliveryDate) {
-          const deliveryDateTime = new Date(deliveryDate);
-          const now = new Date();
-          const diffInDays = Math.ceil((deliveryDateTime - now) / (1000 * 60 * 60 * 24));
-
-          if (diffInDays <= 3 && diffInDays >= 0) {
-            if (diffInDays === 0) {
-              highlight = { type: 'today', urgency: 'critical', message: 'Delivery today!' };
-            } else if (diffInDays === 1) {
-              highlight = { type: 'tomorrow', urgency: 'high', message: 'Delivery tomorrow' };
-            } else if (diffInDays <= 3) {
-              highlight = { type: 'soon', urgency: 'medium', message: `Delivery in ${diffInDays} days` };
-            }
-          } else if (diffInDays < 0) {
-            highlight = { type: 'overdue', urgency: 'critical', message: 'Delivery overdue!' };
-          }
-        }
-
-        return {
-          ...order.toObject(),
-          deliveryHighlight: highlight
-        };
-      });
-    }
-
     // Calculate pagination info
     const paginationInfo = {
       currentPage: pageNumber,
@@ -1260,20 +1320,17 @@ const getOrders = async (req, res) => {
       remainingItems: Math.max(0, total - (skip + pageSize))
     };
 
-    console.log('Pagination info:', paginationInfo);
-
     res.json({
       success: true,
-      orders: processedOrders,
+      orders,
+      statusCounts,
       pagination: paginationInfo,
       meta: {
-        query: {
-          status: status || 'all',
-          search: search || '',
-          dateRange: { from: dateFrom, to: dateTo },
-          deliveryDateRange: { from: deliveryDateFrom, to: deliveryDateTo },
-          highlight3Days: highlight3Days === 'true'
-        },
+        period,
+        status: status || 'all',
+        search: search || '',
+        dateRange: { from: dateFrom, to: dateTo },
+        deliveryDateRange: { from: deliveryDateFrom, to: deliveryDateTo },
         timestamp: new Date().toISOString()
       }
     });
@@ -1830,10 +1887,14 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
       }
 
       // Validate delivery charge if sent
-      if (orderData.deliveryCharge !== undefined && Math.abs(orderData.deliveryCharge - deliveryChargeCalculated) > 1) {
+      let expectedDeliveryCharge = deliveryChargeCalculated;
+      if (orderData.shippingDetails?.surpriseDelivery || orderData.giftDetails?.surpriseDelivery) {
+        expectedDeliveryCharge += 100;
+      }
+      if (orderData.deliveryCharge !== undefined && Math.abs(orderData.deliveryCharge - expectedDeliveryCharge) > 5) {
         return res.status(400).json({
           success: false,
-          message: `Invalid delivery charge. Expected ${deliveryChargeCalculated}, got ${orderData.deliveryCharge}`
+          message: `Invalid delivery charge. Expected ${expectedDeliveryCharge}, got ${orderData.deliveryCharge}`
         });
       }
 

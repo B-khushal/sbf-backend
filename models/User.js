@@ -1,5 +1,6 @@
 const prisma = require('../config/prisma');
 const bcrypt = require('bcryptjs');
+const { normalizeEmail } = require('../utils/emailNormalizer');
 
 class UserDocument {
   constructor(data) {
@@ -145,7 +146,7 @@ class UserDocument {
       where: { id: userId },
       update: {
         name: this.name,
-        email: this.email ? this.email.toLowerCase() : undefined,
+        email: this.email ? normalizeEmail(this.email) : undefined,
         password: pwd,
         role: this.role,
         status: this.status,
@@ -157,7 +158,7 @@ class UserDocument {
       create: {
         id: userId || `usr_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
         name: this.name || 'User',
-        email: this.email ? this.email.toLowerCase() : `user_${Date.now()}@example.com`,
+        email: this.email ? normalizeEmail(this.email) : `user_${Date.now()}@example.com`,
         password: pwd || '',
         role: this.role || 'customer',
         status: this.status || 'active',
@@ -368,7 +369,7 @@ function cleanUserWhere(where = {}) {
     return filter;
   }
 
-  if (where.email) filter.email = String(where.email).toLowerCase();
+  if (where.email) filter.email = normalizeEmail(where.email);
   if (where._id || where.id) filter.id = String(where._id || where.id);
   if (where.googleId) filter.googleId = String(where.googleId);
 
@@ -520,7 +521,7 @@ class UserModel {
       data: {
         id: data.id || data._id || `usr_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
         name: data.name,
-        email: data.email.toLowerCase(),
+        email: normalizeEmail(data.email),
         password,
         role: data.role || 'customer',
         status: data.status || 'active',
@@ -535,7 +536,10 @@ class UserModel {
   }
 
   static async findByIdAndUpdate(id, update, options = {}) {
-    const dataToUpdate = update.$set ? update.$set : update;
+    const dataToUpdate = update.$set ? { ...update.$set } : { ...update };
+    if (dataToUpdate && dataToUpdate.email) {
+      dataToUpdate.email = normalizeEmail(dataToUpdate.email);
+    }
     try {
       const updated = await prisma.user.update({
         where: { id: String(id) },

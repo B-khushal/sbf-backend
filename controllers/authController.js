@@ -2,6 +2,7 @@ const User = require('../models/User');
 const generateToken = require('../utils/generateToken');
 const { OAuth2Client } = require('google-auth-library');
 const { logActivity } = require('../utils/activityLogger');
+const { normalizeEmail } = require('../utils/emailNormalizer');
 
 // Initialize Google OAuth client
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -65,7 +66,9 @@ const normalizeAddresses = (addresses = []) => {
 // @access  Public
 const loginUser = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const rawEmail = req.body.email;
+    const email = normalizeEmail(rawEmail);
+    const { password } = req.body;
 
     // ✅ Ensure email and password are provided
     if (!email || !password) {
@@ -150,7 +153,8 @@ const loginUser = async (req, res) => {
 // @access  Public
 const registerUser = async (req, res) => {
   try {
-    const { name, email, password, confirmPassword, role } = req.body;
+    const { name, password, confirmPassword, role } = req.body;
+    const email = normalizeEmail(req.body.email);
 
     // Validation
     if (!name || !email || !password || !confirmPassword) {
@@ -272,7 +276,7 @@ const updateUserProfile = async (req, res) => {
 
     if (user) {
       user.name = req.body.name || user.name;
-      user.email = req.body.email || user.email;
+      user.email = req.body.email ? normalizeEmail(req.body.email) : user.email;
       user.phone = req.body.phone || user.phone;
       
       if (req.body.address) {

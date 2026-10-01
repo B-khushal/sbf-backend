@@ -21,15 +21,22 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Zod schemas for input validation
+const { fixEmailTypo } = require('../utils/emailNormalizer');
+
+// Zod schemas for input validation with automatic typo correction
+const emailSchema = z.string()
+  .trim()
+  .transform(val => fixEmailTypo(val).toLowerCase())
+  .pipe(z.string().email('Invalid email format').max(254));
+
 const loginSchema = z.object({
-  email: z.string().email('Invalid email format').max(254).trim(),
+  email: emailSchema,
   password: z.string().min(1, 'Password is required'),
 });
 
 const registerSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100).trim(),
-  email: z.string().email('Invalid email format').max(254).trim(),
+  email: emailSchema,
   password: z.string().min(6, 'Password must be at least 6 characters long'),
   confirmPassword: z.string().min(6, 'Please confirm your password'),
   role: z.enum(['user', 'admin', 'vendor']).optional(),

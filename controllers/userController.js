@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const { normalizeEmail } = require('../utils/emailNormalizer');
 
 // @desc    Get all users
 // @route   GET /api/users
@@ -48,7 +49,7 @@ const updateUser = async (req, res) => {
 
     if (user) {
       user.name = req.body.name || user.name;
-      user.email = req.body.email || user.email;
+      user.email = req.body.email ? normalizeEmail(req.body.email) : user.email;
       user.role = req.body.role || user.role;
       user.status = req.body.status || user.status;
 

@@ -1,10 +1,12 @@
 const Newsletter = require('../models/Newsletter');
 const { sendEmail } = require('../services/emailService');
+const { normalizeEmail } = require('../utils/emailNormalizer');
 
 // Subscribe to newsletter
 exports.subscribe = async (req, res) => {
   try {
-    const { email } = req.body;
+    const rawEmail = req.body.email;
+    const email = normalizeEmail(rawEmail);
 
     // Validate email
     if (!email || !email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
