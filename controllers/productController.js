@@ -1017,67 +1017,28 @@ const getProductCategories = async (req, res) => {
 const getCategoriesWithCounts = async (req, res) => {
   try {
     const Category = require('../models/Category');
+    const Occasion = require('../models/Occasion');
     const dbCategories = await Category.find({});
-    const products = await Product.find({ hidden: false });
+    const products = (await Product.find({})).filter(p => !p.hidden);
 
-    // Build product category lookup map
-    const countsMap = new Map();
+    // Fetch product occasion links once for accurate linking
+    const poMap = new Map();
+    try {
+      const poLinks = await prisma.productOccasion.findMany({
+        select: { productId: true, occasionId: true }
+      });
+      poLinks.forEach(l => {
+        const occId = String(l.occasionId);
+        if (!poMap.has(occId)) poMap.set(occId, new Set());
+        poMap.get(occId).add(String(l.productId));
+      });
+    } catch (e) {
+      console.warn('Could not load ProductOccasion links for counts:', e.message);
+    }
 
-    const addCount = (key) => {
-      if (!key) return;
-      const k = String(key).trim().toLowerCase();
-      if (!k) return;
-      countsMap.set(k, (countsMap.get(k) || 0) + 1);
-      const unhyphenated = k.replace(/-/g, ' ');
-      if (unhyphenated !== k) {
-        countsMap.set(unhyphenated, (countsMap.get(unhyphenated) || 0) + 1);
-      }
-    };
-
-    products.forEach(p => {
-      const names = new Set();
-      if (p.category) names.add(p.category);
-      if (p.subcategory) names.add(p.subcategory);
-      if (p.details && Array.isArray(p.details.categories)) {
-        p.details.categories.forEach(c => names.add(c));
-      }
-      if (Array.isArray(p.categories)) {
-        p.categories.forEach(c => {
-          if (typeof c === 'string') names.add(c);
-          else if (c && typeof c === 'object') {
-            if (c.name) names.add(c.name);
-            if (c.slug) names.add(c.slug);
-            if (c.category && typeof c.category === 'object') {
-              if (c.category.name) names.add(c.category.name);
-              if (c.category.slug) names.add(c.category.slug);
-            }
-          }
-        });
-      }
-      if (Array.isArray(p.occasions)) {
-        p.occasions.forEach(o => {
-          if (typeof o === 'string') names.add(o);
-          else if (o && typeof o === 'object') {
-            if (o.name) names.add(o.name);
-            if (o.slug) names.add(o.slug);
-            if (o.occasion && typeof o.occasion === 'object') {
-              if (o.occasion.name) names.add(o.occasion.name);
-              if (o.occasion.slug) names.add(o.occasion.slug);
-            }
-          }
-        });
-      }
-      if (Array.isArray(p.tags)) {
-        p.tags.forEach(t => {
-          if (typeof t === 'string') names.add(t);
-          else if (t && typeof t === 'object' && t.tag) names.add(t.tag);
-        });
-      }
-      names.forEach(n => addCount(n));
-    });
-
-    // Prepare products for matching category/occasion queries (consistent with collection / by-occasion pages)
+    // Preprocess products once for matching category/occasion queries (consistent with by-occasion collection pages)
     const preparedProducts = products.map(p => {
+      const pid = String(p._id || p.id);
       const pTitle = (p.title || p.name || '').toLowerCase();
       const pCat = (p.category || '').toLowerCase().replace(/-/g, ' ').replace(/s$/, '');
       const pSubCat = (p.subcategory || '').toLowerCase().replace(/-/g, ' ').replace(/s$/, '');
@@ -1090,47 +1051,96 @@ const getCategoriesWithCounts = async (req, res) => {
       const pOccasions = Array.isArray(p.occasions)
         ? p.occasions.map(o => (typeof o === 'string' ? o : o.name || o.slug || '').toLowerCase().replace(/-/g, ' ').replace(/s$/, ''))
         : [];
-      return { pTitle, pCat, pSubCat, pCats, pTags, pOccasions };
+      return { pid, pTitle, pCat, pSubCat, pCats, pTags, pOccasions };
     });
 
-    const result = [];
-    const addedNames = new Set();
+    const getMatchingCount = (slug, name, id) => {
+      const cleanSlug = (slug || name || '').toLowerCase().trim();
+      const target = cleanSlug.replace(/-/g, ' ').replace(/s$/, '');
+      if (!target) return 0;
 
-    // Include DB categories first with computed counts
-    dbCategories.forEach(cat => {
-      const nameKey = (cat.name || '').trim().toLowerCase();
-      const slugKey = (cat.slug || '').trim().toLowerCase();
+      const linkedSet = id ? poMap.get(String(id)) : null;
 
-      const countByName = countsMap.get(nameKey) || 0;
-      const countBySlug = countsMap.get(slugKey) || 0;
+      return preparedProducts.filter(p => {
+        if (linkedSet && linkedSet.has(p.pid)) return true;
 
-      const target = (slugKey || nameKey).replace(/-/g, ' ').replace(/s$/, '');
-      let matchedCount = 0;
-      if (target) {
-        matchedCount = preparedProducts.filter(p => (
+        return (
           (p.pCat && (p.pCat.includes(target) || target.includes(p.pCat))) ||
           (p.pSubCat && (p.pSubCat.includes(target) || target.includes(p.pSubCat))) ||
           p.pCats.some(c => c && (c.includes(target) || target.includes(c))) ||
           p.pTags.some(t => t && (t.includes(target) || target.includes(t))) ||
           p.pOccasions.some(o => o && (o.includes(target) || target.includes(o))) ||
           p.pTitle.includes(target)
-        )).length;
-      }
+        );
+      }).length;
+    };
 
-      const maxCount = Math.max(countByName, countBySlug, matchedCount);
+    // Build deduplicated fallback counts map for dynamic categories not present in DB
+    const countsMap = new Map();
+    products.forEach(p => {
+      const lowerNames = new Set();
+      if (p.category) lowerNames.add(String(p.category).trim().toLowerCase());
+      if (p.subcategory) lowerNames.add(String(p.subcategory).trim().toLowerCase());
+      if (Array.isArray(p.categories)) {
+        p.categories.forEach(c => {
+          if (typeof c === 'string') lowerNames.add(c.trim().toLowerCase());
+          else if (c && typeof c === 'object') {
+            if (c.name) lowerNames.add(String(c.name).trim().toLowerCase());
+            if (c.slug) lowerNames.add(String(c.slug).trim().toLowerCase());
+          }
+        });
+      }
+      lowerNames.forEach(name => {
+        if (name) countsMap.set(name, (countsMap.get(name) || 0) + 1);
+      });
+    });
+
+    const result = [];
+    const addedNames = new Set();
+
+    // Include DB categories first with exact computed counts
+    dbCategories.forEach(cat => {
+      const nameKey = (cat.name || '').trim().toLowerCase();
+      const slugKey = (cat.slug || '').trim().toLowerCase();
+
+      const count = getMatchingCount(cat.slug, cat.name, cat._id || cat.id);
 
       result.push({
         _id: cat._id || cat.id,
         id: cat._id || cat.id,
         name: cat.name,
         slug: cat.slug,
-        count: maxCount,
-        productCount: maxCount
+        count: count,
+        productCount: count
       });
 
       addedNames.add(nameKey);
       addedNames.add(slugKey);
     });
+
+    // Also include active db occasions
+    try {
+      const dbOccasions = await Occasion.find({ isActive: true });
+      dbOccasions.forEach(occ => {
+        const nameKey = (occ.name || '').trim().toLowerCase();
+        const slugKey = (occ.slug || '').trim().toLowerCase();
+        if (!addedNames.has(nameKey) && !addedNames.has(slugKey)) {
+          const count = getMatchingCount(occ.slug, occ.name, occ._id || occ.id);
+          result.push({
+            _id: occ._id || occ.id,
+            id: occ._id || occ.id,
+            name: occ.name,
+            slug: occ.slug,
+            count: count,
+            productCount: count
+          });
+          addedNames.add(nameKey);
+          addedNames.add(slugKey);
+        }
+      });
+    } catch (e) {
+      console.warn('Could not load Occasions for counts:', e.message);
+    }
 
     // Also include remaining dynamic category counts from products
     countsMap.forEach((count, key) => {
