@@ -208,20 +208,36 @@ exports.getAllSettings = async (req, res) => {
     const Category = require('../models/Category');
     const dbCategories = await Category.find({ status: 'active' }).sort({ sortOrder: 1, name: 1 });
     
+    const resolveParentId = (p) => {
+      if (!p) return null;
+      if (typeof p === 'object') {
+        const rawId = p.id || p._id;
+        return rawId ? String(rawId).trim() : null;
+      }
+      const str = String(p).trim();
+      if (str === '' || str === 'null' || str === 'undefined' || str === '[object Object]') return null;
+      return str;
+    };
+
     // Map dbCategories to the settings category structure
-    const formattedCategories = dbCategories.map(cat => ({
-      id: cat._id.toString(),
-      name: cat.name,
-      slug: cat.slug,
-      description: cat.description || '',
-      image: cat.image || '',
-      link: cat.categoryUrl || `/${cat.slug}`,
-      enabled: cat.status === 'active',
-      order: cat.sortOrder || 0,
-      priority: cat.sortOrder || 0,
-      parentId: cat.parentId ? cat.parentId.toString() : null,
-      showInShop: cat.showInShop !== false
-    }));
+    const formattedCategories = dbCategories.map(cat => {
+      const pid = resolveParentId(cat.parentId);
+      return {
+        _id: (cat._id || cat.id).toString(),
+        id: (cat._id || cat.id).toString(),
+        name: cat.name,
+        slug: cat.slug,
+        description: cat.description || '',
+        image: cat.image || '',
+        link: cat.categoryUrl || `/${cat.slug}`,
+        categoryUrl: cat.categoryUrl || `/${cat.slug}`,
+        enabled: cat.status === 'active',
+        order: cat.sortOrder || 0,
+        priority: cat.sortOrder || 0,
+        parentId: pid,
+        showInShop: cat.showInShop !== false
+      };
+    });
 
     // Filter parents for homepage categories section
     const parentCategories = formattedCategories.filter(cat => !cat.parentId);
@@ -318,7 +334,7 @@ exports.updateAllSettings = async (req, res) => {
         categoryUrl: urlVal,
         status: cat.enabled ? 'active' : 'inactive',
         sortOrder: cat.priority !== undefined ? cat.priority : (cat.order || 0),
-        parentId: cat.parentId && mongoose.Types.ObjectId.isValid(cat.parentId) ? cat.parentId : null,
+        parentId: cat.parentId ? (typeof cat.parentId === 'object' ? (cat.parentId.id || cat.parentId._id || null) : (String(cat.parentId).trim() === '[object Object]' ? null : String(cat.parentId).trim())) : null,
         showInShop: cat.showInShop !== undefined ? cat.showInShop : cat.enabled
       };
 

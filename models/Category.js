@@ -110,14 +110,23 @@ class CategoryDocument {
     this.seoDescription = data.seoDescription || data.metaDescription || data.description || '';
 
     if (data.parent && typeof data.parent === 'object') {
+      const pId = String(data.parent.id || data.parent._id || '');
       this.parentId = {
-        _id: data.parent.id,
-        id: data.parent.id,
+        _id: pId,
+        id: pId,
         name: data.parent.name,
-        slug: data.parent.slug
+        slug: data.parent.slug,
+        toString() { return pId; }
       };
     } else if (data.parentId && typeof data.parentId === 'object') {
-      this.parentId = data.parentId;
+      const pId = String(data.parentId.id || data.parentId._id || '');
+      this.parentId = {
+        _id: pId,
+        id: pId,
+        name: data.parentId.name,
+        slug: data.parentId.slug,
+        toString() { return pId; }
+      };
     } else if (data.parentId && data.parentId !== 'null' && String(data.parentId).trim() !== '') {
       this.parentId = String(data.parentId).trim();
     } else {

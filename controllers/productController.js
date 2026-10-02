@@ -1076,6 +1076,23 @@ const getCategoriesWithCounts = async (req, res) => {
       names.forEach(n => addCount(n));
     });
 
+    // Prepare products for matching category/occasion queries (consistent with collection / by-occasion pages)
+    const preparedProducts = products.map(p => {
+      const pTitle = (p.title || p.name || '').toLowerCase();
+      const pCat = (p.category || '').toLowerCase().replace(/-/g, ' ').replace(/s$/, '');
+      const pSubCat = (p.subcategory || '').toLowerCase().replace(/-/g, ' ').replace(/s$/, '');
+      const pCats = Array.isArray(p.categories)
+        ? p.categories.map(c => (typeof c === 'string' ? c : c.name || c.slug || '').toLowerCase().replace(/-/g, ' ').replace(/s$/, ''))
+        : [];
+      const pTags = Array.isArray(p.tags)
+        ? p.tags.map(t => (typeof t === 'string' ? t : t.tag || '').toLowerCase().replace(/-/g, ' '))
+        : [];
+      const pOccasions = Array.isArray(p.occasions)
+        ? p.occasions.map(o => (typeof o === 'string' ? o : o.name || o.slug || '').toLowerCase().replace(/-/g, ' ').replace(/s$/, ''))
+        : [];
+      return { pTitle, pCat, pSubCat, pCats, pTags, pOccasions };
+    });
+
     const result = [];
     const addedNames = new Set();
 
@@ -1086,7 +1103,21 @@ const getCategoriesWithCounts = async (req, res) => {
 
       const countByName = countsMap.get(nameKey) || 0;
       const countBySlug = countsMap.get(slugKey) || 0;
-      const maxCount = Math.max(countByName, countBySlug);
+
+      const target = (slugKey || nameKey).replace(/-/g, ' ').replace(/s$/, '');
+      let matchedCount = 0;
+      if (target) {
+        matchedCount = preparedProducts.filter(p => (
+          (p.pCat && (p.pCat.includes(target) || target.includes(p.pCat))) ||
+          (p.pSubCat && (p.pSubCat.includes(target) || target.includes(p.pSubCat))) ||
+          p.pCats.some(c => c && (c.includes(target) || target.includes(c))) ||
+          p.pTags.some(t => t && (t.includes(target) || target.includes(t))) ||
+          p.pOccasions.some(o => o && (o.includes(target) || target.includes(o))) ||
+          p.pTitle.includes(target)
+        )).length;
+      }
+
+      const maxCount = Math.max(countByName, countBySlug, matchedCount);
 
       result.push({
         _id: cat._id || cat.id,
