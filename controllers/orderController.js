@@ -1118,7 +1118,8 @@ const getOrders = async (req, res) => {
     const {
       page = 1,
       limit = 50, // Default 50 for operational dashboard
-      period = 'all', // 'today', 'tomorrow', 'past', 'custom', 'all'
+      period = 'all', // 'today', 'tomorrow', 'upcoming', 'past', 'custom', 'all'
+      upcomingScope = 'all', // 'all', '7d', '14d', '30d', 'beyond_tomorrow'
       status,
       dateFrom,
       dateTo,
@@ -1159,6 +1160,32 @@ const getOrders = async (req, res) => {
       ];
     } else if (period === 'tomorrow') {
       basePeriodQuery.deliveryDate = { $gte: tomorrowBounds.start, $lte: tomorrowBounds.end };
+    } else if (period === 'upcoming') {
+      let startDelivery = tomorrowBounds.start;
+      let endDelivery = null;
+
+      if (upcomingScope === 'beyond_tomorrow') {
+        const dayAfterTomorrow = new Date(tomorrow);
+        dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 1);
+        startDelivery = getBoundsForDate(dayAfterTomorrow).start;
+      } else if (upcomingScope === '7d') {
+        const next7 = new Date(now);
+        next7.setDate(next7.getDate() + 7);
+        endDelivery = getBoundsForDate(next7).end;
+      } else if (upcomingScope === '14d') {
+        const next14 = new Date(now);
+        next14.setDate(next14.getDate() + 14);
+        endDelivery = getBoundsForDate(next14).end;
+      } else if (upcomingScope === '30d') {
+        const next30 = new Date(now);
+        next30.setDate(next30.getDate() + 30);
+        endDelivery = getBoundsForDate(next30).end;
+      }
+
+      basePeriodQuery.deliveryDate = { $gte: startDelivery };
+      if (endDelivery) {
+        basePeriodQuery.deliveryDate.$lte = endDelivery;
+      }
     } else if (period === 'past') {
       basePeriodQuery.$or = [
         { deliveryDate: { $lt: todayBounds.start } },
@@ -1254,6 +1281,17 @@ const getOrders = async (req, res) => {
       statusCounts.totalRevenue += parseFloat(o.totalAmount || 0);
     });
 
+    // Compute global upcoming orders count for advance bookings badge
+    let upcomingCount = 0;
+    try {
+      upcomingCount = await Order.countDocuments({
+        deliveryDate: { $gte: tomorrowBounds.start },
+        orderStatus: { $nin: ['cancelled', 'failed'] }
+      });
+    } catch (e) {
+      console.warn('[getOrders] Error calculating upcomingCount:', e.message);
+    }
+
     // Now apply status filter to build final query
     let query = { ...basePeriodQuery };
 
@@ -1285,6 +1323,11 @@ const getOrders = async (req, res) => {
     const totalPages = Math.ceil(total / pageSize);
     const skip = (pageNumber - 1) * pageSize;
 
+    // Sorting: for upcoming period, sort by earliest upcoming deliveryDate first (ascending)
+    const sortCriteria = period === 'upcoming'
+      ? { deliveryDate: 1, createdAt: 1 }
+      : { createdAt: -1 };
+
     // Fetch orders with pagination
     const orders = await Order.find(query)
       .populate([
@@ -1301,7 +1344,7 @@ const getOrders = async (req, res) => {
           }
         }
       ])
-      .sort({ createdAt: -1 })
+      .sort(sortCriteria)
       .skip(skip)
       .limit(pageSize);
 
@@ -1324,9 +1367,11 @@ const getOrders = async (req, res) => {
       success: true,
       orders,
       statusCounts,
+      upcomingCount,
       pagination: paginationInfo,
       meta: {
         period,
+        upcomingScope: period === 'upcoming' ? upcomingScope : undefined,
         status: status || 'all',
         search: search || '',
         dateRange: { from: dateFrom, to: dateTo },

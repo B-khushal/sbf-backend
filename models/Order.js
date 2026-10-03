@@ -78,6 +78,9 @@ function cleanOrderWhere(where = {}) {
       if (statusFilter.$in && Array.isArray(statusFilter.$in)) {
         clean.orderStatus = { in: statusFilter.$in };
       }
+      if (statusFilter.$nin && Array.isArray(statusFilter.$nin)) {
+        clean.orderStatus = { notIn: statusFilter.$nin };
+      }
       if (statusFilter.$ne) {
         clean.orderStatus = { not: statusFilter.$ne };
       }
@@ -404,12 +407,24 @@ class OrderDocument {
 class QueryChain {
   constructor(prismaQuery) {
     this.prismaQuery = prismaQuery;
+    this._sortObj = null;
+    this._skipCount = 0;
+    this._limitCount = null;
   }
 
   populate() { return this; }
-  sort() { return this; }
-  skip() { return this; }
-  limit() { return this; }
+  sort(criteria) {
+    this._sortObj = criteria;
+    return this;
+  }
+  skip(num) {
+    this._skipCount = Number(num) || 0;
+    return this;
+  }
+  limit(num) {
+    this._limitCount = Number(num);
+    return this;
+  }
   select() { return this; }
   lean() { return this; }
   exec() { return this.then(r => r); }
@@ -418,7 +433,31 @@ class QueryChain {
     try {
       const res = await this.prismaQuery;
       if (Array.isArray(res)) {
-        resolve(res.map(o => new OrderDocument(o)));
+        let docs = res.map(o => new OrderDocument(o));
+        if (this._sortObj && typeof this._sortObj === 'object') {
+          docs.sort((a, b) => {
+            for (const [key, dir] of Object.entries(this._sortObj)) {
+              let valA = a[key];
+              let valB = b[key];
+              if (key === 'deliveryDate') {
+                valA = valA ? new Date(valA).getTime() : (dir === 1 || dir === 'asc' ? Infinity : -Infinity);
+                valB = valB ? new Date(valB).getTime() : (dir === 1 || dir === 'asc' ? Infinity : -Infinity);
+              } else if (key === 'createdAt') {
+                valA = valA ? new Date(valA).getTime() : 0;
+                valB = valB ? new Date(valB).getTime() : 0;
+              }
+              if (valA < valB) return (dir === 1 || dir === 'asc') ? -1 : 1;
+              if (valA > valB) return (dir === 1 || dir === 'asc') ? 1 : -1;
+            }
+            return 0;
+          });
+        }
+        if (this._skipCount > 0 || (this._limitCount !== null && this._limitCount !== undefined && !isNaN(this._limitCount))) {
+          const start = this._skipCount || 0;
+          const end = this._limitCount ? start + this._limitCount : undefined;
+          docs = docs.slice(start, end);
+        }
+        resolve(docs);
       } else if (res) {
         resolve(new OrderDocument(res));
       } else {
