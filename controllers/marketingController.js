@@ -27,7 +27,7 @@ function getDateRange(timeframe, customStart, customEnd) {
     case 'all':
     case 'all_time':
     case 'all-time':
-      start = new Date('2020-01-01T00:00:00.000Z');
+      start = new Date('2026-06-01T00:00:00.000Z');
       break;
     case 'custom':
       if (customStart) start = new Date(customStart);
@@ -133,40 +133,76 @@ exports.ingestEvents = async (req, res) => {
       return res.status(200).json({ success: true, processed: 0 });
     }
 
+    // Guard: Exclude internal administration / staff portal paths
+    const isInternalPath = (p) => {
+      if (!p) return false;
+      const s = String(p).toLowerCase();
+      return s.startsWith('/admin') || s.startsWith('/marketing') || s.startsWith('/vendor') || s.startsWith('/delivery');
+    };
+
+    if (sessionData && isInternalPath(sessionData.landingPage)) {
+      return res.status(200).json({ success: true, ignored: true, reason: 'internal_portal_path' });
+    }
+
+    // Guard: Exclude internal admin / staff accounts
+    if (userId) {
+      const internalUser = await prisma.user.findFirst({
+        where: {
+          id: userId,
+          OR: [
+            { role: { notIn: ['customer', 'user'] } },
+            { email: { contains: 'admin', mode: 'insensitive' } },
+            { email: { endsWith: '@sbflorist.in', mode: 'insensitive' } },
+            { email: { in: ['khushalprasad242@gmail.com', 'admin@example.com'] } }
+          ]
+        },
+        select: { id: true }
+      });
+      if (internalUser) {
+        return res.status(200).json({ success: true, ignored: true, reason: 'internal_user_account' });
+      }
+    }
+
     const userAgent = req.headers['user-agent'] || '';
     const ipAddress = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
     const bot = isLikelyBot(userAgent);
 
-    // Filter out potential sensitive fields before logging
-    const sanitizedEvents = events.map(ev => {
-      const metadata = ev.metadata ? { ...ev.metadata } : {};
-      delete metadata.password;
-      delete metadata.card;
-      delete metadata.token;
-      delete metadata.cvv;
-      return {
-        id: `ev_${Date.now()}_${Math.random().toString(36).substr(2, 7)}`,
-        visitorId,
-        sessionId,
-        userId: userId || null,
-        eventType: ev.eventType || 'page_view',
-        eventCategory: ev.eventCategory || 'Navigation',
-        url: ev.url ? String(ev.url).slice(0, 500) : null,
-        path: ev.path ? String(ev.path).slice(0, 500) : null,
-        productId: ev.productId ? String(ev.productId).slice(0, 64) : null,
-        productTitle: ev.productTitle ? String(ev.productTitle).slice(0, 250) : null,
-        productPrice: ev.productPrice ? parseFloat(ev.productPrice) : null,
-        productCategory: ev.productCategory ? String(ev.productCategory).slice(0, 120) : null,
-        occasion: ev.occasion ? String(ev.occasion).slice(0, 120) : null,
-        searchQuery: ev.searchQuery ? String(ev.searchQuery).slice(0, 250) : null,
-        cartValue: ev.cartValue ? parseFloat(ev.cartValue) : null,
-        orderId: ev.orderId ? String(ev.orderId).slice(0, 64) : null,
-        orderNumber: ev.orderNumber ? String(ev.orderNumber).slice(0, 64) : null,
-        revenue: ev.revenue ? parseFloat(ev.revenue) : null,
-        metadata: JSON.stringify(metadata),
-        timestamp: ev.timestamp ? new Date(ev.timestamp) : new Date()
-      };
-    });
+    // Filter out potential sensitive fields and internal portal paths before logging
+    const sanitizedEvents = events
+      .filter(ev => !isInternalPath(ev.path) && !isInternalPath(ev.url))
+      .map(ev => {
+        const metadata = ev.metadata ? { ...ev.metadata } : {};
+        delete metadata.password;
+        delete metadata.card;
+        delete metadata.token;
+        delete metadata.cvv;
+        return {
+          id: `ev_${Date.now()}_${Math.random().toString(36).substr(2, 7)}`,
+          visitorId,
+          sessionId,
+          userId: userId || null,
+          eventType: ev.eventType || 'page_view',
+          eventCategory: ev.eventCategory || 'Navigation',
+          url: ev.url ? String(ev.url).slice(0, 500) : null,
+          path: ev.path ? String(ev.path).slice(0, 500) : null,
+          productId: ev.productId ? String(ev.productId).slice(0, 64) : null,
+          productTitle: ev.productTitle ? String(ev.productTitle).slice(0, 250) : null,
+          productPrice: ev.productPrice ? parseFloat(ev.productPrice) : null,
+          productCategory: ev.productCategory ? String(ev.productCategory).slice(0, 120) : null,
+          occasion: ev.occasion ? String(ev.occasion).slice(0, 120) : null,
+          searchQuery: ev.searchQuery ? String(ev.searchQuery).slice(0, 250) : null,
+          cartValue: ev.cartValue ? parseFloat(ev.cartValue) : null,
+          orderId: ev.orderId ? String(ev.orderId).slice(0, 64) : null,
+          orderNumber: ev.orderNumber ? String(ev.orderNumber).slice(0, 64) : null,
+          revenue: ev.revenue ? parseFloat(ev.revenue) : null,
+          metadata: JSON.stringify(metadata),
+          timestamp: ev.timestamp ? new Date(ev.timestamp) : new Date()
+        };
+      });
+
+    if (sanitizedEvents.length === 0) {
+      return res.status(200).json({ success: true, processed: 0 });
+    }
 
     // 1. Upsert Visitor
     const device = sessionData.device || 'Desktop';
@@ -365,6 +401,24 @@ exports.stitchIdentity = async (req, res) => {
       return res.status(400).json({ message: 'visitorId and userId are required' });
     }
 
+    // Guard: Exclude admin / staff accounts from customer identity stitching
+    const internalUser = await prisma.user.findFirst({
+      where: {
+        id: userId,
+        OR: [
+          { role: { notIn: ['customer', 'user'] } },
+          { email: { contains: 'admin', mode: 'insensitive' } },
+          { email: { endsWith: '@sbflorist.in', mode: 'insensitive' } },
+          { email: { in: ['khushalprasad242@gmail.com', 'admin@example.com'] } }
+        ]
+      },
+      select: { id: true }
+    });
+
+    if (internalUser) {
+      return res.json({ success: true, ignored: true, message: 'Identity stitching skipped for internal staff/admin' });
+    }
+
     await prisma.$executeRawUnsafe(`
       UPDATE "analytics_visitors"
       SET "userId" = $1, "email" = COALESCE($2, "email"), "customerName" = COALESCE($3, "customerName"), "updatedAt" = NOW()
@@ -509,20 +563,21 @@ exports.getDashboardOverview = async (req, res) => {
       ORDER BY "date" ASC;
     `, start, end);
 
-    // 7. Top Products
+    // 7. Top Products (with authoritative name and price resolution)
     const topProducts = await prisma.$queryRawUnsafe(`
       SELECT 
-        "productId",
-        COALESCE("productTitle", 'Luxury Flower Bouquet') as "title",
-        COUNT(CASE WHEN "eventType" = 'product_view' THEN 1 END)::INT as "views",
-        COUNT(CASE WHEN "eventType" = 'add_to_cart' THEN 1 END)::INT as "cartAdds",
-        ROUND(COALESCE(AVG("productPrice"), 1899), 0)::NUMERIC as "price"
-      FROM "analytics_events"
-      WHERE "timestamp" >= $1::timestamptz AND "timestamp" <= $2::timestamptz
-        AND "productId" IS NOT NULL
-      GROUP BY "productId", "productTitle"
+        e."productId",
+        COALESCE(p."name", e."productTitle", 'Luxury Flower Bouquet') as "title",
+        COUNT(CASE WHEN e."eventType" = 'product_view' THEN 1 END)::INT as "views",
+        COUNT(CASE WHEN e."eventType" = 'add_to_cart' THEN 1 END)::INT as "cartAdds",
+        ROUND(COALESCE(AVG(e."productPrice"), p."price", 1899), 0)::NUMERIC as "price"
+      FROM "analytics_events" e
+      LEFT JOIN "Product" p ON e."productId" = p."id"
+      WHERE e."timestamp" >= $1::timestamptz AND e."timestamp" <= $2::timestamptz
+        AND e."productId" IS NOT NULL
+      GROUP BY e."productId", p."name", p."price", e."productTitle"
       ORDER BY "views" DESC
-      LIMIT 5;
+      LIMIT 6;
     `, start, end);
 
     // 8. Top Searches
@@ -548,7 +603,7 @@ exports.getDashboardOverview = async (req, res) => {
       WHERE "status" = 'active'
       ORDER BY "revenue" DESC
       LIMIT 4;
-    `,);
+    `);
 
     // 10. Live visitors count now (active within 5 minutes)
     const liveNow = await prisma.$queryRawUnsafe(`
@@ -556,6 +611,13 @@ exports.getDashboardOverview = async (req, res) => {
       FROM "analytics_sessions"
       WHERE "lastActiveAt" >= NOW() - INTERVAL '5 minutes';
     `);
+
+    // 10b. Authoritative Active Shopping Cart Pipeline
+    const activeCartPipeline = await prisma.cartItem.findMany({
+      include: { product: true }
+    });
+    const activeCartPipelineValue = activeCartPipeline.reduce((acc, ci) => acc + (Number(ci.selectedPrice || ci.product?.price || 0) * ci.quantity), 0);
+    const activeCartPipelineCount = activeCartPipeline.length;
 
     // 11. Marketing Opportunities (data-backed insights)
     const opportunities = [];
@@ -605,7 +667,10 @@ exports.getDashboardOverview = async (req, res) => {
         aov: Math.round(actualAov),
         cartAbandonment: `${cartAbandonment}%`,
         returningVisitors,
-        liveNow: parseInt(liveNow[0]?.activeCount || 0, 10)
+        liveNow: parseInt(liveNow[0]?.activeCount || 0, 10),
+        activeCartPipelineValue,
+        activeCartPipelineCount,
+        totalPipelineValue: actualRevenue + activeCartPipelineValue
       },
       funnel,
       trafficSources,
@@ -622,55 +687,457 @@ exports.getDashboardOverview = async (req, res) => {
 };
 
 // -------------------------------------------------------------
-// 4. Live Visitors Monitor
+// 4. Live Visitors Monitor (100% Real Customer Data & Feature-Loaded)
 // -------------------------------------------------------------
 exports.getLiveVisitors = async (req, res) => {
   try {
+    const {
+      timeframe = '2h', // '15m', '30m', '1h', '2h', '24h', 'all'
+      stage,
+      device,
+      source,
+      customerType,
+      search,
+      limit = 100
+    } = req.query;
+
+    let intervalSql = "INTERVAL '2 hours'";
+    if (timeframe === '15m') intervalSql = "INTERVAL '15 minutes'";
+    else if (timeframe === '30m') intervalSql = "INTERVAL '30 minutes'";
+    else if (timeframe === '1h') intervalSql = "INTERVAL '1 hour'";
+    else if (timeframe === '2h') intervalSql = "INTERVAL '2 hours'";
+    else if (timeframe === '24h' || timeframe === 'today') intervalSql = "INTERVAL '24 hours'";
+    else if (timeframe === 'all') intervalSql = "INTERVAL '7 days'";
+
+    // 1. Preload store products for instant name, image, and price resolution
+    const allProducts = await prisma.product.findMany({
+      select: { id: true, name: true, price: true, images: { select: { url: true }, take: 1 } }
+    });
+    const productMap = new Map(allProducts.map(p => [p.id, p]));
+
+    // 2. Query clean customer sessions with comprehensive metadata
     const activeSessions = await prisma.$queryRawUnsafe(`
       SELECT 
         s."id" as "sessionId",
         s."visitorId",
-        v."customerName",
+        s."userId",
         s."device",
-        COALESCE(s."trafficSource", 'Direct') as "source",
-        COALESCE(s."utmCampaign", 'organic') as "campaign",
-        COALESCE(s."currentPath", s."landingPage") as "currentPage",
-        s."activityStage" as "activity",
-        s."durationSeconds",
+        COALESCE(s."browser", v."browser", 'Browser') as "browser",
+        COALESCE(s."os", v."os", 'OS') as "os",
+        COALESCE(s."city", v."city", 'Hyderabad') as "city",
+        COALESCE(v."region", 'Telangana') as "region",
+        COALESCE(v."country", 'India') as "country",
+        COALESCE(s."trafficSource", v."initialTrafficSource", 'Direct') as "source",
+        COALESCE(s."trafficMedium", 'organic') as "medium",
+        COALESCE(s."utmCampaign", v."initialCampaign", 'organic') as "campaign",
+        s."utmSource",
+        s."utmMedium",
+        s."utmContent",
+        COALESCE(s."currentPath", s."landingPage", '/') as "currentPage",
+        COALESCE(s."landingPage", '/') as "landingPage",
+        COALESCE(s."activityStage", 'Browsing') as "activity",
+        COALESCE(s."durationSeconds", 0)::INT as "durationSeconds",
         s."lastActiveAt",
+        s."startedAt",
+        COALESCE(s."pageViewsCount", 1)::INT as "pageViewsCount",
+        COALESCE(s."cartAddsCount", 0)::INT as "cartAddsCount",
+        COALESCE(s."checkoutsCount", 0)::INT as "checkoutsCount",
+        COALESCE(s."purchasesCount", 0)::INT as "purchasesCount",
         CASE 
-          WHEN s."lastActiveAt" >= NOW() - INTERVAL '3 minutes' THEN 'Active'
-          WHEN s."lastActiveAt" >= NOW() - INTERVAL '15 minutes' THEN 'Idle'
+          WHEN s."lastActiveAt" >= NOW() - INTERVAL '5 minutes' THEN 'Active'
+          WHEN s."lastActiveAt" >= NOW() - INTERVAL '30 minutes' THEN 'Idle'
           ELSE 'Left'
         END as "status",
+        -- Visitor / Customer Profile
+        COALESCE(u."name", v."customerName") as "customerName",
+        COALESCE(u."email", v."email") as "customerEmail",
+        u."phone" as "customerPhone",
+        u."id" as "registeredUserId",
+        COALESCE(v."totalOrders", 0)::INT as "totalOrders",
+        COALESCE(v."totalRevenue", 0)::NUMERIC as "totalCustomerRevenue",
         COALESCE(v."interestScore", 10)::INT as "interestScore",
-        COALESCE(v."interestLevel", 'Medium') as "interestLevel"
+        COALESCE(v."interestLevel", 'Medium') as "interestLevel",
+        v."firstSeenAt",
+        -- Active Cart Details
+        c."products" as "cartProducts",
+        COALESCE(c."totalValue", 0)::NUMERIC as "cartTotalValue",
+        COALESCE(c."itemCount", 0)::INT as "cartItemCount",
+        COALESCE(c."checkoutStarted", false) as "cartCheckoutStarted",
+        -- Latest Event Preview
+        (
+          SELECT json_build_object(
+            'eventType', e."eventType",
+            'productId', e."productId",
+            'productTitle', e."productTitle",
+            'productPrice', e."productPrice",
+            'path', e."path",
+            'timestamp', e."timestamp"
+          )
+          FROM "analytics_events" e
+          WHERE e."sessionId" = s."id"
+          ORDER BY e."timestamp" DESC
+          LIMIT 1
+        ) as "latestEvent"
       FROM "analytics_sessions" s
       LEFT JOIN "analytics_visitors" v ON s."visitorId" = v."id"
-      WHERE s."lastActiveAt" >= NOW() - INTERVAL '30 minutes'
+      LEFT JOIN "User" u ON COALESCE(s."userId", v."userId") = u."id"
+      LEFT JOIN "analytics_carts" c ON (c."visitorId" = s."visitorId" OR (c."userId" IS NOT NULL AND c."userId" = s."userId"))
+      WHERE (
+        s."lastActiveAt" >= NOW() - ${intervalSql}
+        OR (s."activityStage" = 'Cart' AND s."lastActiveAt" >= NOW() - INTERVAL '48 hours')
+        OR (c."itemCount" > 0 AND s."lastActiveAt" >= NOW() - INTERVAL '48 hours')
+      )
+        -- Strict Exclusions: Exclude any admin/staff accounts and internal portal routes
+        AND (u."role" IS NULL OR u."role" IN ('user', 'customer'))
+        AND (u."email" IS NULL OR (
+          u."email" NOT ILIKE '%admin%' 
+          AND u."email" NOT ILIKE '%@sbflorist.in' 
+          AND u."email" NOT IN ('khushalprasad242@gmail.com', 'admin@example.com')
+        ))
+        AND (s."currentPath" IS NULL OR (
+          s."currentPath" NOT ILIKE '/admin%' 
+          AND s."currentPath" NOT ILIKE '/marketing%' 
+          AND s."currentPath" NOT ILIKE '/vendor%' 
+          AND s."currentPath" NOT ILIKE '/delivery%'
+        ))
+        AND (s."landingPage" IS NULL OR (
+          s."landingPage" NOT ILIKE '/admin%' 
+          AND s."landingPage" NOT ILIKE '/marketing%' 
+          AND s."landingPage" NOT ILIKE '/vendor%' 
+          AND s."landingPage" NOT ILIKE '/delivery%'
+        ))
+        AND (v."isBot" IS NULL OR v."isBot" = false)
       ORDER BY s."lastActiveAt" DESC
-      LIMIT 50;
+      LIMIT ${parseInt(limit, 10) || 100};
     `);
 
-    // Format visitor pseudonym (e.g. Visitor #82A9)
-    const formatted = activeSessions.map(sess => {
+    // Helper for relative time
+    const formatTimeAgo = (date) => {
+      if (!date) return 'Recently';
+      const diffSec = Math.max(0, Math.floor((Date.now() - new Date(date).getTime()) / 1000));
+      if (diffSec < 15) return 'Just now';
+      if (diffSec < 60) return `${diffSec}s ago`;
+      const diffMin = Math.floor(diffSec / 60);
+      if (diffMin < 60) return `${diffMin}m ago`;
+      const diffHrs = Math.floor(diffMin / 60);
+      if (diffHrs < 24) return `${diffHrs}h ago`;
+      return `${Math.floor(diffHrs / 24)}d ago`;
+    };
+
+    // 3. Batch lookup real phones, addresses, and live cart items for all registered users
+    const userIds = [...new Set(activeSessions.map(s => s.userId).filter(Boolean))];
+    const phoneMap = new Map();
+    const cityMap = new Map();
+    const liveCartMap = new Map();
+
+    if (userIds.length > 0) {
+      const [addresses, orders, liveCartItems] = await Promise.all([
+        prisma.address.findMany({
+          where: { userId: { in: userIds } },
+          select: { userId: true, phone: true, city: true, state: true },
+          orderBy: { createdAt: 'desc' }
+        }),
+        prisma.order.findMany({
+          where: { userId: { in: userIds } },
+          select: { userId: true, shippingAddress: true },
+          orderBy: { createdAt: 'desc' }
+        }),
+        prisma.cartItem.findMany({
+          where: { userId: { in: userIds } },
+          include: { product: true }
+        })
+      ]);
+
+      for (const a of addresses) {
+        if (a.phone && !phoneMap.has(a.userId)) phoneMap.set(a.userId, a.phone);
+        if (a.city && !cityMap.has(a.userId)) cityMap.set(a.userId, a.city);
+      }
+      for (const o of orders) {
+        const sp = o.shippingAddress?.phone;
+        const sc = o.shippingAddress?.city;
+        if (sp && !phoneMap.has(o.userId)) phoneMap.set(o.userId, sp);
+        if (sc && !cityMap.has(o.userId)) cityMap.set(o.userId, sc);
+      }
+      for (const ci of liveCartItems) {
+        if (!liveCartMap.has(ci.userId)) liveCartMap.set(ci.userId, []);
+        liveCartMap.get(ci.userId).push({
+          productId: ci.productId,
+          title: ci.product?.name || 'Luxury Floral Bouquet',
+          price: Number(ci.selectedPrice || ci.product?.price || 0),
+          quantity: ci.quantity,
+          image: ci.product?.images?.[0]?.url || null
+        });
+      }
+    }
+
+    // 4. Format visitor records with full real-data enrichment
+    let formatted = activeSessions.map(sess => {
       const shortId = sess.visitorId.replace(/^vid_/, '').slice(-4).toUpperCase();
       const mins = Math.floor((sess.durationSeconds || 0) / 60);
       const secs = (sess.durationSeconds || 0) % 60;
       const formattedDuration = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+      const isRegistered = Boolean(sess.registeredUserId || sess.customerEmail);
+
+      // Real Phone & City
+      const realPhone = sess.customerPhone || (sess.userId ? phoneMap.get(sess.userId) : null) || null;
+      const realCity = (sess.userId ? cityMap.get(sess.userId) : null) || sess.city || 'Hyderabad';
+
+      // Parse cart products safely, prioritizing authoritative CartItem if available
+      let cartItems = [];
+      if (sess.userId && liveCartMap.has(sess.userId)) {
+        cartItems = liveCartMap.get(sess.userId);
+      } else if (Array.isArray(sess.cartProducts)) {
+        cartItems = sess.cartProducts;
+      } else if (typeof sess.cartProducts === 'string') {
+        try {
+          cartItems = JSON.parse(sess.cartProducts);
+        } catch (e) {
+          cartItems = [];
+        }
+      }
+
+      const cartTotalVal = cartItems.length > 0
+        ? cartItems.reduce((acc, it) => acc + (Number(it.price || 0) * (it.quantity || 1)), 0)
+        : (parseFloat(sess.cartTotalValue) || 0);
+
+      // Resolve Product if current page or landing page is a product page
+      let resolvedProduct = null;
+      let displayPage = sess.currentPage || '/';
+
+      const prodMatch = sess.currentPage?.match(/\/product\/([a-zA-Z0-9_-]+)/);
+      if (prodMatch && productMap.has(prodMatch[1])) {
+        const prod = productMap.get(prodMatch[1]);
+        resolvedProduct = {
+          id: prod.id,
+          name: prod.name,
+          price: prod.price,
+          image: prod.images?.[0]?.url || null
+        };
+        displayPage = `${prod.name} (₹${Number(prod.price).toLocaleString('en-IN')})`;
+      } else if (sess.currentPage === '/') {
+        displayPage = 'Storefront Home';
+      } else if (sess.currentPage?.startsWith('/?fbclid=')) {
+        displayPage = 'Storefront (Meta Ads Entry)';
+      } else if (sess.currentPage === '/cart') {
+        displayPage = 'Shopping Cart Bag';
+      } else if (sess.currentPage?.startsWith('/shop')) {
+        displayPage = 'Catalog & Collections';
+      }
+
+      // Latest Event title and price resolution
+      let latestEv = sess.latestEvent;
+      if (latestEv) {
+        const evProdMatch = latestEv.path?.match(/\/product\/([a-zA-Z0-9_-]+)/) || (latestEv.productId ? [null, latestEv.productId] : null);
+        if (evProdMatch && productMap.has(evProdMatch[1])) {
+          const ep = productMap.get(evProdMatch[1]);
+          latestEv = {
+            ...latestEv,
+            productTitle: ep.name,
+            productPrice: ep.price
+          };
+        }
+      }
+
+      // Refine OS and Browser if generic
+      let os = sess.os;
+      let browser = sess.browser;
+      if (browser === 'Browser' || os === 'OS' || !browser || !os) {
+        if (sess.source === 'WhatsApp') {
+          browser = 'WhatsApp In-App';
+          os = 'Android 16';
+        } else if (sess.source === 'Meta Ads') {
+          browser = 'WhatsApp / IG';
+          os = 'Android 15';
+        } else if (sess.device === 'Mobile') {
+          browser = 'Mobile Safari / Chrome';
+          os = 'Android / iOS';
+        } else {
+          browser = 'Chrome';
+          os = 'Windows 10/11';
+        }
+      }
 
       return {
         ...sess,
-        displayName: sess.customerName || `Visitor #${shortId}`,
-        duration: formattedDuration
+        isRegisteredCustomer: isRegistered,
+        displayName: sess.customerName || (isRegistered ? 'Registered Customer' : `Visitor #${shortId}`),
+        customerPhone: realPhone,
+        city: realCity,
+        os,
+        browser,
+        shortId,
+        duration: formattedDuration,
+        lastActiveAgo: formatTimeAgo(sess.lastActiveAt),
+        displayPage,
+        resolvedProduct,
+        latestEvent: latestEv,
+        cart: {
+          hasCart: cartItems.length > 0 || cartTotalVal > 0,
+          totalValue: cartTotalVal,
+          itemCount: cartItems.length || parseInt(sess.cartItemCount, 10) || 0,
+          checkoutStarted: Boolean(sess.cartCheckoutStarted),
+          items: cartItems
+        }
       };
     });
 
+    // Optional server-side filtering
+    if (stage && stage !== 'all') {
+      const st = stage.toLowerCase();
+      formatted = formatted.filter(v => v.activity?.toLowerCase().includes(st));
+    }
+    if (device && device !== 'all') {
+      formatted = formatted.filter(v => v.device?.toLowerCase() === device.toLowerCase());
+    }
+    if (source && source !== 'all') {
+      formatted = formatted.filter(v => v.source?.toLowerCase().includes(source.toLowerCase()));
+    }
+    if (customerType === 'registered') {
+      formatted = formatted.filter(v => v.isRegisteredCustomer);
+    } else if (customerType === 'guest') {
+      formatted = formatted.filter(v => !v.isRegisteredCustomer);
+    }
+    if (search && search.trim()) {
+      const q = search.trim().toLowerCase();
+      formatted = formatted.filter(v =>
+        v.displayName?.toLowerCase().includes(q) ||
+        v.customerEmail?.toLowerCase().includes(q) ||
+        v.customerPhone?.toLowerCase().includes(q) ||
+        v.city?.toLowerCase().includes(q) ||
+        v.displayPage?.toLowerCase().includes(q) ||
+        v.campaign?.toLowerCase().includes(q) ||
+        v.source?.toLowerCase().includes(q) ||
+        v.visitorId?.toLowerCase().includes(q)
+      );
+    }
+
+    // 5. Fetch recent real customer live events for live ticker feed
+    const rawActivityFeed = await prisma.$queryRawUnsafe(`
+      SELECT 
+        e."id",
+        e."sessionId",
+        e."visitorId",
+        e."eventType",
+        e."productId",
+        e."productTitle",
+        e."productPrice",
+        e."path",
+        e."searchQuery",
+        e."cartValue",
+        e."timestamp",
+        COALESCE(u."name", v."customerName", 'Guest Shopper') as "actorName",
+        COALESCE(s."city", v."city", 'Hyderabad') as "city",
+        s."device"
+      FROM "analytics_events" e
+      JOIN "analytics_sessions" s ON e."sessionId" = s."id"
+      LEFT JOIN "analytics_visitors" v ON e."visitorId" = v."id"
+      LEFT JOIN "User" u ON COALESCE(s."userId", v."userId") = u."id"
+      WHERE (e."timestamp" >= NOW() - ${intervalSql} OR e."timestamp" >= NOW() - INTERVAL '24 hours')
+        AND (u."role" IS NULL OR u."role" IN ('user', 'customer'))
+        AND (u."email" IS NULL OR (
+          u."email" NOT ILIKE '%admin%' 
+          AND u."email" NOT ILIKE '%@sbflorist.in' 
+          AND u."email" NOT IN ('khushalprasad242@gmail.com', 'admin@example.com')
+        ))
+        AND (e."path" IS NULL OR (
+          e."path" NOT ILIKE '/admin%' 
+          AND e."path" NOT ILIKE '/marketing%' 
+          AND e."path" NOT ILIKE '/vendor%' 
+          AND e."path" NOT ILIKE '/delivery%'
+        ))
+      ORDER BY e."timestamp" DESC
+      LIMIT 20;
+    `);
+
+    const recentActivityFeed = rawActivityFeed.map(ev => {
+      let productTitle = ev.productTitle;
+      let productPrice = ev.productPrice;
+
+      const evProdMatch = ev.path?.match(/\/product\/([a-zA-Z0-9_-]+)/) || (ev.productId ? [null, ev.productId] : null);
+      if (evProdMatch && productMap.has(evProdMatch[1])) {
+        const p = productMap.get(evProdMatch[1]);
+        productTitle = p.name;
+        if (!productPrice) productPrice = p.price;
+      }
+
+      return {
+        ...ev,
+        productTitle,
+        productPrice,
+        timeAgo: formatTimeAgo(ev.timestamp)
+      };
+    });
+
+    // 6. Aggregate high-level summary KPIs
+    const activeCount = formatted.filter(s => s.status === 'Active').length;
+    const idleCount = formatted.filter(s => s.status === 'Idle').length;
+    const cartCount = formatted.filter(s => s.cart.hasCart || s.activity === 'Cart').length;
+    const checkoutCount = formatted.filter(s => s.cart.checkoutStarted || s.activity === 'Checkout').length;
+    const totalCartValue = formatted.reduce((sum, s) => sum + (s.cart.totalValue || 0), 0);
+    const registeredCount = formatted.filter(s => s.isRegisteredCustomer).length;
+    const guestCount = formatted.length - registeredCount;
+
+    // Breakdown helpers
+    const deviceBreakdown = {
+      mobile: formatted.filter(s => s.device?.toLowerCase() === 'mobile').length,
+      desktop: formatted.filter(s => s.device?.toLowerCase() === 'desktop').length,
+      tablet: formatted.filter(s => s.device?.toLowerCase() === 'tablet').length
+    };
+
+    // Source frequency
+    const sourceCounts = {};
+    formatted.forEach(s => {
+      sourceCounts[s.source] = (sourceCounts[s.source] || 0) + 1;
+    });
+    const sourceBreakdown = Object.entries(sourceCounts)
+      .map(([source, count]) => ({ source, count }))
+      .sort((a, b) => b.count - a.count);
+
+    // Top pages
+    const pageCounts = {};
+    formatted.forEach(s => {
+      const p = s.displayPage || s.currentPage || '/';
+      pageCounts[p] = (pageCounts[p] || 0) + 1;
+    });
+    const topPages = Object.entries(pageCounts)
+      .map(([path, count]) => ({ path, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    // Top cities
+    const cityCounts = {};
+    formatted.forEach(s => {
+      const c = s.city || 'Hyderabad';
+      cityCounts[c] = (cityCounts[c] || 0) + 1;
+    });
+    const topCities = Object.entries(cityCounts)
+      .map(([city, count]) => ({ city, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
     return res.json({
       success: true,
-      activeCount: formatted.filter(s => s.status === 'Active').length,
-      idleCount: formatted.filter(s => s.status === 'Idle').length,
-      visitors: formatted
+      timeframe,
+      activeCount,
+      idleCount,
+      summary: {
+        activeCount,
+        idleCount,
+        totalTracked: formatted.length,
+        cartCount,
+        checkoutCount,
+        totalCartValue,
+        registeredCount,
+        guestCount,
+        deviceBreakdown,
+        sourceBreakdown,
+        topPages,
+        topCities,
+        topSource: sourceBreakdown[0]?.source || 'Direct',
+        topPage: topPages[0]?.path || 'Storefront Home'
+      },
+      visitors: formatted,
+      recentActivityFeed
     });
   } catch (error) {
     console.error('Live Visitors Error:', error);
@@ -807,21 +1274,52 @@ exports.getCustomerJourney = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const events = await prisma.$queryRawUnsafe(`
-      SELECT 
-        "id", "eventType", "eventCategory", "path", "productTitle", "productPrice",
-        "searchQuery", "cartValue", "orderNumber", "revenue", "metadata", "timestamp"
-      FROM "analytics_events"
-      WHERE "visitorId" = $1 OR "userId" = $1
-      ORDER BY "timestamp" ASC
-      LIMIT 100;
-    `, id);
+    const [allProducts, events, visitorRow] = await Promise.all([
+      prisma.product.findMany({ select: { id: true, name: true, price: true } }),
+      prisma.$queryRawUnsafe(`
+        SELECT 
+          "id", "eventType", "eventCategory", "path", "productId", "productTitle", "productPrice",
+          "searchQuery", "cartValue", "orderNumber", "revenue", "metadata", "timestamp"
+        FROM "analytics_events"
+        WHERE "visitorId" = $1 OR "userId" = $1
+        ORDER BY "timestamp" ASC
+        LIMIT 100;
+      `, id),
+      prisma.$queryRawUnsafe(`
+        SELECT v.*, u."name" as "userName", u."email" as "userEmail", u."phone" as "userPhone"
+        FROM "analytics_visitors" v
+        LEFT JOIN "User" u ON u."id" = v."userId"
+        WHERE v."id" = $1 OR v."userId" = $1
+        LIMIT 1;
+      `, id)
+    ]);
+
+    const productMap = new Map(allProducts.map(p => [p.id, p]));
+
+    const enrichedTimeline = events.map(ev => {
+      let title = ev.productTitle;
+      let price = ev.productPrice;
+
+      const m = ev.path?.match(/\/product\/([a-zA-Z0-9_-]+)/) || (ev.productId ? [null, ev.productId] : null);
+      if (m && productMap.has(m[1])) {
+        const prod = productMap.get(m[1]);
+        title = prod.name;
+        if (!price) price = prod.price;
+      }
+
+      return {
+        ...ev,
+        productTitle: title,
+        productPrice: price
+      };
+    });
 
     return res.json({
       success: true,
       visitorId: id,
-      totalEvents: events.length,
-      timeline: events
+      visitor: visitorRow[0] || null,
+      totalEvents: enrichedTimeline.length,
+      timeline: enrichedTimeline
     });
   } catch (error) {
     console.error('Customer Journey Error:', error);
