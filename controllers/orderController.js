@@ -2470,12 +2470,21 @@ const getOrderInvoice = async (req, res) => {
     console.log('📄 getOrderInvoice called for order ID:', req.params.id);
 
     // Fetch the order and populate product details
-    const order = await Order.findById(req.params.id)
+    let order = await Order.findById(req.params.id)
       .populate({
         path: 'items.product',
         select: 'name title price images sku discount'
       })
       .populate('user', 'name email phone');
+
+    if (!order) {
+      order = await Order.findOne({ orderNumber: req.params.id })
+        .populate({
+          path: 'items.product',
+          select: 'name title price images sku discount'
+        })
+        .populate('user', 'name email phone');
+    }
 
     if (!order) {
       return res.status(404).json({ success: false, message: 'Order not found' });
@@ -2486,8 +2495,20 @@ const getOrderInvoice = async (req, res) => {
 
     // Check if user is logged in
     if (req.user) {
-      const isOwner = order.user && order.user._id && order.user._id.toString() === req.user._id.toString();
-      const isAdmin = req.user.role === 'admin';
+      const orderUserId = order.user?._id?.toString() || order.user?.id?.toString() || order.user?.toString() || order.userId?.toString();
+      const reqUserId = req.user._id?.toString() || req.user.id?.toString();
+      const isOwner = Boolean(orderUserId && reqUserId && orderUserId === reqUserId);
+      const allowedAdminRoles = [
+        'admin',
+        'platform_admin',
+        'store_owner',
+        'store_manager',
+        'delivery_manager',
+        'support_staff',
+        'inventory_staff',
+        'finance_staff'
+      ];
+      const isAdmin = allowedAdminRoles.includes(req.user.role);
       if (isOwner || isAdmin) {
         authorized = true;
       }

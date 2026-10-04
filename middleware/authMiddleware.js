@@ -115,17 +115,21 @@ const adminOrVendor = (req, res, next) => {
 // Optional authentication middleware - attaches user if token is valid but never blocks request.
 const optionalProtect = async (req, res, next) => {
   try {
+    let token = null;
     if (
       req.headers.authorization &&
       req.headers.authorization.startsWith('Bearer')
     ) {
-      const token = req.headers.authorization.split(' ')[1];
-      if (token) {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const user = await User.findById(decoded.id).select('-password');
-        if (user) {
-          req.user = user;
-        }
+      token = req.headers.authorization.split(' ')[1];
+    } else if (req.query && req.query.token) {
+      token = req.query.token;
+    }
+
+    if (token) {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const user = await User.findById(decoded.id).select('-password');
+      if (user) {
+        req.user = user;
       }
     }
   } catch (error) {
