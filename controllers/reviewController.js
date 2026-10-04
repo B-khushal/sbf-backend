@@ -1114,14 +1114,15 @@ const sendReviewRequestEmailForOrder = async (req, res) => {
       });
     }
 
-    if (order.status !== "delivered") {
+    const rawStatus = String(order.status || order.orderStatus || '').toLowerCase();
+    if (rawStatus !== "delivered") {
       return res.status(400).json({
         message: "Review request emails can only be sent after delivery.",
       });
     }
 
-    const customerEmail = order.user?.email || order.shippingDetails?.email;
-    const customerName = order.user?.name || order.shippingDetails?.fullName || "Customer";
+    const customerEmail = order.user?.email || order.shippingDetails?.email || order.customerEmail || order.shippingAddress?.email;
+    const customerName = order.user?.name || order.shippingDetails?.fullName || order.customerName || "Customer";
 
     if (!customerEmail) {
       return res.status(400).json({
@@ -1129,13 +1130,16 @@ const sendReviewRequestEmailForOrder = async (req, res) => {
       });
     }
 
-    const products = order.items
-      .filter((item) => item.product && item.product._id)
-      .map((item) => ({
-        _id: item.product._id,
-        title: item.product.title || item.title || "Product",
-        image: item.product.images?.[0] || item.image || item.images?.[0] || "",
-      }))
+    const products = (order.items || [])
+      .map((item) => {
+        const prodId = item.product?._id || item.product?.id || item.productId || item._id;
+        return {
+          _id: prodId,
+          title: item.product?.title || item.product?.name || item.productName || item.title || "Product",
+          image: item.product?.images?.[0] || item.image || item.images?.[0] || "",
+        };
+      })
+      .filter((product) => Boolean(product._id))
       .filter(
         (product, index, array) =>
           array.findIndex((candidate) => String(candidate._id) === String(product._id)) === index
