@@ -829,7 +829,7 @@ const generateInvoiceHTML = (orderData) => {
                     <p style="font-size: 10px; color: #64748b; line-height: 1.3; margin: 0;">
                       Door No. 12-2-786/A & B, Najam Centre, Pillar No. 32,<br>
                       Rethi Bowli, Mehdipatnam, Hyderabad, Telangana 500028<br>
-                      <strong>GSTIN:</strong> 36AABFS1234Z1Z5 | <strong>Ph:</strong> +91 9949683222
+                      <strong>Ph:</strong> +91 9949683222
                     </p>
                   </td>
                 </tr>
