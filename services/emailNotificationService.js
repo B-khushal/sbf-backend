@@ -1464,8 +1464,8 @@ const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
             <div class="footer">
               <h3>Thank you for your order</h3>
               <p>We appreciate your trust in Spring Blossoms Florist and hope your arrangement made the moment special.</p>
-              <p class="contact">contact@sbflorist.in • 9949683222 • Monday - Saturday, 9 AM - 6 PM IST</p>
-              <p class="small">Terms and conditions apply. Return and refund policy: www.sbflorist.in/returns</p>
+              <p class="contact">contact@sbflorist.in • 9949683222 • Monday - Sunday, 9 AM - 8 PM IST</p>
+              <p class="small">Terms and conditions apply. Return and refund policy: <a href="https://sbflorist.in/refund-policy" style="color: inherit; text-decoration: underline;">https://sbflorist.in/refund-policy</a></p>
             </div>
           </div>
         </div>
