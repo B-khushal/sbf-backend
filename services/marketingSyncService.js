@@ -204,10 +204,10 @@ async function syncRealStoreToMarketing() {
       const realCity = u.orders[0]?.shippingAddress?.city || u.addresses[0]?.city || 'Hyderabad';
       const realRegion = u.orders[0]?.shippingAddress?.state || u.addresses[0]?.state || 'Telangana';
 
-      const initialChannel = channels[userIndex % channels.length];
-      const device = userIndex % 4 === 0 ? 'Desktop' : 'Mobile';
-      const os = device === 'Mobile' ? (userIndex % 2 === 0 ? 'Android 16' : 'iOS 27.0.1') : 'Windows 10/11';
-      const browser = device === 'Mobile' ? (userIndex % 2 === 0 ? 'WhatsApp In-App' : 'Mobile Safari') : 'Chrome';
+      const initialChannel = 'Direct';
+      const device = 'Mobile';
+      const os = 'Android';
+      const browser = 'Chrome';
 
       await prisma.$executeRawUnsafe(`
         INSERT INTO "analytics_visitors" (
@@ -287,10 +287,8 @@ async function syncRealStoreToMarketing() {
       const sessionId = `sess_cart_${cu.id}`;
       const totalVal = cu.cartItems.reduce((acc, ci) => acc + (Number(ci.selectedPrice || ci.product?.price || 0) * ci.quantity), 0);
       
-      // Real active shopping carts in store are currently active/idle sessions
-      const nowMs = Date.now();
-      const offsetMins = (cuIdx * 4) + 1; // 5m, 9m, 13m, 17m...
-      const lastActivity = new Date(nowMs - offsetMins * 60 * 1000);
+      // Use the actual timestamp from the real cart item
+      const lastActivity = cu.cartItems[0]?.updatedAt || cu.cartItems[0]?.createdAt || cu.updatedAt || cu.createdAt || new Date();
 
       const phone = cu.phone || cu.orders[0]?.shippingAddress?.phone || cu.addresses[0]?.phone || null;
       const city = cu.orders[0]?.shippingAddress?.city || cu.addresses[0]?.city || 'Hyderabad';
@@ -303,7 +301,7 @@ async function syncRealStoreToMarketing() {
         image: ci.product?.images?.[0]?.url || null
       }));
 
-      // Insert or update analytics_carts
+      // Insert or update analytics_carts with real cart data
       await prisma.$executeRawUnsafe(`
         INSERT INTO "analytics_carts" (
           "id", "visitorId", "sessionId", "userId", "customerName", "customerEmail", "customerPhone",
@@ -335,44 +333,6 @@ async function syncRealStoreToMarketing() {
         cu.cartItems.length,
         lastActivity
       );
-
-      // CRITICAL: Insert corresponding active session into analytics_sessions so they appear in Live Visitors!
-      await prisma.$executeRawUnsafe(`
-        INSERT INTO "analytics_sessions" (
-          "id", "visitorId", "userId", "startedAt", "lastActiveAt", "endedAt",
-          "durationSeconds", "landingPage", "exitPage", "currentPath",
-          "trafficSource", "trafficMedium", "device", "browser", "os", "city",
-          "pageViewsCount", "productViewsCount", "cartAddsCount", "checkoutsCount",
-          "purchasesCount", "sessionRevenue", "activityStage", "status", "isBounce", "createdAt"
-        )
-        VALUES (
-          $1, $2, $3, $4, $5, NULL,
-          360, '/shop', '/cart', '/cart',
-          'Direct', 'none', 'Mobile', 'Chrome', 'Android 15', $6,
-          4, $7, $7, 0,
-          0, 0, 'Cart', 'Active', false, $4
-        )
-        ON CONFLICT ("id") DO UPDATE SET
-          "lastActiveAt" = EXCLUDED."lastActiveAt",
-          "currentPath" = '/cart',
-          "activityStage" = 'Cart',
-          "cartAddsCount" = EXCLUDED."cartAddsCount",
-          "city" = EXCLUDED."city";
-      `,
-        sessionId,
-        visitorId,
-        cu.id,
-        new Date(new Date(lastActivity).getTime() - 10 * 60 * 1000),
-        lastActivity,
-        city,
-        cu.cartItems.length
-      );
-
-      await prisma.$executeRawUnsafe(`
-        UPDATE "analytics_visitors"
-        SET "lastSeenAt" = $1
-        WHERE "id" = $2;
-      `, lastActivity, visitorId);
 
       // Insert product_view and add_to_cart events for cart items
       for (let idx = 0; idx < cu.cartItems.length; idx++) {

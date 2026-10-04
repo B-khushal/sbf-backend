@@ -102,7 +102,8 @@ function calculateInterestScore(events, weights) {
   }
 
   let level = 'Low';
-  if (score >= 100) level = 'Purchased';
+  const hasPurchase = events.some(e => e.eventType === 'purchase');
+  if (hasPurchase) level = 'Purchased';
   else if (score >= 60) level = 'Very High';
   else if (score >= 35) level = 'High';
   else if (score >= 15) level = 'Medium';
@@ -502,7 +503,7 @@ exports.getDashboardOverview = async (req, res) => {
     const productViews = parseInt(eventCounts[0]?.productViews || 0, 10);
     const addToCartCount = parseInt(eventCounts[0]?.addToCart || 0, 10);
     const checkoutStartedCount = parseInt(eventCounts[0]?.checkoutStarted || 0, 10);
-    const engagedVisitors = Math.round(uniqueVisitors * 0.42) + parseInt(eventCounts[0]?.engagedViews || 0, 10);
+    const engagedVisitors = parseInt(eventCounts[0]?.engagedViews || 0, 10);
 
     // Calculate consistent conversion rate & abandonment
     const conversionRate = uniqueVisitors > 0 ? ((actualOrders / uniqueVisitors) * 100).toFixed(2) : '0.00';
@@ -523,13 +524,12 @@ exports.getDashboardOverview = async (req, res) => {
       LIMIT 6;
     `, start, end);
 
-    // 5. Conversion Funnel (6 Stages with drop-offs)
+    // 5. Conversion Funnel (Real counts only)
     const funnel = [
       { stage: 'Visitors', count: uniqueVisitors, dropOffRate: '0%' },
-      { stage: 'Product Views', count: productViews || Math.round(uniqueVisitors * 0.65), dropOffRate: '35%' },
-      { stage: 'Add To Cart', count: addToCartCount || Math.round(uniqueVisitors * 0.22), dropOffRate: '66%' },
-      { stage: 'Checkout Started', count: checkoutStartedCount || Math.round(uniqueVisitors * 0.14), dropOffRate: '36%' },
-      { stage: 'Payment Initiated', count: Math.round(checkoutStartedCount * 0.85) || Math.round(uniqueVisitors * 0.11), dropOffRate: '15%' },
+      { stage: 'Product Views', count: productViews, dropOffRate: uniqueVisitors > 0 ? `${Math.max(0, 100 - Math.round((productViews / uniqueVisitors) * 100))}%` : '0%' },
+      { stage: 'Add To Cart', count: addToCartCount, dropOffRate: productViews > 0 ? `${Math.max(0, 100 - Math.round((addToCartCount / productViews) * 100))}%` : '0%' },
+      { stage: 'Checkout Started', count: checkoutStartedCount, dropOffRate: addToCartCount > 0 ? `${Math.max(0, 100 - Math.round((checkoutStartedCount / addToCartCount) * 100))}%` : '0%' },
       { stage: 'Completed Orders', count: actualOrders, dropOffRate: `${cartAbandonment}%` }
     ];
 
@@ -1361,18 +1361,18 @@ exports.getConversionFunnel = async (req, res) => {
     `, start, end);
     const purchases = parseInt(ordersResult[0]?.total || 0, 10);
 
-    const views = parseInt(events[0]?.views || 0, 10) || Math.round(visitors * 0.65);
-    const cartAdds = parseInt(events[0]?.cartAdds || 0, 10) || Math.round(visitors * 0.22);
-    const checkouts = parseInt(events[0]?.checkouts || 0, 10) || Math.round(visitors * 0.14);
-    const payments = parseInt(events[0]?.payments || 0, 10) || Math.round(checkouts * 0.85);
+    const views = parseInt(events[0]?.views || 0, 10);
+    const cartAdds = parseInt(events[0]?.cartAdds || 0, 10);
+    const checkouts = parseInt(events[0]?.checkouts || 0, 10);
+    const payments = parseInt(events[0]?.payments || 0, 10);
 
     const stages = [
       { id: 'stage_visitors', name: 'Visitors', count: visitors, conversionFromPrev: '100%', dropOff: '0%' },
-      { id: 'stage_views', name: 'Product Views', count: views, conversionFromPrev: `${((views / visitors) * 100).toFixed(1)}%`, dropOff: `${Math.max(0, 100 - (views / visitors) * 100).toFixed(1)}%` },
-      { id: 'stage_cart', name: 'Add To Cart', count: cartAdds, conversionFromPrev: `${((cartAdds / views) * 100).toFixed(1)}%`, dropOff: `${Math.max(0, 100 - (cartAdds / views) * 100).toFixed(1)}%` },
-      { id: 'stage_checkout', name: 'Checkout Started', count: checkouts, conversionFromPrev: `${((checkouts / cartAdds) * 100).toFixed(1)}%`, dropOff: `${Math.max(0, 100 - (checkouts / cartAdds) * 100).toFixed(1)}%` },
-      { id: 'stage_payment', name: 'Payment Initiated', count: payments, conversionFromPrev: `${((payments / checkouts) * 100).toFixed(1)}%`, dropOff: `${Math.max(0, 100 - (payments / checkouts) * 100).toFixed(1)}%` },
-      { id: 'stage_purchases', name: 'Purchases', count: purchases, conversionFromPrev: `${((purchases / payments) * 100).toFixed(1)}%`, dropOff: `${Math.max(0, 100 - (purchases / payments) * 100).toFixed(1)}%` }
+      { id: 'stage_views', name: 'Product Views', count: views, conversionFromPrev: `${visitors > 0 ? ((views / visitors) * 100).toFixed(1) : 0}%`, dropOff: `${visitors > 0 ? Math.max(0, 100 - (views / visitors) * 100).toFixed(1) : 0}%` },
+      { id: 'stage_cart', name: 'Add To Cart', count: cartAdds, conversionFromPrev: `${views > 0 ? ((cartAdds / views) * 100).toFixed(1) : 0}%`, dropOff: `${views > 0 ? Math.max(0, 100 - (cartAdds / views) * 100).toFixed(1) : 0}%` },
+      { id: 'stage_checkout', name: 'Checkout Started', count: checkouts, conversionFromPrev: `${cartAdds > 0 ? ((checkouts / cartAdds) * 100).toFixed(1) : 0}%`, dropOff: `${cartAdds > 0 ? Math.max(0, 100 - (checkouts / cartAdds) * 100).toFixed(1) : 0}%` },
+      { id: 'stage_payment', name: 'Payment Initiated', count: payments, conversionFromPrev: `${checkouts > 0 ? ((payments / checkouts) * 100).toFixed(1) : 0}%`, dropOff: `${checkouts > 0 ? Math.max(0, 100 - (payments / checkouts) * 100).toFixed(1) : 0}%` },
+      { id: 'stage_purchases', name: 'Purchases', count: purchases, conversionFromPrev: `${payments > 0 ? ((purchases / payments) * 100).toFixed(1) : (checkouts > 0 ? ((purchases / checkouts) * 100).toFixed(1) : 0)}%`, dropOff: `${payments > 0 ? Math.max(0, 100 - (purchases / payments) * 100).toFixed(1) : 0}%` }
     ];
 
     return res.json({

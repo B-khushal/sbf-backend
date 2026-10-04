@@ -370,64 +370,6 @@ async function initMarketingDB() {
       console.log('✅ Seeded default marketing audience segments.');
     }
 
-    // Seed default sample campaigns if empty
-    const campaignsCount = await prisma.$queryRawUnsafe(`SELECT count(*) FROM "analytics_campaigns";`);
-    if (parseInt(campaignsCount[0].count, 10) === 0) {
-      const sampleCampaigns = [
-        {
-          id: 'cmp_ig_roses_2026',
-          name: 'Instagram Luxury Roses Spring',
-          platform: 'Instagram',
-          status: 'active',
-          utmCampaign: 'spring_roses_2026',
-          utmSource: 'instagram',
-          utmMedium: 'social',
-          budget: 15000,
-          spend: 8400,
-          impressions: 42500,
-          clicks: 1850,
-          sessions: 1420
-        },
-        {
-          id: 'cmp_google_anniversary',
-          name: 'Google Search - Premium Anniversary Flowers',
-          platform: 'Google Ads',
-          status: 'active',
-          utmCampaign: 'anniversary_search_delhi',
-          utmSource: 'google',
-          utmMedium: 'cpc',
-          budget: 25000,
-          spend: 14200,
-          impressions: 28400,
-          clicks: 2120,
-          sessions: 1890
-        },
-        {
-          id: 'cmp_whatsapp_repeat',
-          name: 'WhatsApp VIP Floral Club',
-          platform: 'WhatsApp',
-          status: 'active',
-          utmCampaign: 'vip_retention_march',
-          utmSource: 'whatsapp',
-          utmMedium: 'direct_chat',
-          budget: 2000,
-          spend: 850,
-          impressions: 3500,
-          clicks: 940,
-          sessions: 820
-        }
-      ];
-
-      for (const cmp of sampleCampaigns) {
-        await prisma.$executeRawUnsafe(`
-          INSERT INTO "analytics_campaigns" ("id", "name", "platform", "status", "utmCampaign", "utmSource", "utmMedium", "budget", "spend", "impressions", "clicks", "sessions")
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-          ON CONFLICT ("utmCampaign") DO NOTHING;
-        `, cmp.id, cmp.name, cmp.platform, cmp.status, cmp.utmCampaign, cmp.utmSource, cmp.utmMedium, cmp.budget, cmp.spend, cmp.impressions, cmp.clicks, cmp.sessions);
-      }
-      console.log('✅ Seeded default marketing campaigns.');
-    }
-
     // Register Marketing Roles in Role model
     const Role = require('../models/Role');
     const marketingHeadRole = await Role.findOne({ name: 'Marketing Head' });
