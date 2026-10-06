@@ -221,7 +221,9 @@ function sanitizeProductDataForPrisma(data = {}) {
   if (data.careInstructions !== undefined) detailsObj.careInstructions = data.careInstructions;
   if (data.displayOrders !== undefined) detailsObj.displayOrders = data.displayOrders;
   if (data.seasonalCampaigns !== undefined) detailsObj.seasonalCampaigns = data.seasonalCampaigns;
-  if (data.campaignSettings !== undefined) detailsObj.campaignSettings = data.campaignSettings;
+  if (data.discount !== undefined) detailsObj.discount = parseFloat(data.discount || 0);
+  if (data.discountType !== undefined) detailsObj.discountType = String(data.discountType);
+  if (data.discountPrice !== undefined) detailsObj.discountPrice = (data.discountPrice !== null && data.discountPrice !== '') ? parseFloat(data.discountPrice) : null;
   if (Object.keys(detailsObj).length > 0) {
     cleanData.details = detailsObj;
   }
@@ -428,6 +430,8 @@ class ProductDocument {
 
     const detailsObj = (data.details && typeof data.details === 'object') ? data.details : {};
     this.discount = data.discount !== undefined ? parseFloat(data.discount) : (detailsObj.discount !== undefined ? parseFloat(detailsObj.discount) : 0);
+    this.discountType = data.discountType || detailsObj.discountType || 'percentage';
+    this.discountPrice = data.discountPrice !== undefined ? (data.discountPrice !== null && data.discountPrice !== '' ? parseFloat(data.discountPrice) : null) : (detailsObj.discountPrice !== undefined && detailsObj.discountPrice !== null && detailsObj.discountPrice !== '' ? parseFloat(detailsObj.discountPrice) : null);
     this.comparePrice = data.comparePrice !== undefined ? data.comparePrice : (detailsObj.comparePrice !== undefined ? detailsObj.comparePrice : null);
     this.sameDay = detailsObj.sameDay !== false;
     this.isSameDay = this.sameDay;
@@ -512,6 +516,8 @@ class ProductDocument {
       description: this.description,
       price: parseFloat(this.price || 0),
       discount: parseFloat(this.discount || 0),
+      discountType: this.discountType || 'percentage',
+      discountPrice: this.discountPrice !== undefined && this.discountPrice !== null ? parseFloat(this.discountPrice) : null,
       comparePrice: this.comparePrice ? parseFloat(this.comparePrice) : null,
       countInStock: this.countInStock,
       stock: this.stock,

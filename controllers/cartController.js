@@ -32,8 +32,17 @@ const mapCartItemsAsync = async (userWithCart) => {
       originalPrice = prod.price;
       discount = hasDiscount ? Math.round(((prod.price - prod.discountedPrice) / prod.price) * 100) : 0;
     } else {
-      if (prod.discount > 0) {
-        originalPrice = Math.round(prod.price / (1 - prod.discount / 100));
+      originalPrice = prod.price || 0;
+      const hasDirectDiscount = (prod.discountType === 'direct' || prod.discountType === 'fixed') && prod.discountPrice && prod.discountPrice > 0 && prod.discountPrice < prod.price;
+      if (item.customPrice !== undefined) {
+        price = item.customPrice;
+      } else if (hasDirectDiscount) {
+        price = prod.discountPrice;
+        discount = prod.discount || Math.round(((prod.price - prod.discountPrice) / prod.price) * 100);
+      } else if (prod.discount > 0) {
+        price = Math.round(prod.price * (1 - prod.discount / 100));
+      } else {
+        price = prod.price || 0;
       }
     }
 
