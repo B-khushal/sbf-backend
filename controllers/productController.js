@@ -241,19 +241,22 @@ const getProductById = async (req, res) => {
 
     if (!product) return res.status(404).json({ message: "Product not found" });
     
-    // Check if product is hidden and user is not admin
-    if (product.hidden && (!req.user || req.user.role !== 'admin')) {
+    // Check authorization: admin, platform_admin, or vendor owner
+    const userId = (req.user?._id || req.user?.id)?.toString();
+    const productOwnerId = (product.user || product.vendorId || product.vendor)?._id?.toString() ||
+                           (product.user || product.vendorId || product.vendor)?.toString();
+    const isAdmin = Boolean(req.user && (req.user.role === 'admin' || req.user.role === 'platform_admin'));
+    const isVendorOwner = Boolean(req.user && req.user.role === 'vendor' && userId && productOwnerId && productOwnerId === userId);
+    const isAuthorized = isAdmin || isVendorOwner;
+
+    // Check if product is hidden and user is not admin/vendor owner
+    if (product.hidden && !isAuthorized) {
       return res.status(404).json({ message: "Product not found" });
     }
 
     // Check if product is not approved and user is not admin/vendor owner
     // Products without approval status are treated as approved (backward compatibility)
     if (product.approvalStatus && product.approvalStatus !== 'approved') {
-      const isAuthorized = req.user && (
-        req.user.role === 'admin' || 
-        (req.user.role === 'vendor' && product.user.toString() === req.user._id.toString())
-      );
-      
       if (!isAuthorized) {
         return res.status(404).json({ message: "Product not found" });
       }
@@ -562,7 +565,10 @@ const updateProduct = asyncHandler(async (req, res) => {
 
   if (product) {
     // Check authorization: vendors can only update their own products
-    if (req.user.role === 'vendor' && product.user.toString() !== req.user._id.toString()) {
+    const updateUserId = (req.user?._id || req.user?.id)?.toString();
+    const updateProductOwnerId = (product.user || product.vendorId || product.vendor)?._id?.toString() ||
+                                 (product.user || product.vendorId || product.vendor)?.toString();
+    if (req.user && req.user.role === 'vendor' && (!updateProductOwnerId || updateProductOwnerId !== updateUserId)) {
       res.status(403);
       throw new Error('Not authorized to update this product');
     }
@@ -700,7 +706,10 @@ const deleteProduct = async (req, res) => {
       return res.status(404).json({ message: 'Product not found' });
     }
 
-    if (req.user && req.user.role === 'vendor' && product.vendorId && product.vendorId.toString() !== req.user._id.toString()) {
+    const delUserId = (req.user?._id || req.user?.id)?.toString();
+    const delProductOwnerId = (product.user || product.vendorId || product.vendor)?._id?.toString() ||
+                              (product.user || product.vendorId || product.vendor)?.toString();
+    if (req.user && req.user.role === 'vendor' && (!delProductOwnerId || delProductOwnerId !== delUserId)) {
       return res.status(403).json({ message: 'Not authorized to delete this product' });
     }
 

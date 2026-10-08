@@ -403,6 +403,9 @@ class ProductDocument {
     const prodId = String(data.id || data._id || '');
     this._id = prodId;
     this.id = prodId;
+    this.user = data.user || data.vendorId || (data.vendor && (data.vendor.id || data.vendor._id)) || null;
+    this.vendor = data.vendor || data.vendorId || data.user || null;
+    this.vendorId = data.vendorId || (data.vendor && (data.vendor.id || data.vendor._id)) || data.user || null;
     this.title = data.title || data.name || 'Flower Product';
     this.name = data.name || data.title || 'Flower Product';
     this.countInStock = (data.stock !== undefined && data.stock !== null)
@@ -510,6 +513,9 @@ class ProductDocument {
     return {
       _id: this._id,
       id: this.id,
+      user: this.user,
+      vendor: this.vendor,
+      vendorId: this.vendorId,
       name: this.name,
       title: this.title,
       slug: this.slug,
@@ -586,6 +592,10 @@ class ProductDocument {
       createdAt: this.createdAt,
       updatedAt: this.updatedAt
     };
+  }
+
+  toJSON() {
+    return this.toObject();
   }
 
   async save() {
@@ -703,7 +713,8 @@ class ProductModel extends ProductDocument {
         images: true,
         priceVariants: true,
         categories: { include: { category: true } },
-        occasions: { include: { occasion: true } }
+        occasions: { include: { occasion: true } },
+        vendor: true
       }
     });
     return new QueryChain(promise);
@@ -717,7 +728,8 @@ class ProductModel extends ProductDocument {
         images: { orderBy: { displayOrder: 'asc' } },
         priceVariants: { orderBy: { price: 'asc' } },
         categories: { include: { category: true } },
-        occasions: { include: { occasion: true } }
+        occasions: { include: { occasion: true } },
+        vendor: true
       }
     });
     return new QueryChain(promise);

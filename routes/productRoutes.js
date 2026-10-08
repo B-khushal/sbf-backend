@@ -120,7 +120,7 @@ router.get('/category/:category', getProductsByCategory);
 router.get('/budget-friendly', getBudgetFriendlyProducts);
 
 router.route('/:id')
-  .get(getProductById)
+  .get(optionalProtect, getProductById)
   .put(protect, adminOrVendor, updateProduct)
   .delete(protect, adminOrVendor, deleteProduct);
 
