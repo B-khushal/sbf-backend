@@ -8,6 +8,7 @@ const asyncHandler = require('express-async-handler');
 const mongoose = require('mongoose');
 const ActivityLog = require('../models/ActivityLog');
 const prisma = require('../config/prisma');
+const merchandisingService = require('../services/merchandisingService');
 
 // Helper function to clean product data before saving
 const cleanProductData = (product) => {
@@ -301,6 +302,7 @@ const createProduct = asyncHandler(async (req, res) => {
     discount,
     discountType,
     discountPrice,
+    comparePrice,
     category,
     subcategory,
     categories,
@@ -357,6 +359,11 @@ const createProduct = asyncHandler(async (req, res) => {
     pricePerCharacter,
     baseIncludedCharacters,
     maxExtraPrice,
+    cakeAttributes,
+    plantAttributes,
+    chocolateAttributes,
+    hamperAttributes,
+    comboAttributes,
   } = req.body;
 
   // Auto-map category strings to occasion IDs if they match
@@ -409,6 +416,7 @@ const createProduct = asyncHandler(async (req, res) => {
     discount: discount || 0,
     discountType: discountType || 'percentage',
     discountPrice: discountPrice !== undefined && discountPrice !== null && discountPrice !== '' ? Number(discountPrice) : null,
+    comparePrice: comparePrice !== undefined && comparePrice !== null && comparePrice !== '' ? Number(comparePrice) : (discountPrice && Number(discountPrice) < Number(price) ? Number(price) : null),
     category,
     categories: categories || [],
     countInStock,
@@ -472,6 +480,11 @@ const createProduct = asyncHandler(async (req, res) => {
     seasonalCampaigns: seasonalCampaigns || [],
     campaignSettings: campaignSettings || {},
     occasionIds: resolvedOccasionIds,
+    cakeAttributes: cakeAttributes || {},
+    plantAttributes: plantAttributes || {},
+    chocolateAttributes: chocolateAttributes || {},
+    hamperAttributes: hamperAttributes || {},
+    comboAttributes: comboAttributes || {},
   });
 
   console.log('📋 Product object before save:', {
@@ -503,6 +516,7 @@ const updateProduct = asyncHandler(async (req, res) => {
     discount,
     discountType,
     discountPrice,
+    comparePrice,
     category,
     subcategory,
     categories,
@@ -559,6 +573,11 @@ const updateProduct = asyncHandler(async (req, res) => {
     pricePerCharacter,
     baseIncludedCharacters,
     maxExtraPrice,
+    cakeAttributes,
+    plantAttributes,
+    chocolateAttributes,
+    hamperAttributes,
+    comboAttributes,
   } = req.body;
 
   const product = await Product.findById(req.params.id);
@@ -612,6 +631,7 @@ const updateProduct = asyncHandler(async (req, res) => {
       discount: discount || 0,
       discountType: discountType || 'percentage',
       discountPrice: discountPrice !== undefined && discountPrice !== null && discountPrice !== '' ? Number(discountPrice) : null,
+      comparePrice: comparePrice !== undefined && comparePrice !== null && comparePrice !== '' ? Number(comparePrice) : (discountPrice && Number(discountPrice) < Number(price) ? Number(price) : null),
       category,
       categories: categories || [],
       countInStock,
@@ -675,6 +695,11 @@ const updateProduct = asyncHandler(async (req, res) => {
       seasonalCampaigns: seasonalCampaigns || [],
       campaignSettings: campaignSettings || {},
       occasionIds: resolvedOccasionIds,
+      cakeAttributes: cakeAttributes !== undefined ? cakeAttributes : product.cakeAttributes,
+      plantAttributes: plantAttributes !== undefined ? plantAttributes : product.plantAttributes,
+      chocolateAttributes: chocolateAttributes !== undefined ? chocolateAttributes : product.chocolateAttributes,
+      hamperAttributes: hamperAttributes !== undefined ? hamperAttributes : product.hamperAttributes,
+      comboAttributes: comboAttributes !== undefined ? comboAttributes : product.comboAttributes,
     };
 
     // If vendor updates product, set to pending approval
@@ -1630,13 +1655,18 @@ const sortProductsWithPreference = (products, section, sortBy, sortDirection) =>
   });
 };
 
-// Helper wrapper to fetch preference and sort a product list
-const applySavedSortingToProducts = async (products, section) => {
-  const preference = await SectionSortingPreference.findOne({ section }) || {
-    sortBy: 'custom',
-    sortDirection: 'asc'
-  };
-  return sortProductsWithPreference(products, section, preference.sortBy, preference.sortDirection);
+// Helper wrapper to fetch preference and sort a product list using smart merchandising
+const applySavedSortingToProducts = async (products, section, options = {}) => {
+  try {
+    return await merchandisingService.merchandiseProducts(products, section, options);
+  } catch (err) {
+    console.error(`Error applying smart merchandising to section ${section}:`, err);
+    const preference = await SectionSortingPreference.findOne({ section }) || {
+      sortBy: 'custom',
+      sortDirection: 'asc'
+    };
+    return sortProductsWithPreference(products, section, preference.sortBy, preference.sortDirection);
+  }
 };
 
 // @desc Fetch products for a specific section, ordered by display order + preferences
@@ -1658,20 +1688,23 @@ const getSectionProductsForSorting = asyncHandler(async (req, res) => {
     products = await Product.find(query);
   }
   
-  const preference = await SectionSortingPreference.findOne({ section }) || {
-    sortBy: 'custom',
-    sortDirection: 'asc'
-  };
+  const preference = await merchandisingService.getSectionMerchandisingConfig(section);
   
-  const sortedProducts = sortProductsWithPreference(
-    products, 
-    section, 
-    preference.sortBy, 
-    preference.sortDirection
-  );
+  const sortedProducts = await merchandisingService.merchandiseProducts(products, section, {
+    skipCache: true
+  });
   
   res.json({
     section,
+    mode: preference.mode || 'smart_rotation',
+    pinnedProductIds: preference.pinnedProductIds || [],
+    protectedTopCount: preference.protectedTopCount !== undefined ? preference.protectedTopCount : 4,
+    rotationFrequency: preference.rotationFrequency || 'daily',
+    rotationVersion: preference.rotationVersion || 1,
+    isRotationEnabled: preference.isRotationEnabled !== false,
+    isPersonalizationEnabled: preference.isPersonalizationEnabled !== false,
+    minDataThreshold: preference.minDataThreshold || 2,
+    scoringWeights: preference.scoringWeights,
     sortBy: preference.sortBy,
     sortDirection: preference.sortDirection,
     products: sortedProducts
@@ -1717,22 +1750,51 @@ const setProductSectionOrder = (displayOrders, section, numOrder) => {
   return dobj;
 };
 
-// @desc Update single or multiple section product orders
+// @desc Update single or multiple section product orders and merchandising settings
 // @route PUT /api/products/order/update
 // @access Private/Admin
 const updateSectionProductsOrder = asyncHandler(async (req, res) => {
-  const { section, displayOrders, sortBy, sortDirection, auditMetadata } = req.body;
+  const {
+    section,
+    displayOrders,
+    sortBy,
+    sortDirection,
+    auditMetadata,
+    mode,
+    pinnedProductIds,
+    protectedTopCount,
+    rotationFrequency,
+    rotationVersion,
+    isRotationEnabled,
+    isPersonalizationEnabled,
+    scoringWeights,
+    minDataThreshold
+  } = req.body;
   
   if (!section) {
     return res.status(400).json({ message: 'Section is required' });
   }
   
-  if (sortBy) {
+  const prefUpdates = {};
+  if (sortBy) prefUpdates.sortBy = sortBy;
+  if (sortDirection) prefUpdates.sortDirection = sortDirection;
+  if (mode !== undefined) prefUpdates.mode = mode;
+  if (pinnedProductIds !== undefined) prefUpdates.pinnedProductIds = pinnedProductIds;
+  if (protectedTopCount !== undefined) prefUpdates.protectedTopCount = Number(protectedTopCount);
+  if (rotationFrequency !== undefined) prefUpdates.rotationFrequency = rotationFrequency;
+  if (rotationVersion !== undefined) prefUpdates.rotationVersion = Number(rotationVersion);
+  if (isRotationEnabled !== undefined) prefUpdates.isRotationEnabled = Boolean(isRotationEnabled);
+  if (isPersonalizationEnabled !== undefined) prefUpdates.isPersonalizationEnabled = Boolean(isPersonalizationEnabled);
+  if (scoringWeights !== undefined) prefUpdates.scoringWeights = scoringWeights;
+  if (minDataThreshold !== undefined) prefUpdates.minDataThreshold = Number(minDataThreshold);
+
+  if (Object.keys(prefUpdates).length > 0) {
     await SectionSortingPreference.findOneAndUpdate(
       { section },
-      { sortBy, sortDirection: sortDirection || 'asc' },
+      prefUpdates,
       { upsert: true, new: true }
     );
+    merchandisingService.invalidateMerchandisingCache(section);
   }
   
   if (displayOrders && typeof displayOrders === 'object') {
@@ -1797,7 +1859,22 @@ const updateSectionProductsOrder = asyncHandler(async (req, res) => {
 // @route PUT /api/products/order/bulk-reorder
 // @access Private/Admin
 const bulkReorderProducts = asyncHandler(async (req, res) => {
-  const { section, displayOrders, sortBy, sortDirection, auditMetadata } = req.body;
+  const {
+    section,
+    displayOrders,
+    sortBy,
+    sortDirection,
+    auditMetadata,
+    mode,
+    pinnedProductIds,
+    protectedTopCount,
+    rotationFrequency,
+    rotationVersion,
+    isRotationEnabled,
+    isPersonalizationEnabled,
+    scoringWeights,
+    minDataThreshold
+  } = req.body;
 
   if (!section) {
     return res.status(400).json({ message: 'Section is required' });
@@ -1807,12 +1884,26 @@ const bulkReorderProducts = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'displayOrders mapping is required' });
   }
 
-  if (sortBy) {
+  const prefUpdates = {};
+  if (sortBy) prefUpdates.sortBy = sortBy;
+  if (sortDirection) prefUpdates.sortDirection = sortDirection;
+  if (mode !== undefined) prefUpdates.mode = mode;
+  if (pinnedProductIds !== undefined) prefUpdates.pinnedProductIds = pinnedProductIds;
+  if (protectedTopCount !== undefined) prefUpdates.protectedTopCount = Number(protectedTopCount);
+  if (rotationFrequency !== undefined) prefUpdates.rotationFrequency = rotationFrequency;
+  if (rotationVersion !== undefined) prefUpdates.rotationVersion = Number(rotationVersion);
+  if (isRotationEnabled !== undefined) prefUpdates.isRotationEnabled = Boolean(isRotationEnabled);
+  if (isPersonalizationEnabled !== undefined) prefUpdates.isPersonalizationEnabled = Boolean(isPersonalizationEnabled);
+  if (scoringWeights !== undefined) prefUpdates.scoringWeights = scoringWeights;
+  if (minDataThreshold !== undefined) prefUpdates.minDataThreshold = Number(minDataThreshold);
+
+  if (Object.keys(prefUpdates).length > 0) {
     await SectionSortingPreference.findOneAndUpdate(
       { section },
-      { sortBy, sortDirection: sortDirection || 'asc' },
+      prefUpdates,
       { upsert: true, new: true }
     );
+    merchandisingService.invalidateMerchandisingCache(section);
   }
 
   const entries = Object.entries(displayOrders);
@@ -2983,6 +3074,128 @@ const exportProductCatalog = async (req, res) => {
   }
 };
 
+// @desc Get global merchandising settings and all section strategies
+// @route GET /api/products/merchandising/settings
+// @access Private/Admin
+const getMerchandisingSettings = asyncHandler(async (req, res) => {
+  const globalSettings = await merchandisingService.getGlobalMerchandisingSettings();
+  const allPrefs = await SectionSortingPreference.find();
+  
+  const sections = {};
+  for (const pref of allPrefs) {
+    sections[pref.section] = {
+      section: pref.section,
+      mode: pref.mode,
+      pinnedProductIds: pref.pinnedProductIds || [],
+      protectedTopCount: pref.protectedTopCount,
+      rotationFrequency: pref.rotationFrequency,
+      rotationVersion: pref.rotationVersion,
+      isRotationEnabled: pref.isRotationEnabled,
+      isPersonalizationEnabled: pref.isPersonalizationEnabled,
+      sortBy: pref.sortBy,
+      sortDirection: pref.sortDirection,
+      updatedAt: pref.updatedAt
+    };
+  }
+
+  res.json({
+    success: true,
+    global: globalSettings,
+    sections,
+    defaultStrategies: merchandisingService.DEFAULT_SECTION_STRATEGIES
+  });
+});
+
+// @desc Update global merchandising settings or section configuration
+// @route PUT /api/products/merchandising/settings
+// @access Private/Admin
+const updateMerchandisingSettings = asyncHandler(async (req, res) => {
+  const { global: newGlobal, section, sectionConfig } = req.body;
+
+  let updatedGlobal = null;
+  if (newGlobal && typeof newGlobal === 'object') {
+    updatedGlobal = await merchandisingService.updateGlobalMerchandisingSettings(newGlobal);
+  }
+
+  let updatedSection = null;
+  if (section && sectionConfig && typeof sectionConfig === 'object') {
+    updatedSection = await SectionSortingPreference.findOneAndUpdate(
+      { section },
+      sectionConfig,
+      { upsert: true, new: true }
+    );
+    merchandisingService.invalidateMerchandisingCache(section);
+  }
+
+  res.json({
+    success: true,
+    message: 'Merchandising settings updated successfully',
+    global: updatedGlobal,
+    section: updatedSection
+  });
+});
+
+// @desc Generate merchandising preview simulation without persisting
+// @route GET /api/products/merchandising/preview/:section
+// @access Private/Admin
+const getMerchandisingPreview = asyncHandler(async (req, res) => {
+  const { section } = req.params;
+  const { mode, protectedTopCount, rotationFrequency, rotationVersion } = req.query;
+
+  let products = [];
+  if (section.startsWith('occasion:')) {
+    const slug = section.substring(9).trim().toLowerCase();
+    products = await getProductsForOccasion(slug);
+  } else {
+    const query = getProductsForSectionQuery(section);
+    products = await Product.find(query);
+  }
+
+  const customConfig = {};
+  if (protectedTopCount !== undefined) customConfig.protectedTopCount = Number(protectedTopCount);
+  if (rotationFrequency !== undefined) customConfig.rotationFrequency = rotationFrequency;
+  if (rotationVersion !== undefined) customConfig.rotationVersion = Number(rotationVersion);
+
+  const preview = await merchandisingService.generateMerchandisingPreview(
+    products,
+    section,
+    mode || null,
+    customConfig
+  );
+
+  res.json(preview);
+});
+
+// @desc Bump rotation version for section or globally ("Rotate Now")
+// @route POST /api/products/merchandising/rotate-now/:section
+// @access Private/Admin
+const bumpRotationVersion = asyncHandler(async (req, res) => {
+  const { section } = req.params;
+  const targetSection = section === 'global' ? null : section;
+  const result = await merchandisingService.bumpRotationVersion(targetSection);
+  res.json({
+    success: true,
+    message: `Rotation version successfully bumped for ${section}`,
+    ...result
+  });
+});
+
+// @desc Get authentic merchandising analytics summary
+// @route GET /api/products/merchandising/analytics
+// @access Private/Admin
+const getMerchandisingAnalytics = asyncHandler(async (req, res) => {
+  const analytics = await merchandisingService.getMerchandisingAnalytics();
+  res.json(analytics);
+});
+
+// @desc Record a lightweight storefront merchandising interaction event
+// @route POST /api/products/merchandising/track
+// @access Public
+const recordMerchandisingEvent = asyncHandler(async (req, res) => {
+  const result = await merchandisingService.recordMerchandisingEvent(req.body);
+  res.json(result);
+});
+
 module.exports = {
   calculateFinalSellingPrice,
   getProducts,
@@ -3024,6 +3237,12 @@ module.exports = {
   executeBulkAction,
   restoreProductVersion,
   exportProductCatalog,
+  getMerchandisingSettings,
+  updateMerchandisingSettings,
+  getMerchandisingPreview,
+  bumpRotationVersion,
+  getMerchandisingAnalytics,
+  recordMerchandisingEvent,
 };
 
 

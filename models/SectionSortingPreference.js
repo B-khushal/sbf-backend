@@ -17,7 +17,18 @@ class SectionSortingPreferenceDocument {
       section: this.section,
       sortBy: this.sortBy || 'custom',
       sortDirection: this.sortDirection || 'asc',
-      sequence: this.sequence || {}
+      sequence: this.sequence || {},
+      mode: this.mode || 'smart_rotation',
+      pinnedProductIds: Array.isArray(this.pinnedProductIds) ? this.pinnedProductIds : [],
+      protectedTopCount: Number(this.protectedTopCount !== undefined ? this.protectedTopCount : 4),
+      rotationFrequency: this.rotationFrequency || 'daily',
+      rotationVersion: Number(this.rotationVersion || 1),
+      isRotationEnabled: this.isRotationEnabled !== false,
+      isPersonalizationEnabled: this.isPersonalizationEnabled !== false,
+      excludedProductIds: Array.isArray(this.excludedProductIds) ? this.excludedProductIds : [],
+      minDataThreshold: Number(this.minDataThreshold || 2),
+      scoringWeights: this.scoringWeights || null,
+      updatedAt: new Date().toISOString()
     };
 
     await prisma.sectionSortingPreference.upsert({
@@ -38,8 +49,25 @@ class SectionSortingPreferenceDocument {
 }
 
 class SectionSortingPreferenceModel {
+  static async find(where = {}) {
+    try {
+      const docs = await prisma.sectionSortingPreference.findMany();
+      return docs.map(d => new SectionSortingPreferenceDocument(d));
+    } catch (err) {
+      console.error('Error fetching SectionSortingPreferences:', err);
+      return [];
+    }
+  }
+
   static async findOne(where = {}) {
-    const section = where.section || where.page || 'home';
+    let section = 'home';
+    if (typeof where === 'string') {
+      section = where;
+    } else if (where && typeof where.section === 'string') {
+      section = where.section;
+    } else if (where && typeof where.page === 'string') {
+      section = where.page;
+    }
     const id = `pref_${section}`;
     const doc = await prisma.sectionSortingPreference.findFirst({
       where: {

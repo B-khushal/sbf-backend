@@ -240,8 +240,9 @@ class OrderDocument {
           subtotal: itemSub,
           image: item.image || (Array.isArray(item.images) ? item.images[0] : '') || '',
           images: Array.isArray(item.images) ? item.images : (item.image ? [item.image] : []),
-          customizations: item.customizations || null,
-          selectedVariant: item.selectedVariant || null
+          customizations: item.customizations || item.addons || null,
+          addons: item.addons || item.customizations?.addons || null,
+          selectedVariant: item.selectedVariant || (item.variantName ? { label: item.variantName } : null)
         };
       });
     } else {
@@ -380,16 +381,25 @@ class OrderDocument {
           const prodId = String(item.productId || (typeof item.product === 'object' ? item.product.id || item.product._id : item.product) || '');
           const pExists = prodId ? await prisma.product.findUnique({ where: { id: prodId }, select: { id: true } }) : null;
           
+          const cakeDetails = [];
+          if (item.customizations?.cakeFlavor) cakeDetails.push(item.customizations.cakeFlavor);
+          if (item.customizations?.cakeWeight || item.customizations?.weight) cakeDetails.push(item.customizations.cakeWeight || item.customizations.weight);
+          if (item.customizations?.cakeShape) cakeDetails.push(item.customizations.cakeShape);
+          if (item.customizations?.eggless !== undefined) cakeDetails.push(item.customizations.eggless ? 'Eggless' : 'Contains Egg');
+
+          const vName = item.variantName || item.selectedVariant?.label || item.selectedVariant?.name || (cakeDetails.length > 0 ? cakeDetails.join(' • ') : null);
           await prisma.orderItem.create({
             data: {
               id: item._id || item.id || `item_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
               orderId: updated.id,
               productId: pExists ? pExists.id : null,
               productName: item.productName || item.title || item.name || 'Florist Item',
+              variantName: vName,
               price: parseFloat(item.price || 0),
               quantity: parseInt(item.quantity || item.qty || 1),
               subtotal: parseFloat(item.subtotal || (parseFloat(item.price || 0) * parseInt(item.quantity || item.qty || 1))),
-              image: item.image || (Array.isArray(item.images) ? item.images[0] : '') || ''
+              image: item.image || (Array.isArray(item.images) ? item.images[0] : '') || '',
+              addons: item.customizations || item.addons || null
             }
           });
         }

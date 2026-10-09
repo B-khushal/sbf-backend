@@ -23,7 +23,7 @@ const mapCartItemsAsync = async (userWithCart) => {
     if (!prod) continue;
 
     let price = item.customPrice !== undefined ? item.customPrice : (prod.price || 0);
-    let originalPrice = item.customPrice !== undefined ? item.customPrice : (prod.price || 0);
+    let originalPrice = prod.price || 0;
     let discount = prod.discount || 0;
 
     if (isAddon) {
@@ -32,17 +32,45 @@ const mapCartItemsAsync = async (userWithCart) => {
       originalPrice = prod.price;
       discount = hasDiscount ? Math.round(((prod.price - prod.discountedPrice) / prod.price) * 100) : 0;
     } else {
-      originalPrice = prod.price || 0;
+      // Resolve variant base price if item has a selected variant
+      let variantBasePrice = prod.price || 0;
+      let variantComparePrice = null;
+      if (item.selectedVariant) {
+        if (typeof item.selectedVariant.price === 'number' && item.selectedVariant.price > 0) {
+          variantBasePrice = item.selectedVariant.price;
+        } else if (item.selectedVariant.label && Array.isArray(prod.priceVariants)) {
+          const matchV = prod.priceVariants.find(v => (v.label || v.name || v.size) === item.selectedVariant.label);
+          if (matchV && matchV.price) {
+            variantBasePrice = Number(matchV.price);
+            if (matchV.comparePrice) variantComparePrice = Number(matchV.comparePrice);
+          }
+        }
+      }
+
+      originalPrice = variantComparePrice || variantBasePrice;
       const hasDirectDiscount = (prod.discountType === 'direct' || prod.discountType === 'fixed') && prod.discountPrice && prod.discountPrice > 0 && prod.discountPrice < prod.price;
+
       if (item.customPrice !== undefined) {
         price = item.customPrice;
       } else if (hasDirectDiscount) {
-        price = prod.discountPrice;
-        discount = prod.discount || Math.round(((prod.price - prod.discountPrice) / prod.price) * 100);
+        if (item.selectedVariant && prod.price > 0 && Math.abs(variantBasePrice - prod.price) > 0.01) {
+          const directRatio = prod.discountPrice / prod.price;
+          price = Math.round(variantBasePrice * directRatio);
+        } else {
+          price = prod.discountPrice;
+        }
       } else if (prod.discount > 0) {
-        price = Math.round(prod.price * (1 - prod.discount / 100));
+        price = Math.round(variantBasePrice * (1 - prod.discount / 100));
       } else {
-        price = prod.price || 0;
+        price = variantBasePrice;
+      }
+
+      if (originalPrice > 0 && price > 0 && price < originalPrice) {
+        discount = Math.round(((originalPrice - price) / originalPrice) * 100);
+      } else if (prod.discount > 0) {
+        discount = prod.discount;
+      } else {
+        discount = 0;
       }
     }
 

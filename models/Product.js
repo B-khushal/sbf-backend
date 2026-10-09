@@ -104,6 +104,37 @@ function cleanProductWhere(where = {}) {
     }
   }
 
+  if (where.category || where.categories || where.subcategory) {
+    const rawCat = where.category || where.subcategory || where.categories;
+    let catVal = '';
+    if (typeof rawCat === 'string') {
+      catVal = rawCat;
+    } else if (rawCat instanceof RegExp) {
+      catVal = rawCat.source;
+    } else if (rawCat && typeof rawCat === 'object') {
+      if (rawCat.$regex) catVal = rawCat.$regex instanceof RegExp ? rawCat.$regex.source : String(rawCat.$regex);
+      else if (rawCat.$elemMatch) {
+        const em = rawCat.$elemMatch;
+        catVal = em instanceof RegExp ? em.source : (typeof em === 'object' && em.$regex ? em.$regex.source : String(em));
+      } else if (rawCat.slug) catVal = rawCat.slug;
+      else if (rawCat.name) catVal = rawCat.name;
+    }
+    const cleanCat = String(catVal || '').replace(/^\^|\$$/g, '').toLowerCase().trim();
+    if (cleanCat) {
+      clean.categories = {
+        some: {
+          category: {
+            OR: [
+              { slug: { equals: cleanCat, mode: 'insensitive' } },
+              { name: { equals: cleanCat, mode: 'insensitive' } },
+              { slug: { contains: cleanCat, mode: 'insensitive' } }
+            ]
+          }
+        }
+      };
+    }
+  }
+
   return clean;
 }
 
@@ -119,7 +150,11 @@ function sanitizeProductDataForPrisma(data = {}) {
   if (data.shortDescription !== undefined) cleanData.shortDescription = data.shortDescription ? String(data.shortDescription) : null;
 
   if (data.price !== undefined) cleanData.price = parseFloat(data.price || 0);
-  if (data.comparePrice !== undefined) cleanData.comparePrice = data.comparePrice ? parseFloat(data.comparePrice) : null;
+  if (data.comparePrice !== undefined) {
+    cleanData.comparePrice = data.comparePrice ? parseFloat(data.comparePrice) : null;
+  } else if (data.discountPrice !== undefined && data.discountPrice !== null && data.price !== undefined && parseFloat(data.discountPrice) < parseFloat(data.price)) {
+    cleanData.comparePrice = parseFloat(data.price);
+  }
   if (data.costPrice !== undefined) cleanData.costPrice = data.costPrice ? parseFloat(data.costPrice) : null;
 
   if (data.stock !== undefined || data.countInStock !== undefined) {
@@ -144,8 +179,11 @@ function sanitizeProductDataForPrisma(data = {}) {
   }
 
   if (data.rating !== undefined) cleanData.rating = parseFloat(data.rating || 0);
-  if (data.reviewCount !== undefined) cleanData.reviewCount = parseInt(data.reviewCount || 0);
-  if (data.vendorId !== undefined) cleanData.vendorId = data.vendorId ? String(data.vendorId) : null;
+  if (data.vendorId !== undefined) {
+    cleanData.vendorId = (data.vendorId && String(data.vendorId).trim() !== '' && String(data.vendorId) !== 'null' && String(data.vendorId) !== 'undefined')
+      ? String(data.vendorId)
+      : null;
+  }
 
   // Personalization & Customization
   if (data.personalizationEnabled !== undefined) cleanData.personalizationEnabled = Boolean(data.personalizationEnabled);
@@ -339,15 +377,34 @@ async function syncProductRelations(productId, productData) {
     try {
       await prisma.productVariant.deleteMany({ where: { productId } });
       if (rawVariants.length > 0) {
-        const variantData = rawVariants.map((v, i) => ({
-          id: (v.id && String(v.id).trim().length > 0) ? String(v.id) : `var_${productId}_${i}_${Date.now()}`,
-          productId,
-          name: String(v.label || v.name || v.size || 'Standard'),
-          size: String(v.size || v.label || v.name || 'Standard'),
-          price: parseFloat(v.price || 0),
-          stock: parseInt(v.stock || 0),
-          isDefault: i === 0
-        }));
+        const variantData = rawVariants.map((v, i) => {
+          const rawPrice = parseFloat(v.price || 0);
+          const rawDiscount = (v.discountPrice !== undefined && v.discountPrice !== null && v.discountPrice !== '')
+            ? parseFloat(v.discountPrice)
+            : null;
+          const rawCompare = (v.comparePrice !== undefined && v.comparePrice !== null && v.comparePrice !== '')
+            ? parseFloat(v.comparePrice)
+            : null;
+
+          // If a discountPrice was provided and is less than price, store selling price as price and comparePrice as the regular price
+          let effectivePrice = rawPrice;
+          let comparePriceVal = rawCompare;
+          if (rawDiscount !== null && rawDiscount > 0 && rawDiscount < rawPrice) {
+            effectivePrice = rawDiscount;
+            comparePriceVal = rawPrice;
+          }
+
+          return {
+            id: (v.id && String(v.id).trim().length > 0) ? String(v.id) : `var_${productId}_${i}_${Date.now()}`,
+            productId,
+            name: String(v.label || v.name || v.size || 'Standard'),
+            size: String(v.size || v.label || v.name || 'Standard'),
+            price: effectivePrice,
+            comparePrice: comparePriceVal,
+            stock: parseInt(v.stock || 0),
+            isDefault: i === 0
+          };
+        });
         await prisma.productVariant.createMany({
           data: variantData
         });
@@ -402,10 +459,11 @@ class ProductDocument {
     Object.assign(this, data);
     const prodId = String(data.id || data._id || '');
     this._id = prodId;
-    this.id = prodId;
-    this.user = data.user || data.vendorId || (data.vendor && (data.vendor.id || data.vendor._id)) || null;
-    this.vendor = data.vendor || data.vendorId || data.user || null;
-    this.vendorId = data.vendorId || (data.vendor && (data.vendor.id || data.vendor._id)) || data.user || null;
+    this.user = data.user || null;
+    this.vendor = data.vendor || null;
+    this.vendorId = (data.vendorId && String(data.vendorId).trim() !== '' && String(data.vendorId) !== 'null' && String(data.vendorId) !== 'undefined')
+      ? String(data.vendorId)
+      : (data.vendor && (data.vendor.id || data.vendor._id) ? String(data.vendor.id || data.vendor._id) : null);
     this.title = data.title || data.name || 'Flower Product';
     this.name = data.name || data.title || 'Flower Product';
     this.countInStock = (data.stock !== undefined && data.stock !== null)
@@ -435,7 +493,12 @@ class ProductDocument {
     this.discount = data.discount !== undefined ? parseFloat(data.discount) : (detailsObj.discount !== undefined ? parseFloat(detailsObj.discount) : 0);
     this.discountType = data.discountType || detailsObj.discountType || 'percentage';
     this.discountPrice = data.discountPrice !== undefined ? (data.discountPrice !== null && data.discountPrice !== '' ? parseFloat(data.discountPrice) : null) : (detailsObj.discountPrice !== undefined && detailsObj.discountPrice !== null && detailsObj.discountPrice !== '' ? parseFloat(detailsObj.discountPrice) : null);
-    this.comparePrice = data.comparePrice !== undefined ? data.comparePrice : (detailsObj.comparePrice !== undefined ? detailsObj.comparePrice : null);
+    const resolvedDiscountPrice = this.discountPrice;
+    this.comparePrice = (data.comparePrice !== undefined && data.comparePrice !== null)
+      ? parseFloat(data.comparePrice)
+      : (detailsObj.comparePrice !== undefined && detailsObj.comparePrice !== null
+          ? parseFloat(detailsObj.comparePrice)
+          : (resolvedDiscountPrice && this.price && resolvedDiscountPrice < this.price ? parseFloat(this.price) : null));
     this.sameDay = detailsObj.sameDay !== false;
     this.isSameDay = this.sameDay;
     this.displayOrders = data.displayOrders || detailsObj.displayOrders || {};
@@ -497,22 +560,65 @@ class ProductDocument {
     }
 
     if (data.priceVariants && Array.isArray(data.priceVariants) && data.priceVariants.length > 0) {
-      this.priceVariants = data.priceVariants.map(v => ({
-        _id: String(v.id || v._id || ''),
-        id: String(v.id || v._id || ''),
-        label: v.name || v.size || v.label,
-        price: parseFloat(v.price || 0),
-        stock: v.stock || 0
-      }));
+      this.priceVariants = data.priceVariants.map(v => {
+        const rawP = parseFloat(v.price || 0);
+        const rawCp = v.comparePrice ? parseFloat(v.comparePrice) : null;
+        const hasCpDiscount = rawCp && rawCp > rawP;
+        return {
+          _id: String(v.id || v._id || ''),
+          id: String(v.id || v._id || ''),
+          label: v.name || v.size || v.label,
+          price: hasCpDiscount ? rawCp : rawP,
+          discountPrice: hasCpDiscount ? rawP : (v.discountPrice ? parseFloat(v.discountPrice) : undefined),
+          comparePrice: rawCp,
+          stock: v.stock || 0
+        };
+      });
     } else {
       this.priceVariants = [];
     }
+    this.hasPriceVariants = data.hasPriceVariants !== undefined 
+      ? Boolean(data.hasPriceVariants) 
+      : (this.priceVariants.length > 0);
+
+    const isCake = Boolean(
+      data.cakeAttributes ||
+      detailsObj.cakeAttributes ||
+      (typeof this.category === 'string' && this.category.toLowerCase().includes('cake')) ||
+      (Array.isArray(this.categories) && this.categories.some(c => String(c).toLowerCase().includes('cake')))
+    );
+    const isPlant = Boolean(
+      data.plantAttributes ||
+      detailsObj.plantAttributes ||
+      (typeof this.category === 'string' && this.category.toLowerCase().includes('plant'))
+    );
+    const isCombo = Boolean(
+      data.comboAttributes ||
+      detailsObj.comboAttributes ||
+      (typeof this.category === 'string' && this.category.toLowerCase().includes('combo'))
+    );
+    const isChocolate = Boolean(
+      data.chocolateAttributes ||
+      detailsObj.chocolateAttributes ||
+      (typeof this.category === 'string' && this.category.toLowerCase().includes('chocolate'))
+    );
+
+    this.catalogType = data.catalogType || detailsObj.catalogType || (
+      isCake ? 'cake' : (isPlant ? 'plant' : (isCombo ? 'combo' : (isChocolate ? 'chocolate' : 'bouquet')))
+    );
+
+    this.cakeAttributes = data.cakeAttributes !== undefined ? data.cakeAttributes : (detailsObj.cakeAttributes || null);
+    this.plantAttributes = data.plantAttributes !== undefined ? data.plantAttributes : (detailsObj.plantAttributes || null);
+    this.chocolateAttributes = data.chocolateAttributes !== undefined ? data.chocolateAttributes : (detailsObj.chocolateAttributes || null);
+    this.hamperAttributes = data.hamperAttributes !== undefined ? data.hamperAttributes : (detailsObj.hamperAttributes || null);
+    this.comboAttributes = data.comboAttributes !== undefined ? data.comboAttributes : (detailsObj.comboAttributes || null);
   }
 
   toObject() {
     return {
       _id: this._id,
       id: this.id,
+      catalogType: this.catalogType,
       user: this.user,
       vendor: this.vendor,
       vendorId: this.vendorId,
@@ -534,6 +640,7 @@ class ProductDocument {
       tags: this.tags,
       images: this.images,
       priceVariants: this.priceVariants,
+      hasPriceVariants: Boolean(this.hasPriceVariants),
       rating: parseFloat(this.rating || 0),
       reviewCount: parseInt(this.reviewCount || 0),
       isAvailable: this.isAvailable !== false,
@@ -618,6 +725,24 @@ class ProductDocument {
 
     const cleanData = sanitizeProductDataForPrisma(this);
 
+    // Validate vendorId exists in Vendor table to prevent foreign key violation
+    if (cleanData.vendorId) {
+      try {
+        const vendorExists = await prisma.vendor.findUnique({
+          where: { id: String(cleanData.vendorId) }
+        });
+        if (!vendorExists) {
+          cleanData.vendorId = null;
+          this.vendorId = null;
+          this.vendor = null;
+        }
+      } catch (err) {
+        cleanData.vendorId = null;
+        this.vendorId = null;
+        this.vendor = null;
+      }
+    }
+
     const updated = await prisma.product.upsert({
       where: { id: productId },
       update: cleanData,
@@ -672,21 +797,47 @@ class QueryChain {
       if (Array.isArray(res)) {
         let docs = res.map(p => new ProductDocument(p));
 
-        if (this.filterOptions && this.filterOptions.seasonalCampaigns) {
-          const targetCampaign = String(this.filterOptions.seasonalCampaigns).toLowerCase().trim();
-          docs = docs.filter(doc => {
-            const details = doc.details || {};
-            const campList = Array.isArray(doc.seasonalCampaigns)
-              ? doc.seasonalCampaigns
-              : (Array.isArray(details.seasonalCampaigns) ? details.seasonalCampaigns : []);
-            
-            const campSettings = doc.campaignSettings || details.campaignSettings || {};
+        if (this.filterOptions) {
+          if (this.filterOptions.seasonalCampaigns) {
+            const targetCampaign = String(this.filterOptions.seasonalCampaigns).toLowerCase().trim();
+            docs = docs.filter(doc => {
+              const details = doc.details || {};
+              const campList = Array.isArray(doc.seasonalCampaigns)
+                ? doc.seasonalCampaigns
+                : (Array.isArray(details.seasonalCampaigns) ? details.seasonalCampaigns : []);
+              
+              const campSettings = doc.campaignSettings || details.campaignSettings || {};
 
-            const inArray = campList.some(c => String(c).toLowerCase().trim() === targetCampaign);
-            const inSettings = Boolean(campSettings[targetCampaign] || campSettings[this.filterOptions.seasonalCampaigns]);
+              const inArray = campList.some(c => String(c).toLowerCase().trim() === targetCampaign);
+              const inSettings = Boolean(campSettings[targetCampaign] || campSettings[this.filterOptions.seasonalCampaigns]);
 
-            return inArray || inSettings;
-          });
+              return inArray || inSettings;
+            });
+          }
+
+          if (this.filterOptions.catalogType) {
+            const t = String(this.filterOptions.catalogType).toLowerCase();
+            docs = docs.filter(doc => (doc.catalogType || '').toLowerCase() === t);
+          }
+
+          if (Array.isArray(this.filterOptions.$or)) {
+            const isCatalogQuery = this.filterOptions.$or.some(c => c.catalogType || (c.category && (c.category instanceof RegExp || c.category.$regex)));
+            if (isCatalogQuery) {
+              docs = docs.filter(doc => {
+                return this.filterOptions.$or.some(cond => {
+                  if (cond.catalogType && (doc.catalogType || '').toLowerCase() === String(cond.catalogType).toLowerCase()) return true;
+                  if (cond.category) {
+                    const reg = cond.category instanceof RegExp ? cond.category : (cond.category.$regex ? new RegExp(cond.category.$regex, 'i') : null);
+                    if (reg) {
+                      if (doc.category && reg.test(doc.category)) return true;
+                      if (Array.isArray(doc.categories) && doc.categories.some(c => reg.test(c))) return true;
+                    }
+                  }
+                  return false;
+                });
+              });
+            }
+          }
         }
 
         resolve(docs);
@@ -765,6 +916,19 @@ class ProductModel extends ProductDocument {
     const productId = data.id || data._id || `prod_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
     const cleanData = sanitizeProductDataForPrisma(data);
 
+    if (cleanData.vendorId) {
+      try {
+        const vendorExists = await prisma.vendor.findUnique({
+          where: { id: String(cleanData.vendorId) }
+        });
+        if (!vendorExists) {
+          cleanData.vendorId = null;
+        }
+      } catch (err) {
+        cleanData.vendorId = null;
+      }
+    }
+
     const created = await prisma.product.create({
       data: {
         id: productId,
@@ -792,6 +956,20 @@ class ProductModel extends ProductDocument {
   static async findByIdAndUpdate(id, update, options = {}) {
     const dataToUpdate = update.$set ? update.$set : update;
     const cleanData = sanitizeProductDataForPrisma(dataToUpdate);
+
+    if (cleanData.vendorId) {
+      try {
+        const vendorExists = await prisma.vendor.findUnique({
+          where: { id: String(cleanData.vendorId) }
+        });
+        if (!vendorExists) {
+          cleanData.vendorId = null;
+        }
+      } catch (err) {
+        cleanData.vendorId = null;
+      }
+    }
+
     try {
       await prisma.product.update({
         where: { id: String(id) },

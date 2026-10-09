@@ -38,6 +38,12 @@ const {
   executeBulkAction,
   restoreProductVersion,
   exportProductCatalog,
+  getMerchandisingSettings,
+  updateMerchandisingSettings,
+  getMerchandisingPreview,
+  bumpRotationVersion,
+  getMerchandisingAnalytics,
+  recordMerchandisingEvent,
 } = require('../controllers/productController');
 
 
@@ -176,6 +182,14 @@ router.get('/order/audit-logs', protect, admin, getOrderAuditLogs);
 router.post('/order/rollback', protect, admin, rollbackOrderChanges);
 router.put('/order/bulk-update', protect, admin, bulkUpdateSectionProducts);
 router.post('/order/reset', protect, admin, resetSectionProductsOrder);
+
+// Merchandising engine & smart rotation routes
+router.get('/merchandising/settings', protect, admin, getMerchandisingSettings);
+router.put('/merchandising/settings', protect, admin, updateMerchandisingSettings);
+router.get('/merchandising/preview/:section', protect, admin, getMerchandisingPreview);
+router.post('/merchandising/rotate-now/:section', protect, admin, bumpRotationVersion);
+router.get('/merchandising/analytics', protect, admin, getMerchandisingAnalytics);
+router.post('/merchandising/track', recordMerchandisingEvent);
 
 // @route   GET /api/products/category/:category
 // @desc    Get products by category
