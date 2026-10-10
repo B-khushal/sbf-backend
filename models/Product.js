@@ -155,6 +155,23 @@ function sanitizeProductDataForPrisma(data = {}) {
   } else if (data.discountPrice !== undefined && data.discountPrice !== null && data.price !== undefined && parseFloat(data.discountPrice) < parseFloat(data.price)) {
     cleanData.comparePrice = parseFloat(data.price);
   }
+
+  // If price variants exist, ensure cleanData.price and comparePrice reflect the base variant
+  if (Array.isArray(data.priceVariants) && data.priceVariants.length > 0) {
+    const baseVar = data.priceVariants[0];
+    const basePrice = parseFloat(baseVar.price || 0);
+    const baseDiscount = (baseVar.discountPrice !== undefined && baseVar.discountPrice !== null && baseVar.discountPrice !== '')
+      ? parseFloat(baseVar.discountPrice)
+      : null;
+    if (basePrice > 0) {
+      if (baseDiscount !== null && baseDiscount > 0 && baseDiscount < basePrice) {
+        cleanData.price = baseDiscount;
+        cleanData.comparePrice = basePrice;
+      } else {
+        cleanData.price = basePrice;
+      }
+    }
+  }
   if (data.costPrice !== undefined) cleanData.costPrice = data.costPrice ? parseFloat(data.costPrice) : null;
 
   if (data.stock !== undefined || data.countInStock !== undefined) {
@@ -262,6 +279,9 @@ function sanitizeProductDataForPrisma(data = {}) {
   if (data.discount !== undefined) detailsObj.discount = parseFloat(data.discount || 0);
   if (data.discountType !== undefined) detailsObj.discountType = String(data.discountType);
   if (data.discountPrice !== undefined) detailsObj.discountPrice = (data.discountPrice !== null && data.discountPrice !== '') ? parseFloat(data.discountPrice) : null;
+  if (data.priceVariants !== undefined) {
+    detailsObj.priceVariants = Array.isArray(data.priceVariants) ? data.priceVariants : [];
+  }
   if (Object.keys(detailsObj).length > 0) {
     cleanData.details = detailsObj;
   }
@@ -377,18 +397,30 @@ async function syncProductRelations(productId, productData) {
     try {
       await prisma.productVariant.deleteMany({ where: { productId } });
       if (rawVariants.length > 0) {
+        const productDiscount = parseFloat(productData.discount || 0);
+        const productDiscountType = String(productData.discountType || 'percentage').toLowerCase();
+
         const variantData = rawVariants.map((v, i) => {
           const rawPrice = parseFloat(v.price || 0);
-          const rawDiscount = (v.discountPrice !== undefined && v.discountPrice !== null && v.discountPrice !== '')
+          let rawDiscount = (v.discountPrice !== undefined && v.discountPrice !== null && v.discountPrice !== '')
             ? parseFloat(v.discountPrice)
             : null;
-          const rawCompare = (v.comparePrice !== undefined && v.comparePrice !== null && v.comparePrice !== '')
+          let rawCompare = (v.comparePrice !== undefined && v.comparePrice !== null && v.comparePrice !== '')
             ? parseFloat(v.comparePrice)
             : null;
 
-          // If a discountPrice was provided and is less than price, store selling price as price and comparePrice as the regular price
+          // If rawDiscount is not explicitly provided, calculate auto-discount if product discount exists
+          if (rawDiscount === null && productDiscount > 0 && productDiscount < 100) {
+            if (productDiscountType === 'fixed') {
+              rawDiscount = Math.max(0, rawPrice - productDiscount);
+            } else {
+              rawDiscount = Math.round(rawPrice * (1 - productDiscount / 100));
+            }
+          }
+
+          // If a discountPrice was provided/calculated and is less than price, store selling price as price and comparePrice as the regular price
           let effectivePrice = rawPrice;
-          let comparePriceVal = rawCompare;
+          let comparePriceVal = rawCompare || (rawDiscount !== null && rawDiscount > 0 && rawDiscount < rawPrice ? rawPrice : null);
           if (rawDiscount !== null && rawDiscount > 0 && rawDiscount < rawPrice) {
             effectivePrice = rawDiscount;
             comparePriceVal = rawPrice;
@@ -401,7 +433,7 @@ async function syncProductRelations(productId, productData) {
             size: String(v.size || v.label || v.name || 'Standard'),
             price: effectivePrice,
             comparePrice: comparePriceVal,
-            stock: parseInt(v.stock || 0),
+            stock: parseInt(v.stock !== undefined ? v.stock : 20),
             isDefault: i === 0
           };
         });
@@ -559,19 +591,26 @@ class ProductDocument {
       this.images = [];
     }
 
-    if (data.priceVariants && Array.isArray(data.priceVariants) && data.priceVariants.length > 0) {
-      this.priceVariants = data.priceVariants.map(v => {
+    const storedVariants = (Array.isArray(data.priceVariants) && data.priceVariants.length > 0)
+      ? data.priceVariants
+      : (Array.isArray(detailsObj.priceVariants) && detailsObj.priceVariants.length > 0
+          ? detailsObj.priceVariants
+          : []);
+
+    if (storedVariants.length > 0) {
+      this.priceVariants = storedVariants.map(v => {
         const rawP = parseFloat(v.price || 0);
-        const rawCp = v.comparePrice ? parseFloat(v.comparePrice) : null;
-        const hasCpDiscount = rawCp && rawCp > rawP;
+        const rawCp = (v.comparePrice !== undefined && v.comparePrice !== null && v.comparePrice !== '') ? parseFloat(v.comparePrice) : null;
+        const rawDp = (v.discountPrice !== undefined && v.discountPrice !== null && v.discountPrice !== '') ? parseFloat(v.discountPrice) : null;
+        const hasCpDiscount = rawCp !== null && rawCp > rawP;
         return {
           _id: String(v.id || v._id || ''),
           id: String(v.id || v._id || ''),
           label: v.name || v.size || v.label,
           price: hasCpDiscount ? rawCp : rawP,
-          discountPrice: hasCpDiscount ? rawP : (v.discountPrice ? parseFloat(v.discountPrice) : undefined),
-          comparePrice: rawCp,
-          stock: v.stock || 0
+          discountPrice: hasCpDiscount ? rawP : (rawDp !== null && rawDp < rawP ? rawDp : undefined),
+          comparePrice: rawCp || (hasCpDiscount ? rawCp : undefined),
+          stock: v.stock !== undefined ? parseInt(v.stock) : 0
         };
       });
     } else {
