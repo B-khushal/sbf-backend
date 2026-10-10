@@ -312,11 +312,54 @@ exports.createOrderNotification = async (orderData) => {
   try {
     const currency = orderData.currency || 'INR';
     const currencySymbol = currency === 'INR' ? '₹' : '$';
-    
+    const items = orderData.items || [];
+
+    let hasCake = false;
+    let hasCombo = false;
+    let highlights = [];
+
+    items.forEach(item => {
+      const cust = item.customizations || {};
+      const category = (item.product?.category || item.category || '').toLowerCase();
+      const isItemCombo = cust.isCombo || cust.isGiftBundle || category.includes('combo') || category.includes('hamper');
+      const isItemCake = cust.cakeWeight || cust.weight || cust.cakeFlavor || cust.cakeMessage || cust.eggless !== undefined || category.includes('cake');
+
+      if (isItemCombo) {
+        hasCombo = true;
+        let comboDesc = '🎁 Duo Combo';
+        if (cust.cakeWeight) comboDesc += ` (${cust.cakeWeight} Cake)`;
+        highlights.push(comboDesc);
+      } else if (isItemCake) {
+        hasCake = true;
+        let cakeDesc = '🎂 Cake';
+        const cakeSpecs = [];
+        const weight = cust.cakeWeight || cust.weight;
+        if (weight) cakeSpecs.push(weight);
+        if (cust.eggless !== undefined) cakeSpecs.push(cust.eggless ? 'Eggless' : 'Egg');
+        if (cakeSpecs.length > 0) cakeDesc += ` (${cakeSpecs.join(', ')})`;
+        if (cust.cakeMessage) cakeDesc += ` - "${cust.cakeMessage}"`;
+        highlights.push(cakeDesc);
+      }
+    });
+
+    let title = '🎉 New Order Received!';
+    if (hasCombo && hasCake) {
+      title = '🎁🎂 New Combo & Cake Order!';
+    } else if (hasCombo) {
+      title = '🎁 New Combo Order Received!';
+    } else if (hasCake) {
+      title = '🎂 New Cake Order Received!';
+    }
+
+    let message = `Order #${orderData.orderNumber} placed by ${orderData.customerName}. Amount: ${currencySymbol}${orderData.amount}`;
+    if (highlights.length > 0) {
+      message += ` • ${highlights.slice(0, 2).join(' • ')}`;
+    }
+
     const notification = await Notification.create({
       type: 'order',
-      title: '🎉 New Order Received!',
-      message: `Order ${orderData.orderNumber} has been placed by ${orderData.customerName}. Amount: ${currencySymbol}${orderData.amount}`,
+      title,
+      message,
       userId: null, // Admin notification (no specific user)
       read: false,
       metadata: {
@@ -324,11 +367,14 @@ exports.createOrderNotification = async (orderData) => {
         orderNumber: orderData.orderNumber,
         customerName: orderData.customerName,
         amount: orderData.amount,
-        currency: currency
+        currency: currency,
+        hasCake,
+        hasCombo,
+        highlights
       }
     });
     
-    console.log('✅ Order notification created for admin:', orderData.orderNumber);
+    console.log(`✅ Order notification created for admin: #${orderData.orderNumber} [${title}]`);
     return notification;
   } catch (error) {
     console.error('❌ Error creating order notification:', error);

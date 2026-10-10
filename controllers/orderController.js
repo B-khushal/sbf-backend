@@ -676,7 +676,8 @@ const createOrder = async (req, res) => {
           orderNumber: savedOrder.orderNumber,
           customerName: customerName,
           amount: savedOrder.totalAmount,
-          currency: savedOrder.currency || 'INR'
+          currency: savedOrder.currency || 'INR',
+          items: populatedOrder.items || savedOrder.items
         });
         console.log('✅ Admin notification created successfully for order:', savedOrder.orderNumber);
 
@@ -685,8 +686,8 @@ const createOrder = async (req, res) => {
         global.latestNotifications.unshift({
           id: adminNotification._id || adminNotification.id || `order-${Date.now()}`,
           type: 'order',
-          title: '🎉 New Order Received!',
-          message: `Order ${savedOrder.orderNumber} placed by ${customerName}. Amount: ${savedOrder.currency === 'INR' ? '₹' : '$'}${savedOrder.totalAmount}`,
+          title: adminNotification.title || '🎉 New Order Received!',
+          message: adminNotification.message || `Order ${savedOrder.orderNumber} placed by ${customerName}. Amount: ${savedOrder.currency === 'INR' ? '₹' : '$'}${savedOrder.totalAmount}`,
           createdAt: new Date().toISOString(),
           isRead: false,
           orderId: savedOrder._id,
@@ -708,8 +709,8 @@ const createOrder = async (req, res) => {
       try {
         console.log('🔔 Sending push notification to all admin devices...');
         const fcmResult = await sendToAllAdmins({
-          title: '🎉 New Order Received!',
-          body: `Order #${savedOrder.orderNumber} - ${savedOrder.currency === 'INR' ? '₹' : '$'}${savedOrder.totalAmount}`,
+          title: (global.latestNotifications?.[0]?.title) || '🎉 New Order Received!',
+          body: (global.latestNotifications?.[0]?.message) || `Order #${savedOrder.orderNumber} - ${savedOrder.currency === 'INR' ? '₹' : '$'}${savedOrder.totalAmount}`,
           orderId: savedOrder._id.toString(),
           orderNumber: savedOrder.orderNumber,
           customerName: customerName,
@@ -2098,7 +2099,8 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
             orderNumber: savedOrder.orderNumber,
             customerName: customerName,
             amount: savedOrder.totalAmount,
-            currency: savedOrder.currency || 'INR'
+            currency: savedOrder.currency || 'INR',
+            items: populatedOrder.items || savedOrder.items
           });
           console.log('✅ Admin notification created successfully for order:', savedOrder.orderNumber);
 
@@ -2107,8 +2109,8 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
           global.latestNotifications.unshift({
             id: adminNotification._id || adminNotification.id || `order-${Date.now()}`,
             type: 'order',
-            title: '🎉 New Order Received!',
-            message: `Order ${savedOrder.orderNumber} placed by ${customerName}. Amount: ${savedOrder.currency === 'INR' ? '₹' : '$'}${savedOrder.totalAmount}`,
+            title: adminNotification.title || '🎉 New Order Received!',
+            message: adminNotification.message || `Order ${savedOrder.orderNumber} placed by ${customerName}. Amount: ${savedOrder.currency === 'INR' ? '₹' : '$'}${savedOrder.totalAmount}`,
             createdAt: new Date().toISOString(),
             isRead: false,
             orderId: savedOrder._id,
@@ -2126,8 +2128,8 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
           try {
             console.log('🔔 Sending push notification to all admin devices...');
             const fcmResult = await sendToAllAdmins({
-              title: '🎉 New Order Received!',
-              body: `Order #${savedOrder.orderNumber} - ${savedOrder.currency === 'INR' ? '₹' : '$'}${savedOrder.totalAmount}`,
+              title: adminNotification.title || '🎉 New Order Received!',
+              body: adminNotification.message || `Order #${savedOrder.orderNumber} - ${savedOrder.currency === 'INR' ? '₹' : '$'}${savedOrder.totalAmount}`,
               orderId: savedOrder._id.toString(),
               orderNumber: savedOrder.orderNumber,
               customerName: customerName,

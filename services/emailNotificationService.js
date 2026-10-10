@@ -176,41 +176,104 @@ const generateInvoicePDF = async (htmlContent, orderNumber) => {
   });
 };
 
+// Helper to extract detailed customization lines for an item (supporting Cakes, Combos, Addons, Flowers, Chocolates, etc.)
+const formatItemCustomizationHTML = (item, options = { isCompact: false }) => {
+  const cust = item.customizations;
+  if (!cust && !item.selectedVariant) return '';
+
+  const parts = [];
+
+  // 1. Combo Badge
+  const isCombo = cust?.isCombo || cust?.isGiftBundle || (item.product?.category?.toLowerCase?.().includes('combo')) || (item.product?.category?.toLowerCase?.().includes('hamper'));
+  if (isCombo) {
+    parts.push(`<div style="display: inline-block; font-size: ${options.isCompact ? '9px' : '10px'}; background-color: #fdf2f8; color: #be123c; border: 1px solid #fbcfe8; border-radius: 4px; padding: 1px 6px; font-weight: 700; margin-top: 3px; margin-bottom: 2px;">🎁 DUO COMBO PACKAGE</div>`);
+  }
+
+  // 2. Cake Specifications
+  const cakeSpecs = [];
+  const cakeWeight = cust?.cakeWeight || cust?.weight || item.weight;
+  if (cakeWeight) cakeSpecs.push(cakeWeight);
+  if (cust?.cakeFlavor || cust?.flavor) {
+    const fl = cust.cakeFlavor || cust.flavor;
+    cakeSpecs.push(fl.charAt(0).toUpperCase() + fl.slice(1));
+  }
+  if (cust?.cakeShape || cust?.shape) {
+    const sh = cust.cakeShape || cust.shape;
+    cakeSpecs.push(sh.charAt(0).toUpperCase() + sh.slice(1));
+  }
+  if (cust?.cakeServes) cakeSpecs.push(cust.cakeServes);
+  if (cust?.eggless !== undefined && cust.eggless !== null) {
+    cakeSpecs.push(cust.eggless ? '100% Eggless (Veg)' : 'Contains Egg');
+  }
+
+  if (cakeSpecs.length > 0) {
+    parts.push(`<div style="font-size: ${options.isCompact ? '10px' : '11px'}; color: #92400e; font-weight: 600; margin-top: 3px;">🎂 ${cakeSpecs.join(' • ')}</div>`);
+  }
+
+  // 3. Cake Inscription / Message
+  if (cust?.cakeMessage) {
+    parts.push(`<div style="font-size: ${options.isCompact ? '10px' : '11px'}; color: #047857; font-weight: 600; font-style: italic; margin-top: 2px;">✍ Cake Inscription: "${cust.cakeMessage}"</div>`);
+  }
+
+  // 4. Duo Combo / Gift Bundle Components breakdown
+  if (cust?.isGiftBundle && Array.isArray(cust?.giftComponents) && cust.giftComponents.length > 0) {
+    const comps = cust.giftComponents.map(c => `• <strong>${c.category ? c.category.replace(/_/g, ' ') + ': ' : ''}</strong>${c.name}`).join('<br>');
+    parts.push(`
+      <div style="font-size: ${options.isCompact ? '9.5px' : '11px'}; color: #9f1239; background-color: #fff1f2; border: 1px solid #ffe4e6; border-radius: 4px; padding: 4px 8px; margin-top: 4px;">
+        <strong style="display: block; margin-bottom: 2px;">🎁 Package Contents:</strong>
+        ${comps}
+      </div>
+    `);
+  }
+
+  // 5. Add-ons
+  if (Array.isArray(cust?.addons) && cust.addons.length > 0) {
+    const addonsStr = cust.addons.map(a => a.name || a.title).join(', ');
+    parts.push(`<div style="font-size: ${options.isCompact ? '10px' : '11px'}; color: #b45309; font-weight: 600; margin-top: 2px;">✨ Add-ons: ${addonsStr}</div>`);
+  }
+
+  // 6. Number Cake
+  if (cust?.number) {
+    parts.push(`<div style="font-size: ${options.isCompact ? '10px' : '11px'}; color: #1e3a8a; font-weight: 600; margin-top: 2px;">🔢 Number: ${cust.number}</div>`);
+  }
+
+  // 7. Greeting Card Message
+  if (cust?.messageCard) {
+    parts.push(`<div style="font-size: ${options.isCompact ? '10px' : '11px'}; color: #b45309; font-weight: 600; margin-top: 2px;">💌 Message Card: "${cust.messageCard}"</div>`);
+  }
+
+  // 8. Custom Message (if not already cakeMessage)
+  if (cust?.customMessage && !cust?.cakeMessage) {
+    parts.push(`<div style="font-size: ${options.isCompact ? '10px' : '11px'}; color: #6b7280; font-style: italic; margin-top: 2px;">💌 Card Message: "${cust.customMessage}"</div>`);
+  }
+
+  // 9. Personalization
+  if (cust?.personalization) {
+    const p = cust.personalization;
+    parts.push(`<div style="font-size: ${options.isCompact ? '10px' : '11px'}; color: #4338ca; font-weight: 600; margin-top: 2px;">✨ ${p.label || 'Personalization'}: ${p.value}</div>`);
+  }
+
+  // 10. Flower Add-ons
+  if (Array.isArray(cust?.selectedFlowers) && cust.selectedFlowers.length > 0) {
+    const fls = cust.selectedFlowers.map(f => `${f.name}${f.quantity > 1 ? `×${f.quantity}` : ''}`).join(', ');
+    parts.push(`<div style="font-size: ${options.isCompact ? '10px' : '11px'}; color: #db2777; font-weight: 600; margin-top: 2px;">🌸 Flower Add-ons: ${fls}</div>`);
+  }
+
+  // 11. Chocolate Add-ons
+  if (Array.isArray(cust?.selectedChocolates) && cust.selectedChocolates.length > 0) {
+    const chocs = cust.selectedChocolates.map(c => `${c.name}${c.quantity > 1 ? `×${c.quantity}` : ''}`).join(', ');
+    parts.push(`<div style="font-size: ${options.isCompact ? '10px' : '11px'}; color: #c2410c; font-weight: 600; margin-top: 2px;">🍫 Chocolate Add-ons: ${chocs}</div>`);
+  }
+
+  return parts.join('');
+};
+
 // Generate comprehensive email template
 const generateOrderConfirmationEmail = (orderData) => {
   const { order, customer, items } = orderData;
 
   const itemsList = items.map(item => {
-    let customTextParts = [];
-    if (item.customizations) {
-      if (item.customizations.number) {
-        customTextParts.push(`Number: ${item.customizations.number}`);
-      }
-      if (item.customizations.messageCard) {
-        customTextParts.push(`Message Card: "${item.customizations.messageCard}"`);
-      }
-      if (item.customizations.isGiftBundle && item.customizations.giftComponents) {
-        const comps = item.customizations.giftComponents.map(c => `${c.category.replace('_', ' ')}: ${c.name}`).join(', ');
-        customTextParts.push(`Included Items: ${comps}`);
-        if (item.customizations.customMessage) {
-          customTextParts.push(`Card Message: "${item.customizations.customMessage}"`);
-        }
-      }
-      if (item.customizations.personalization) {
-        const p = item.customizations.personalization;
-        customTextParts.push(`${p.label || 'Personalization'}: ${p.value}`);
-      }
-      if (item.customizations.selectedFlowers && item.customizations.selectedFlowers.length > 0) {
-        const fls = item.customizations.selectedFlowers.map(f => `${f.name}${f.quantity > 1 ? `×${f.quantity}` : ''}`).join(', ');
-        customTextParts.push(`Add-on Flowers: ${fls}`);
-      }
-      if (item.customizations.selectedChocolates && item.customizations.selectedChocolates.length > 0) {
-        const chocs = item.customizations.selectedChocolates.map(c => `${c.name}${c.quantity > 1 ? `×${c.quantity}` : ''}`).join(', ');
-        customTextParts.push(`Add-on Chocolates: ${chocs}`);
-      }
-    }
-    
-    const customizationsHTML = customTextParts.map(part => `<div style="font-size: 11px; color: #b45309; font-weight: bold; margin-top: 3px;">✨ ${part}</div>`).join('');
+    const customizationsHTML = formatItemCustomizationHTML(item, { isCompact: false });
 
     return `
       <tr style="border-bottom: 1px solid #e5e7eb;">
@@ -219,6 +282,7 @@ const generateOrderConfirmationEmail = (orderData) => {
             ${item.product.name || item.product.title}
           </div>
           ${item.product.sku ? `<div style="font-size: 12px; color: #6b7280;">SKU: ${item.product.sku}</div>` : ''}
+          ${item.selectedVariant?.label ? `<div style="font-size: 12px; color: #6366f1; font-weight: 500;">Variant: ${item.selectedVariant.label}</div>` : ''}
           ${customizationsHTML}
         </td>
         <td style="padding: 12px; text-align: center; font-weight: 500;">
@@ -498,22 +562,31 @@ const generateOrderConfirmationEmail = (orderData) => {
 const generateAdminOrderNotificationEmail = (orderData) => {
   const { order, customer, items } = orderData;
 
-  const itemsList = items.map(item => `
-    <tr style="border-bottom: 1px solid #e5e7eb;">
-      <td style="padding: 12px; text-align: left;">
-        <div style="font-weight: 600; color: #374151;">
-          ${item.product.name || item.product.title}
-        </div>
-        ${item.product.sku ? `<div style="font-size: 12px; color: #6b7280;">SKU: ${item.product.sku}</div>` : ''}
-      </td>
-      <td style="padding: 12px; text-align: center; font-weight: 500;">
-        ${item.quantity}
-      </td>
-      <td style="padding: 12px; text-align: right; font-weight: 600; color: #374151;">
-        ${formatCurrency(item.finalPrice || item.price, order.currency)}
-      </td>
-    </tr>
-  `).join('');
+  const hasCake = items.some(i => i.customizations?.cakeWeight || i.customizations?.weight || i.customizations?.cakeFlavor || i.customizations?.cakeMessage || i.product?.category?.toLowerCase?.().includes('cake'));
+  const hasCombo = items.some(i => i.customizations?.isCombo || i.customizations?.isGiftBundle || i.product?.category?.toLowerCase?.().includes('combo') || i.product?.category?.toLowerCase?.().includes('hamper'));
+
+  const itemsList = items.map(item => {
+    const customizationsHTML = formatItemCustomizationHTML(item, { isCompact: false });
+
+    return `
+      <tr style="border-bottom: 1px solid #e5e7eb;">
+        <td style="padding: 12px; text-align: left;">
+          <div style="font-weight: 600; color: #374151;">
+            ${item.product.name || item.product.title}
+          </div>
+          ${item.product.sku ? `<div style="font-size: 12px; color: #6b7280;">SKU: ${item.product.sku}</div>` : ''}
+          ${item.selectedVariant?.label ? `<div style="font-size: 12px; color: #6366f1; font-weight: 500;">Variant: ${item.selectedVariant.label}</div>` : ''}
+          ${customizationsHTML}
+        </td>
+        <td style="padding: 12px; text-align: center; font-weight: 500;">
+          ${item.quantity}
+        </td>
+        <td style="padding: 12px; text-align: right; font-weight: 600; color: #374151;">
+          ${formatCurrency(item.finalPrice || item.price, order.currency)}
+        </td>
+      </tr>
+    `;
+  }).join('');
 
   return `
     <!DOCTYPE html>
@@ -535,6 +608,14 @@ const generateAdminOrderNotificationEmail = (orderData) => {
         <!-- Content -->
         <div style="padding: 30px;">
           
+          ${(hasCake || hasCombo) ? `
+          <!-- Cake / Combo Ops Alert -->
+          <div style="background: #fffbeb; border: 1px solid #fde68a; border-left: 4px solid #f59e0b; border-radius: 8px; padding: 14px 18px; margin-bottom: 25px; color: #92400e; font-size: 13px; line-height: 1.5;">
+            ${hasCake ? '<div style="margin-bottom: 4px;">🎂 <strong>Bakery Preparation Notice:</strong> This order includes customized cake specifications. Check weight, flavor, and piping instructions below.</div>' : ''}
+            ${hasCombo ? '<div>🎁 <strong>Combo Packaging Notice:</strong> This order is a curated gift duo requiring connected package assembly.</div>' : ''}
+          </div>
+          ` : ''}
+
           <!-- Order Summary -->
           <div style="background: #fef2f2; padding: 20px; border-radius: 8px; margin-bottom: 25px; border-left: 4px solid #dc2626;">
             <h2 style="color: #1f2937; margin-bottom: 15px; font-size: 20px;">Order Details</h2>
@@ -696,39 +777,9 @@ const generateInvoiceHTML = (orderData) => {
   const transactionId = order.payment?.transactionId || order.paymentDetails?.transactionId || order.paymentDetails?.razorpayPaymentId || order.paymentDetails?.paymentId || '';
 
   const itemRows = items.map((item, index) => {
-    const title = item.product?.title || item.title || 'Florist Arrangement';
+    const title = item.product?.title || item.product?.name || item.title || 'Florist Arrangement';
     const variantText = item.selectedVariant?.label ? `Variant: ${item.selectedVariant.label}` : 'Premium Arrangement';
-    
-    let customTextParts = [];
-    if (item.customizations) {
-      if (item.customizations.number) {
-        customTextParts.push(`Number: ${item.customizations.number}`);
-      }
-      if (item.customizations.messageCard) {
-        customTextParts.push(`Message Card: "${item.customizations.messageCard}"`);
-      }
-      if (item.customizations.isGiftBundle && item.customizations.giftComponents) {
-        const comps = item.customizations.giftComponents.map(c => `${c.category.replace('_', ' ')}: ${c.name}`).join(', ');
-        customTextParts.push(`Included Items: ${comps}`);
-        if (item.customizations.customMessage) {
-          customTextParts.push(`Card Message: "${item.customizations.customMessage}"`);
-        }
-      }
-      if (item.customizations.personalization) {
-        const p = item.customizations.personalization;
-        customTextParts.push(`${p.label || 'Personalization'}: ${p.value}`);
-      }
-      if (item.customizations.selectedFlowers && item.customizations.selectedFlowers.length > 0) {
-        const fls = item.customizations.selectedFlowers.map(f => `${f.name}${f.quantity > 1 ? `×${f.quantity}` : ''}`).join(', ');
-        customTextParts.push(`Add-on Flowers: ${fls}`);
-      }
-      if (item.customizations.selectedChocolates && item.customizations.selectedChocolates.length > 0) {
-        const chocs = item.customizations.selectedChocolates.map(c => `${c.name}${c.quantity > 1 ? `×${c.quantity}` : ''}`).join(', ');
-        customTextParts.push(`Add-on Chocolates: ${chocs}`);
-      }
-    }
-    
-    const customTextHTML = customTextParts.map(part => `<div style="font-size: 9px; color: #b45309; font-weight: 600; margin-top: 2px;">✨ ${part}</div>`).join('');
+    const customTextHTML = formatItemCustomizationHTML(item, { isCompact: true });
     
     return `
       <tr style="border-bottom: 1px solid #e2e8f0;">
@@ -1034,12 +1085,15 @@ const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
     const productName = item.product?.name || item.product?.title || item.title || 'Product';
     const unitPrice = item.finalPrice || item.price || 0;
     const lineTotal = unitPrice * item.quantity;
+    const customTextHTML = formatItemCustomizationHTML(item, { isCompact: true });
 
     return `
       <tr>
         <td class="cell cell-item">
           <div class="item-title">${productName}</div>
           ${item.product?.sku ? `<div class="item-sub">SKU: ${item.product.sku}</div>` : ''}
+          ${item.selectedVariant?.label ? `<div style="font-size: 10px; color: #6366f1; margin-top: 2px;">Variant: ${item.selectedVariant.label}</div>` : ''}
+          ${customTextHTML}
         </td>
         <td class="cell cell-center">${item.quantity}</td>
         <td class="cell cell-right">${formatCurrency(unitPrice, order.currency)}</td>

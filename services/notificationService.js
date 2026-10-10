@@ -84,19 +84,60 @@ const formatDate = (date) => {
 const generateOrderConfirmationEmail = (orderData) => {
   const { order, customer, items } = orderData;
   
-  const itemsList = items.map(item => `
-    <tr>
-      <td style="padding: 10px; border-bottom: 1px solid #eee;">
-        ${item.product.name || item.product.title}
-      </td>
-      <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: center;">
-        ${item.quantity}
-      </td>
-      <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right;">
-        ${formatCurrency(item.finalPrice || item.price, order.currency)}
-      </td>
-    </tr>
-  `).join('');
+  const itemsList = items.map(item => {
+    let customTextParts = [];
+    const cust = item.customizations || {};
+
+    const isCombo = cust.isCombo || cust.isGiftBundle || (item.product?.category?.toLowerCase?.().includes('combo'));
+    if (isCombo) {
+      customTextParts.push(`🎁 Duo Combo Package`);
+    }
+
+    const cakeSpecs = [];
+    const cakeWeight = cust.cakeWeight || cust.weight;
+    if (cakeWeight) cakeSpecs.push(cakeWeight);
+    if (cust.cakeFlavor || cust.flavor) cakeSpecs.push(cust.cakeFlavor || cust.flavor);
+    if (cust.cakeShape || cust.shape) cakeSpecs.push(cust.cakeShape || cust.shape);
+    if (cust.eggless !== undefined) cakeSpecs.push(cust.eggless ? '100% Eggless' : 'Contains Egg');
+    if (cakeSpecs.length > 0) {
+      customTextParts.push(`🎂 ${cakeSpecs.join(' • ')}`);
+    }
+
+    if (cust.cakeMessage) {
+      customTextParts.push(`✍ Inscription: "${cust.cakeMessage}"`);
+    }
+
+    if (cust.isGiftBundle && Array.isArray(cust.giftComponents) && cust.giftComponents.length > 0) {
+      const comps = cust.giftComponents.map(c => `${c.category ? c.category + ': ' : ''}${c.name}`).join(', ');
+      customTextParts.push(`📦 Contents: ${comps}`);
+    }
+
+    if (Array.isArray(cust.addons) && cust.addons.length > 0) {
+      customTextParts.push(`✨ Add-ons: ${cust.addons.map(a => a.name || a.title).join(', ')}`);
+    }
+
+    if (cust.messageCard) {
+      customTextParts.push(`💌 Card: "${cust.messageCard}"`);
+    }
+
+    const customHTML = customTextParts.map(p => `<div style="font-size: 11px; color: #b45309; margin-top: 2px;">${p}</div>`).join('');
+
+    return `
+      <tr>
+        <td style="padding: 10px; border-bottom: 1px solid #eee;">
+          <div style="font-weight: 600;">${item.product.name || item.product.title}</div>
+          ${item.selectedVariant?.label ? `<div style="font-size: 11px; color: #6366f1;">Variant: ${item.selectedVariant.label}</div>` : ''}
+          ${customHTML}
+        </td>
+        <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: center;">
+          ${item.quantity}
+        </td>
+        <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right;">
+          ${formatCurrency(item.finalPrice || item.price, order.currency)}
+        </td>
+      </tr>
+    `;
+  }).join('');
   
   return `
     <!DOCTYPE html>
