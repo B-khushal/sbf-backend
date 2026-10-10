@@ -1053,6 +1053,141 @@ const getProductCategories = async (req, res) => {
   }
 };
 
+// Helper to build fast lookup maps for category & occasion product links
+const loadCategoryAndOccasionLinks = async () => {
+  const pcMap = new Map();
+  const poMap = new Map();
+  try {
+    const pcLinks = await prisma.productCategory.findMany({
+      select: { productId: true, categoryId: true }
+    });
+    pcLinks.forEach(l => {
+      const cid = String(l.categoryId);
+      if (!pcMap.has(cid)) pcMap.set(cid, new Set());
+      pcMap.get(cid).add(String(l.productId));
+    });
+  } catch (e) {
+    console.warn('Could not load ProductCategory links:', e.message);
+  }
+
+  try {
+    const poLinks = await prisma.productOccasion.findMany({
+      select: { productId: true, occasionId: true }
+    });
+    poLinks.forEach(l => {
+      const oid = String(l.occasionId);
+      if (!poMap.has(oid)) poMap.set(oid, new Set());
+      poMap.get(oid).add(String(l.productId));
+    });
+  } catch (e) {
+    console.warn('Could not load ProductOccasion links:', e.message);
+  }
+
+  return { pcMap, poMap };
+};
+
+// Check if a product belongs to the cake domain
+const isProductCake = (p, cakesParentId, cakeSubcatIds, pcMap) => {
+  const pid = String(p._id || p.id);
+  if (pcMap && cakesParentId && pcMap.get(cakesParentId) && pcMap.get(cakesParentId).has(pid)) return true;
+  if (pcMap && cakeSubcatIds) {
+    for (const sid of cakeSubcatIds) {
+      if (pcMap.get(sid) && pcMap.get(sid).has(pid)) return true;
+    }
+  }
+  const cat = (p.category || '').toLowerCase();
+  const sub = (p.subcategory || '').toLowerCase();
+  const cats = (p.categories || []).map(c => String(c).toLowerCase());
+  if (cat === 'cakes' || cat === 'cake') return true;
+  if (cats.some(c => c === 'cakes' || c === 'cake')) return true;
+  if (sub.includes('cake') && !sub.includes('combo')) return true;
+  if (cats.some(c => c.includes('cake') && !c.includes('combo'))) return true;
+  if (p.cakeAttributes && Object.keys(p.cakeAttributes).length > 0 && p.cakeAttributes.flavor) return true;
+  const title = (p.title || p.name || '').toLowerCase();
+  if (title.includes('cake') && !title.includes('cupcake')) return true;
+  return false;
+};
+
+// Core accurate matcher for categories, subcategories, and occasions
+const matchProductToCategoryOrOccasion = (p, catOrOcc, { pcMap, poMap, cakesParentId, cakeSubcatIds, isOccasion = false }) => {
+  const id = String(catOrOcc._id || catOrOcc.id || '');
+  const pid = String(p._id || p.id);
+  const slug = (catOrOcc.slug || '').toLowerCase().trim();
+  const name = (catOrOcc.name || '').toLowerCase().trim();
+
+  // 1. Explicit DB relation
+  if (pcMap && pcMap.has(id) && pcMap.get(id).has(pid)) return true;
+  if (poMap && poMap.has(id) && poMap.get(id).has(pid)) return true;
+
+  const isUnderCakes = (cakesParentId && String(catOrOcc.parentId) === String(cakesParentId)) || slug.includes('cake') || name.includes('cake');
+  const pIsCake = isProductCake(p, cakesParentId, cakeSubcatIds, pcMap);
+
+  // If category is a cake category, non-cakes must never match!
+  if (isUnderCakes && !pIsCake) return false;
+
+  const norm = (s) => (s || '').toLowerCase().replace(/['"]/g, '').replace(/-/g, ' ').replace(/s$/, '').trim();
+  const targetSlug = norm(slug);
+  const targetName = norm(name);
+
+  const pCat = norm(p.category);
+  const pSub = norm(p.subcategory);
+  const pCats = (p.categories || []).map(c => norm(typeof c === 'string' ? c : (c.slug || c.name || String(c))));
+  const pTags = (p.tags || []).map(t => norm(typeof t === 'string' ? t : (t.tag || String(t))));
+  const pOccasions = (p.occasions || []).map(o => norm(typeof o === 'string' ? o : (o.name || o.slug || String(o))));
+  const pTitle = (p.title || p.name || '').toLowerCase();
+  const pFlavor = norm(p.cakeAttributes && p.cakeAttributes.flavor);
+
+  // If it's root Cakes category:
+  if (slug === 'cakes' || name === 'cakes') {
+    return pIsCake;
+  }
+
+  // Specific Cake subcategories:
+  if (isUnderCakes) {
+    if (targetSlug.includes('chocolate') || targetName.includes('chocolate')) {
+      return Boolean(pFlavor.includes('chocolate') || pSub.includes('chocolate') || pTitle.includes('chocolate') || pCats.some(c => c.includes('chocolate')));
+    }
+    if (targetSlug.includes('red velvet') || targetName.includes('red velvet')) {
+      return Boolean(pFlavor.includes('red velvet') || pSub.includes('red velvet') || pTitle.includes('red velvet') || pCats.some(c => c.includes('red velvet')));
+    }
+    if (targetSlug.includes('black forest') || targetName.includes('black forest')) {
+      return Boolean(pFlavor.includes('black forest') || pSub.includes('black forest') || pTitle.includes('black forest') || pCats.some(c => c.includes('black forest')));
+    }
+    if (targetSlug.includes('fruit') || targetName.includes('fruit')) {
+      return Boolean(pFlavor.includes('pineapple') || pFlavor.includes('fruit') || pFlavor.includes('strawberry') || pSub.includes('fruit') || pTitle.includes('fruit') || pTitle.includes('pineapple') || pTitle.includes('strawberry'));
+    }
+    if (targetSlug.includes('birthday') || targetName.includes('birthday')) {
+      return Boolean(pOccasions.includes('birthday') || pCats.some(c => c.includes('birthday')) || (p.cakeAttributes && p.cakeAttributes.occasion === 'birthday') || pTitle.includes('birthday'));
+    }
+    if (targetSlug.includes('celebration') || targetName.includes('celebration')) {
+      return Boolean(pCats.some(c => c.includes('celebration')) || pSub.includes('celebration') || pTitle.includes('celebration'));
+    }
+    if (targetSlug.includes('combo') || targetName.includes('combo')) {
+      return Boolean(pCats.some(c => c.includes('combo')) || pCat.includes('combo') || pTitle.includes('bouquet') || pTitle.includes('flower'));
+    }
+  }
+
+  // Occasion matching:
+  if (isOccasion || catOrOcc.visibleOnHomepage !== undefined) {
+    if (pOccasions.some(o => o === targetSlug || o === targetName || (targetSlug.length > 3 && o.includes(targetSlug)) || (targetName.length > 3 && o.includes(targetName)))) return true;
+  }
+
+  // Standard category / subcategory matching:
+  const allPCats = [pCat, pSub, ...pCats, ...pTags].filter(Boolean);
+  if (allPCats.some(c => c === targetSlug || c === targetName)) return true;
+  if (allPCats.some(c => (c.length > 3 && targetSlug.length > 3 && c === targetSlug) || (c.length > 3 && targetName.length > 3 && c === targetName))) return true;
+
+  // Title matching for specific phrases (minimum 4 characters):
+  if (targetSlug.length > 3 && (pTitle.includes(targetSlug) || pTitle.includes(targetName))) {
+    return true;
+  }
+
+  if (pCat && (pCat === targetSlug || pCat === targetName)) return true;
+  if (pSub && (pSub === targetSlug || pSub === targetName)) return true;
+
+  return false;
+};
+
 // @desc    Get categories with product counts
 // @route   GET /api/products/categories-with-counts
 // @access  Public
@@ -1061,81 +1196,13 @@ const getCategoriesWithCounts = async (req, res) => {
     const Category = require('../models/Category');
     const Occasion = require('../models/Occasion');
     const dbCategories = await Category.find({});
-    const products = (await Product.find({})).filter(p => !p.hidden);
+    const products = (await Product.find({})).filter(p => !p.hidden && p.isVisible !== false);
 
-    // Fetch product occasion links once for accurate linking
-    const poMap = new Map();
-    try {
-      const poLinks = await prisma.productOccasion.findMany({
-        select: { productId: true, occasionId: true }
-      });
-      poLinks.forEach(l => {
-        const occId = String(l.occasionId);
-        if (!poMap.has(occId)) poMap.set(occId, new Set());
-        poMap.get(occId).add(String(l.productId));
-      });
-    } catch (e) {
-      console.warn('Could not load ProductOccasion links for counts:', e.message);
-    }
+    const { pcMap, poMap } = await loadCategoryAndOccasionLinks();
 
-    // Preprocess products once for matching category/occasion queries (consistent with by-occasion collection pages)
-    const preparedProducts = products.map(p => {
-      const pid = String(p._id || p.id);
-      const pTitle = (p.title || p.name || '').toLowerCase();
-      const pCat = (p.category || '').toLowerCase().replace(/-/g, ' ').replace(/s$/, '');
-      const pSubCat = (p.subcategory || '').toLowerCase().replace(/-/g, ' ').replace(/s$/, '');
-      const pCats = Array.isArray(p.categories)
-        ? p.categories.map(c => (typeof c === 'string' ? c : c.name || c.slug || '').toLowerCase().replace(/-/g, ' ').replace(/s$/, ''))
-        : [];
-      const pTags = Array.isArray(p.tags)
-        ? p.tags.map(t => (typeof t === 'string' ? t : t.tag || '').toLowerCase().replace(/-/g, ' '))
-        : [];
-      const pOccasions = Array.isArray(p.occasions)
-        ? p.occasions.map(o => (typeof o === 'string' ? o : o.name || o.slug || '').toLowerCase().replace(/-/g, ' ').replace(/s$/, ''))
-        : [];
-      return { pid, pTitle, pCat, pSubCat, pCats, pTags, pOccasions };
-    });
-
-    const getMatchingCount = (slug, name, id) => {
-      const cleanSlug = (slug || name || '').toLowerCase().trim();
-      const target = cleanSlug.replace(/-/g, ' ').replace(/s$/, '');
-      if (!target) return 0;
-
-      const linkedSet = id ? poMap.get(String(id)) : null;
-
-      return preparedProducts.filter(p => {
-        if (linkedSet && linkedSet.has(p.pid)) return true;
-
-        return (
-          (p.pCat && (p.pCat.includes(target) || target.includes(p.pCat))) ||
-          (p.pSubCat && (p.pSubCat.includes(target) || target.includes(p.pSubCat))) ||
-          p.pCats.some(c => c && (c.includes(target) || target.includes(c))) ||
-          p.pTags.some(t => t && (t.includes(target) || target.includes(t))) ||
-          p.pOccasions.some(o => o && (o.includes(target) || target.includes(o))) ||
-          p.pTitle.includes(target)
-        );
-      }).length;
-    };
-
-    // Build deduplicated fallback counts map for dynamic categories not present in DB
-    const countsMap = new Map();
-    products.forEach(p => {
-      const lowerNames = new Set();
-      if (p.category) lowerNames.add(String(p.category).trim().toLowerCase());
-      if (p.subcategory) lowerNames.add(String(p.subcategory).trim().toLowerCase());
-      if (Array.isArray(p.categories)) {
-        p.categories.forEach(c => {
-          if (typeof c === 'string') lowerNames.add(c.trim().toLowerCase());
-          else if (c && typeof c === 'object') {
-            if (c.name) lowerNames.add(String(c.name).trim().toLowerCase());
-            if (c.slug) lowerNames.add(String(c.slug).trim().toLowerCase());
-          }
-        });
-      }
-      lowerNames.forEach(name => {
-        if (name) countsMap.set(name, (countsMap.get(name) || 0) + 1);
-      });
-    });
+    const cakesParent = dbCategories.find(c => c.slug === 'cakes' || (c.name && c.name.toLowerCase() === 'cakes'));
+    const cakesParentId = cakesParent ? String(cakesParent.id || cakesParent._id) : '6a61de1b59b09c0ea42c416c';
+    const cakeSubcatIds = new Set(dbCategories.filter(c => String(c.parentId) === cakesParentId).map(c => String(c.id || c._id)));
 
     const result = [];
     const addedNames = new Set();
@@ -1145,7 +1212,13 @@ const getCategoriesWithCounts = async (req, res) => {
       const nameKey = (cat.name || '').trim().toLowerCase();
       const slugKey = (cat.slug || '').trim().toLowerCase();
 
-      const count = getMatchingCount(cat.slug, cat.name, cat._id || cat.id);
+      const count = products.filter(p => matchProductToCategoryOrOccasion(p, cat, {
+        pcMap,
+        poMap,
+        cakesParentId,
+        cakeSubcatIds,
+        isOccasion: false
+      })).length;
 
       result.push({
         _id: cat._id || cat.id,
@@ -1167,7 +1240,13 @@ const getCategoriesWithCounts = async (req, res) => {
         const nameKey = (occ.name || '').trim().toLowerCase();
         const slugKey = (occ.slug || '').trim().toLowerCase();
         if (!addedNames.has(nameKey) && !addedNames.has(slugKey)) {
-          const count = getMatchingCount(occ.slug, occ.name, occ._id || occ.id);
+          const count = products.filter(p => matchProductToCategoryOrOccasion(p, occ, {
+            pcMap,
+            poMap,
+            cakesParentId,
+            cakeSubcatIds,
+            isOccasion: true
+          })).length;
           result.push({
             _id: occ._id || occ.id,
             id: occ._id || occ.id,
@@ -1185,6 +1264,25 @@ const getCategoriesWithCounts = async (req, res) => {
     }
 
     // Also include remaining dynamic category counts from products
+    const countsMap = new Map();
+    products.forEach(p => {
+      const lowerNames = new Set();
+      if (p.category) lowerNames.add(String(p.category).trim().toLowerCase());
+      if (p.subcategory) lowerNames.add(String(p.subcategory).trim().toLowerCase());
+      if (Array.isArray(p.categories)) {
+        p.categories.forEach(c => {
+          if (typeof c === 'string') lowerNames.add(c.trim().toLowerCase());
+          else if (c && typeof c === 'object') {
+            if (c.name) lowerNames.add(String(c.name).trim().toLowerCase());
+            if (c.slug) lowerNames.add(String(c.slug).trim().toLowerCase());
+          }
+        });
+      }
+      lowerNames.forEach(name => {
+        if (name) countsMap.set(name, (countsMap.get(name) || 0) + 1);
+      });
+    });
+
     countsMap.forEach((count, key) => {
       if (!addedNames.has(key)) {
         const formattedName = key.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
@@ -1215,23 +1313,26 @@ const getProductsByCategory = async (req, res) => {
     const rawCategory = req.params.category ? req.params.category.trim() : '';
     console.log(`🔍 Fetching products for category: "${rawCategory}"`);
 
-    const allProducts = await Product.find({});
-    const target = rawCategory.toLowerCase().replace(/-/g, ' ').replace(/s$/, '');
+    const Category = require('../models/Category');
+    const allCategories = await Category.find({});
+    const allProducts = (await Product.find({})).filter(p => !p.hidden && p.isVisible !== false);
 
-    const matchingProducts = allProducts.filter(p => {
-      if (p.hidden) return false;
-      const pCat = (p.category || '').toLowerCase().replace(/-/g, ' ').replace(/s$/, '');
-      const pSubCat = (p.subcategory || '').toLowerCase().replace(/-/g, ' ').replace(/s$/, '');
-      const pCats = Array.isArray(p.categories)
-        ? p.categories.map(c => c.toLowerCase().replace(/-/g, ' ').replace(/s$/, ''))
-        : [];
+    const { pcMap, poMap } = await loadCategoryAndOccasionLinks();
 
-      return (
-        (pCat && (pCat.includes(target) || target.includes(pCat))) ||
-        (pSubCat && (pSubCat.includes(target) || target.includes(pSubCat))) ||
-        pCats.some(c => c && (c.includes(target) || target.includes(c)))
-      );
-    });
+    const cakesParent = allCategories.find(c => c.slug === 'cakes' || (c.name && c.name.toLowerCase() === 'cakes'));
+    const cakesParentId = cakesParent ? String(cakesParent.id || cakesParent._id) : '6a61de1b59b09c0ea42c416c';
+    const cakeSubcatIds = new Set(allCategories.filter(c => String(c.parentId) === cakesParentId).map(c => String(c.id || c._id)));
+
+    const catDoc = allCategories.find(c => (c.slug || '').toLowerCase() === rawCategory.toLowerCase() || (c.name || '').toLowerCase() === rawCategory.toLowerCase());
+    const catOrOcc = catDoc || { slug: rawCategory, name: rawCategory.replace(/-/g, ' ') };
+
+    const matchingProducts = allProducts.filter(p => matchProductToCategoryOrOccasion(p, catOrOcc, {
+      pcMap,
+      poMap,
+      cakesParentId,
+      cakeSubcatIds,
+      isOccasion: false
+    }));
 
     res.json(matchingProducts);
   } catch (error) {
@@ -1505,54 +1606,33 @@ const getProductsForOccasion = async (slug) => {
   const cleanSlug = (slug || '').toLowerCase().trim();
   let occasionDoc = await Occasion.findOne({ slug: cleanSlug });
   let occasionData = occasionDoc ? (typeof occasionDoc.toObject === 'function' ? occasionDoc.toObject() : occasionDoc) : null;
+  let isOccasion = true;
 
   if (!occasionData) {
     const cat = await Category.findOne({ slug: cleanSlug });
     if (cat) {
       occasionData = typeof cat.toObject === 'function' ? cat.toObject() : cat;
+      isOccasion = false;
     }
   }
 
-  const allProducts = await Product.find({});
-  const target = cleanSlug.replace(/-/g, ' ').replace(/s$/, '');
+  const allProducts = (await Product.find({})).filter(p => !p.hidden && p.isVisible !== false);
+  const allCategories = await Category.find({});
+  const { pcMap, poMap } = await loadCategoryAndOccasionLinks();
 
-  let linkedProductIds = new Set();
-  if (occasionData && (occasionData.id || occasionData._id)) {
-    try {
-      const poLinks = await prisma.productOccasion.findMany({
-        where: { occasionId: String(occasionData.id || occasionData._id) },
-        select: { productId: true }
-      });
-      poLinks.forEach(l => linkedProductIds.add(l.productId));
-    } catch (e) {}
-  }
+  const cakesParent = allCategories.find(c => c.slug === 'cakes' || (c.name && c.name.toLowerCase() === 'cakes'));
+  const cakesParentId = cakesParent ? String(cakesParent.id || cakesParent._id) : '6a61de1b59b09c0ea42c416c';
+  const cakeSubcatIds = new Set(allCategories.filter(c => String(c.parentId) === cakesParentId).map(c => String(c.id || c._id)));
 
-  return allProducts.filter(p => {
-    const pid = String(p._id || p.id);
-    if (linkedProductIds.has(pid)) return true;
+  const catOrOcc = occasionData || { slug: cleanSlug, name: cleanSlug.replace(/-/g, ' ') };
 
-    const pTitle = (p.title || p.name || '').toLowerCase();
-    const pCat = (p.category || '').toLowerCase().replace(/-/g, ' ').replace(/s$/, '');
-    const pSubCat = (p.subcategory || '').toLowerCase().replace(/-/g, ' ').replace(/s$/, '');
-    const pCats = Array.isArray(p.categories)
-      ? p.categories.map(c => (typeof c === 'string' ? c : c.name || c.slug || '').toLowerCase().replace(/-/g, ' ').replace(/s$/, ''))
-      : [];
-    const pTags = Array.isArray(p.tags)
-      ? p.tags.map(t => (typeof t === 'string' ? t : t.tag || '').toLowerCase().replace(/-/g, ' '))
-      : [];
-    const pOccasions = Array.isArray(p.occasions)
-      ? p.occasions.map(o => (typeof o === 'string' ? o : o.name || o.slug || '').toLowerCase().replace(/-/g, ' ').replace(/s$/, ''))
-      : [];
-
-    return (
-      (pCat && (pCat.includes(target) || target.includes(pCat))) ||
-      (pSubCat && (pSubCat.includes(target) || target.includes(pSubCat))) ||
-      pCats.some(c => c && (c.includes(target) || target.includes(c))) ||
-      pTags.some(t => t && (t.includes(target) || target.includes(t))) ||
-      pOccasions.some(o => o && (o.includes(target) || target.includes(o))) ||
-      pTitle.includes(target)
-    );
-  });
+  return allProducts.filter(p => matchProductToCategoryOrOccasion(p, catOrOcc, {
+    pcMap,
+    poMap,
+    cakesParentId,
+    cakeSubcatIds,
+    isOccasion
+  }));
 };
 
 // Helper to get display order sequence number of a product for a given section

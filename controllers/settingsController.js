@@ -232,8 +232,10 @@ exports.getAllSettings = async (req, res) => {
         link: cat.categoryUrl || `/${cat.slug}`,
         categoryUrl: cat.categoryUrl || `/${cat.slug}`,
         enabled: cat.status === 'active',
-        order: cat.sortOrder || 0,
-        priority: cat.sortOrder || 0,
+        order: cat.sortOrder ?? cat.displayOrder ?? 0,
+        priority: cat.sortOrder ?? cat.displayOrder ?? 0,
+        sortOrder: cat.sortOrder ?? cat.displayOrder ?? 0,
+        displayOrder: cat.displayOrder ?? cat.sortOrder ?? 0,
         parentId: pid,
         showInShop: cat.showInShop !== false
       };
