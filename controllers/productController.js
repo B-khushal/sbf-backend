@@ -1586,6 +1586,61 @@ const getProductsForSectionQuery = (section) => {
       { categories: { $elemMatch: { $regex: /^new-year$/i } } },
       { categories: { $elemMatch: { $regex: /^new year$/i } } }
     ];
+  } else if (section === 'bestsellers') {
+    query.$or = [
+      { isBestseller: true },
+      { rating: { $gte: 4.5 } },
+      { numReviews: { $gte: 1 } }
+    ];
+  } else if (section === 'budget_friendly' || section === 'budget-friendly') {
+    query.price = { $lte: 1000 };
+  } else if (section === 'cakes' || section === 'category:cakes') {
+    query.$or = [
+      { category: { $regex: /^cakes?$/i } },
+      { catalogType: 'cake' },
+      { subcategory: { $regex: /cake/i } },
+      { categories: { $elemMatch: { $regex: /^cakes?$/i } } }
+    ];
+  } else if (section === 'combos' || section === 'category:combos') {
+    query.$and = [
+      {
+        $or: [
+          { catalogType: 'combo' },
+          { catalogType: 'hamper' },
+          { category: { $regex: /combo/i } },
+          { categories: { $elemMatch: { $regex: /combo/i } } },
+          { 'comboAttributes.comboProducts.0': { $exists: true } },
+          { 'hamperAttributes.hamperItems.0': { $exists: true } }
+        ]
+      },
+      { category: { $not: /^baskets?$/i } },
+      { catalogType: { $ne: 'basket' } }
+    ];
+  } else if (section === 'birthday' || section === 'occasion:birthday') {
+    query.$or = [
+      { category: { $regex: /birthday/i } },
+      { subcategory: { $regex: /birthday/i } },
+      { categories: { $elemMatch: { $regex: /birthday/i } } },
+      { 'occasions.slug': { $regex: /birthday/i } },
+      { 'occasions.name': { $regex: /birthday/i } }
+    ];
+  } else if (section === 'anniversary' || section === 'occasion:anniversary') {
+    query.$or = [
+      { category: { $regex: /anniversary/i } },
+      { subcategory: { $regex: /anniversary/i } },
+      { categories: { $elemMatch: { $regex: /anniversary/i } } },
+      { 'occasions.slug': { $regex: /anniversary/i } },
+      { 'occasions.name': { $regex: /anniversary/i } }
+    ];
+  } else if (section.startsWith('occasion:')) {
+    const occSlug = section.substring(9).trim().toLowerCase();
+    query.$or = [
+      { category: { $regex: new RegExp(occSlug, 'i') } },
+      { subcategory: { $regex: new RegExp(occSlug, 'i') } },
+      { categories: { $elemMatch: { $regex: new RegExp(occSlug, 'i') } } },
+      { 'occasions.slug': { $regex: new RegExp(occSlug, 'i') } },
+      { 'occasions.name': { $regex: new RegExp(occSlug, 'i') } }
+    ];
   } else if (section.startsWith('category:')) {
     const categoryName = section.substring(9).trim();
     query.$or = [
@@ -1645,6 +1700,10 @@ const getDisplayOrderValue = (product, section) => {
   if (section === 'shop') return dobj.shop || 0;
   if (section === 'newArrivals' || section === 'new') return dobj.newArrivals || 0;
   if (section === 'recommended') return dobj.recommended || 0;
+  if (section === 'bestsellers') return dobj.bestsellers || 0;
+  if (section === 'combos' || section === 'category:combos') return dobj.combos || dobj.categories?.combos || 0;
+  if (section === 'cakes' || section === 'category:cakes') return dobj.cakes || dobj.categories?.cakes || 0;
+  if (section === 'budget_friendly' || section === 'budget-friendly') return dobj.budgetFriendly || dobj['budget-friendly'] || 0;
   
   if (dobj.occasions && typeof dobj.occasions === 'object') {
     if (dobj.occasions[secKey] !== undefined) return Number(dobj.occasions[secKey]) || 0;
@@ -1760,9 +1819,24 @@ const getSectionProductsForSorting = asyncHandler(async (req, res) => {
   }
   
   let products = [];
-  if (section.startsWith('occasion:')) {
-    const slug = section.substring(9).trim().toLowerCase();
+  if (section.startsWith('occasion:') || section === 'birthday' || section === 'anniversary') {
+    const slug = section.replace('occasion:', '').trim().toLowerCase();
     products = await getProductsForOccasion(slug);
+    if (!products || products.length === 0) {
+      const query = getProductsForSectionQuery(section);
+      products = await Product.find(query);
+    }
+  } else if (section === 'combos' || section === 'category:combos') {
+    const query = getProductsForSectionQuery('combos');
+    const allCandidates = await Product.find(query);
+    products = allCandidates.filter(p => {
+      const cat = String(p.category || '').toLowerCase();
+      const catalogType = String(p.catalogType || '').toLowerCase();
+      const title = String(p.title || p.name || '').toLowerCase();
+      if (cat === 'baskets' || cat === 'basket' || catalogType === 'basket') return false;
+      if (title.includes('basket') && !title.includes('combo') && catalogType !== 'combo') return false;
+      return true;
+    });
   } else {
     const query = getProductsForSectionQuery(section);
     products = await Product.find(query);
@@ -1807,6 +1881,19 @@ const setProductSectionOrder = (displayOrders, section, numOrder) => {
     dobj.newArrivals = orderVal;
   } else if (section === 'recommended') {
     dobj.recommended = orderVal;
+  } else if (section === 'bestsellers') {
+    dobj.bestsellers = orderVal;
+  } else if (section === 'combos' || section === 'category:combos') {
+    dobj.combos = orderVal;
+    if (!dobj.categories || typeof dobj.categories !== 'object') dobj.categories = {};
+    dobj.categories.combos = orderVal;
+  } else if (section === 'cakes' || section === 'category:cakes') {
+    dobj.cakes = orderVal;
+    if (!dobj.categories || typeof dobj.categories !== 'object') dobj.categories = {};
+    dobj.categories.cakes = orderVal;
+  } else if (section === 'budget_friendly' || section === 'budget-friendly') {
+    dobj.budgetFriendly = orderVal;
+    dobj['budget-friendly'] = orderVal;
   } else if (section.startsWith('category:')) {
     const categoryName = section.substring(9).trim().toLowerCase();
     if (!dobj.categories || typeof dobj.categories !== 'object' || Array.isArray(dobj.categories)) {
@@ -2232,41 +2319,8 @@ const bulkUpdateSectionProducts = asyncHandler(async (req, res) => {
       for (const [productId, orderNumber] of Object.entries(value)) {
         const product = await Product.findById(productId);
         if (product) {
-          if (!product.displayOrders) product.displayOrders = {};
-          const numOrder = Number(orderNumber);
-          
-          if (activeSection === 'featured') product.displayOrders.featured = numOrder;
-          else if (activeSection === 'shop') product.displayOrders.shop = numOrder;
-          else if (activeSection === 'newArrivals' || activeSection === 'new') product.displayOrders.newArrivals = numOrder;
-          else if (activeSection === 'recommended') product.displayOrders.recommended = numOrder;
-          else if (activeSection === 'valentine' || activeSection === 'valentines-day') {
-            if (!product.displayOrders.occasions) product.displayOrders.occasions = {};
-            product.displayOrders.occasions.valentine = numOrder;
-          } else if (activeSection === 'mothersDay' || activeSection === 'mothers-day') {
-            if (!product.displayOrders.occasions) product.displayOrders.occasions = {};
-            product.displayOrders.occasions.mothersDay = numOrder;
-          } else if (activeSection === 'fathersDay' || activeSection === 'fathers-day') {
-            if (!product.displayOrders.occasions) product.displayOrders.occasions = {};
-            product.displayOrders.occasions.fathersDay = numOrder;
-          } else if (activeSection === 'friendshipDay' || activeSection === 'friendship-day') {
-            if (!product.displayOrders.occasions) product.displayOrders.occasions = {};
-            product.displayOrders.occasions.friendshipDay = numOrder;
-          } else if (activeSection === 'rakhi' || activeSection === 'raksha-bandhan') {
-            if (!product.displayOrders.occasions) product.displayOrders.occasions = {};
-            product.displayOrders.occasions.rakhi = numOrder;
-          } else if (activeSection === 'diwali') {
-            if (!product.displayOrders.occasions) product.displayOrders.occasions = {};
-            product.displayOrders.occasions.diwali = numOrder;
-          } else if (activeSection === 'newYear' || activeSection === 'new-year') {
-            if (!product.displayOrders.occasions) product.displayOrders.occasions = {};
-            product.displayOrders.occasions.newYear = numOrder;
-          } else if (activeSection.startsWith('category:')) {
-            const categoryName = activeSection.substring(9).trim();
-            if (!product.displayOrders.categories) {
-              product.displayOrders.categories = new Map();
-            }
-            product.displayOrders.categories.set(categoryName, numOrder);
-          }
+          const currentOrders = product.displayOrders || {};
+          product.displayOrders = setProductSectionOrder(currentOrders, activeSection, Number(orderNumber));
           await product.save();
         }
       }
@@ -2288,35 +2342,33 @@ const resetSectionProductsOrder = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'Section is required' });
   }
   
-  const query = getProductsForSectionQuery(section);
-  const products = await Product.find(query);
+  let products = [];
+  if (section.startsWith('occasion:') || section === 'birthday' || section === 'anniversary') {
+    const slug = section.replace('occasion:', '').trim().toLowerCase();
+    products = await getProductsForOccasion(slug);
+    if (!products || products.length === 0) {
+      const query = getProductsForSectionQuery(section);
+      products = await Product.find(query);
+    }
+  } else if (section === 'combos' || section === 'category:combos') {
+    const query = getProductsForSectionQuery('combos');
+    const allCandidates = await Product.find(query);
+    products = allCandidates.filter(p => {
+      const cat = String(p.category || '').toLowerCase();
+      const catalogType = String(p.catalogType || '').toLowerCase();
+      const title = String(p.title || p.name || '').toLowerCase();
+      if (cat === 'baskets' || cat === 'basket' || catalogType === 'basket') return false;
+      if (title.includes('basket') && !title.includes('combo') && catalogType !== 'combo') return false;
+      return true;
+    });
+  } else {
+    const query = getProductsForSectionQuery(section);
+    products = await Product.find(query);
+  }
   
   for (const product of products) {
     if (product.displayOrders) {
-      if (section === 'featured') product.displayOrders.featured = 0;
-      else if (section === 'shop') product.displayOrders.shop = 0;
-      else if (section === 'newArrivals' || section === 'new') product.displayOrders.newArrivals = 0;
-      else if (section === 'recommended') product.displayOrders.recommended = 0;
-      else if (section === 'valentine' || section === 'valentines-day') {
-        if (product.displayOrders.occasions) product.displayOrders.occasions.valentine = 0;
-      } else if (section === 'mothersDay' || section === 'mothers-day') {
-        if (product.displayOrders.occasions) product.displayOrders.occasions.mothersDay = 0;
-      } else if (section === 'fathersDay' || section === 'fathers-day') {
-        if (product.displayOrders.occasions) product.displayOrders.occasions.fathersDay = 0;
-      } else if (section === 'friendshipDay' || section === 'friendship-day') {
-        if (product.displayOrders.occasions) product.displayOrders.occasions.friendshipDay = 0;
-      } else if (section === 'rakhi' || section === 'raksha-bandhan') {
-        if (product.displayOrders.occasions) product.displayOrders.occasions.rakhi = 0;
-      } else if (section === 'diwali') {
-        if (product.displayOrders.occasions) product.displayOrders.occasions.diwali = 0;
-      } else if (section === 'newYear' || section === 'new-year') {
-        if (product.displayOrders.occasions) product.displayOrders.occasions.newYear = 0;
-      } else if (section.startsWith('category:')) {
-        const categoryName = section.substring(9).trim();
-        if (product.displayOrders.categories) {
-          product.displayOrders.categories.delete(categoryName);
-        }
-      }
+      product.displayOrders = setProductSectionOrder(product.displayOrders, section, 0);
       await product.save();
     }
   }
