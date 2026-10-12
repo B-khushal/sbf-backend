@@ -533,7 +533,9 @@ exports.getHeaderSettings = async (req, res) => {
     if (!settings || !settings.headerSettings) {
       // Return default header settings
       const defaultHeader = {
-        logo: "/images/logosbf.png",
+        logo: "https://res.cloudinary.com/djtrhfqan/image/upload/v1791793252/logo_final_tp7ymk.png",
+        stickyLogo: "https://res.cloudinary.com/djtrhfqan/image/upload/v1791793251/logo_f_without_bg_mdrtys.png",
+        mobileLogo: "https://res.cloudinary.com/djtrhfqan/image/upload/v1791793252/logo_final_tp7ymk.png",
         navigationItems: [
           { id: "shop", label: "Shop", href: "/shop", enabled: true, order: 0 },
           { id: "about", label: "About", href: "/about", enabled: true, order: 1 },

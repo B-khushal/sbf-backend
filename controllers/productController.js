@@ -2463,7 +2463,7 @@ const getSharePreview = async (req, res) => {
     let metaData = {
       title: 'Spring Blossoms Florist - Fresh Flower Delivery',
       description: 'Premium flower delivery in Hyderabad. Online bouquet shop offering roses, lilies, and custom arrangements with same day and midnight delivery options.',
-      image: 'https://res.cloudinary.com/djtrhfqan/image/upload/v1769532776/sbflorist/assets/logosbf.jpg',
+      image: 'https://res.cloudinary.com/djtrhfqan/image/upload/v1791793252/logo_final_tp7ymk.png',
       url: `${frontendUrl}`,
       price: '0'
     };
