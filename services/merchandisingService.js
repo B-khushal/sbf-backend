@@ -7,26 +7,26 @@ const SectionSortingPreferenceModel = require('../models/SectionSortingPreferenc
  * As specified in the Spring Blossoms Florist merchandising requirements.
  */
 const DEFAULT_SECTION_STRATEGIES = {
-  hero: { mode: 'manual', protectedTopCount: 4, rotationFrequency: 'daily' },
-  featured: { mode: 'manual', protectedTopCount: 4, rotationFrequency: 'daily' },
-  bestsellers: { mode: 'smart', protectedTopCount: 4, rotationFrequency: 'daily' },
-  'category:bouquets': { mode: 'smart_rotation', protectedTopCount: 4, rotationFrequency: 'daily' },
-  bouquets: { mode: 'smart_rotation', protectedTopCount: 4, rotationFrequency: 'daily' },
-  'category:cakes': { mode: 'smart_rotation', protectedTopCount: 4, rotationFrequency: 'daily' },
-  cakes: { mode: 'smart_rotation', protectedTopCount: 4, rotationFrequency: 'daily' },
-  combos: { mode: 'smart', protectedTopCount: 4, rotationFrequency: 'daily' },
-  cake_and_flower_combos: { mode: 'smart', protectedTopCount: 4, rotationFrequency: 'daily' },
-  'category:combos': { mode: 'smart', protectedTopCount: 4, rotationFrequency: 'daily' },
-  'category:plants': { mode: 'smart_rotation', protectedTopCount: 4, rotationFrequency: 'daily' },
-  plants: { mode: 'smart_rotation', protectedTopCount: 4, rotationFrequency: 'daily' },
-  'category:gifts': { mode: 'smart_rotation', protectedTopCount: 4, rotationFrequency: 'daily' },
-  gifts: { mode: 'smart_rotation', protectedTopCount: 4, rotationFrequency: 'daily' },
-  newArrivals: { mode: 'manual', sortBy: 'date', sortDirection: 'desc', protectedTopCount: 4, rotationFrequency: 'daily' },
+  hero: { mode: 'manual', protectedTopCount: 0, rotationFrequency: 'daily' },
+  featured: { mode: 'manual', protectedTopCount: 0, rotationFrequency: 'daily' },
+  bestsellers: { mode: 'smart', protectedTopCount: 0, rotationFrequency: 'daily' },
+  'category:bouquets': { mode: 'smart_rotation', protectedTopCount: 0, rotationFrequency: 'daily' },
+  bouquets: { mode: 'smart_rotation', protectedTopCount: 0, rotationFrequency: 'daily' },
+  'category:cakes': { mode: 'smart_rotation', protectedTopCount: 0, rotationFrequency: 'daily' },
+  cakes: { mode: 'smart_rotation', protectedTopCount: 0, rotationFrequency: 'daily' },
+  combos: { mode: 'smart', protectedTopCount: 0, rotationFrequency: 'daily' },
+  cake_and_flower_combos: { mode: 'smart', protectedTopCount: 0, rotationFrequency: 'daily' },
+  'category:combos': { mode: 'smart', protectedTopCount: 0, rotationFrequency: 'daily' },
+  'category:plants': { mode: 'smart_rotation', protectedTopCount: 0, rotationFrequency: 'daily' },
+  plants: { mode: 'smart_rotation', protectedTopCount: 0, rotationFrequency: 'daily' },
+  'category:gifts': { mode: 'smart_rotation', protectedTopCount: 0, rotationFrequency: 'daily' },
+  gifts: { mode: 'smart_rotation', protectedTopCount: 0, rotationFrequency: 'daily' },
+  newArrivals: { mode: 'manual', sortBy: 'date', sortDirection: 'desc', protectedTopCount: 0, rotationFrequency: 'daily' },
   occasions: { mode: 'smart_rotation', protectedTopCount: 0, rotationFrequency: 'hourly' },
-  shop: { mode: 'smart_rotation', protectedTopCount: 4, rotationFrequency: 'hourly' },
-  recommended: { mode: 'smart_rotation', protectedTopCount: 4, rotationFrequency: 'daily' },
-  budget_friendly: { mode: 'smart', protectedTopCount: 4, rotationFrequency: 'daily' },
-  'category:budget-friendly': { mode: 'smart', protectedTopCount: 4, rotationFrequency: 'daily' }
+  shop: { mode: 'smart_rotation', protectedTopCount: 0, rotationFrequency: 'hourly' },
+  recommended: { mode: 'smart_rotation', protectedTopCount: 0, rotationFrequency: 'daily' },
+  budget_friendly: { mode: 'smart', protectedTopCount: 0, rotationFrequency: 'daily' },
+  'category:budget-friendly': { mode: 'smart', protectedTopCount: 0, rotationFrequency: 'daily' }
 };
 
 const DEFAULT_GLOBAL_SETTINGS = {
@@ -34,7 +34,7 @@ const DEFAULT_GLOBAL_SETTINGS = {
   isRotationEnabled: true,
   rotationFrequency: 'daily', // 'hourly' | 'daily' | '3days' | 'weekly' | 'manual'
   rotationVersion: 1,
-  defaultProtectedTopCount: 4,
+  defaultProtectedTopCount: 0,
   minDataThreshold: 2,
   isPersonalizationEnabled: true,
   fallbackStrategy: 'smart_rotation',
@@ -186,27 +186,23 @@ async function updateGlobalMerchandisingSettings(newSettings) {
 async function getSectionMerchandisingConfig(section) {
   const isOccasionSection = (section || '').startsWith('occasion:') || section === 'occasions';
   const globalSettings = await getGlobalMerchandisingSettings();
-  const defaultStrategy = DEFAULT_SECTION_STRATEGIES[section] || (isOccasionSection ? {
-    mode: 'smart_rotation',
-    protectedTopCount: 0,
-    rotationFrequency: 'hourly'
-  } : {
+  const defaultStrategy = DEFAULT_SECTION_STRATEGIES[section] || {
     mode: globalSettings.defaultMode || 'smart_rotation',
-    protectedTopCount: globalSettings.defaultProtectedTopCount !== undefined ? globalSettings.defaultProtectedTopCount : 4,
-    rotationFrequency: globalSettings.rotationFrequency || 'daily'
-  });
+    protectedTopCount: 0,
+    rotationFrequency: isOccasionSection ? 'hourly' : (globalSettings.rotationFrequency || 'daily')
+  };
 
   try {
     const preference = await SectionSortingPreferenceModel.findOne({ section });
     if (preference) {
       return {
         section,
-        mode: isOccasionSection ? 'smart_rotation' : (preference.mode || defaultStrategy.mode || 'smart_rotation'),
-        pinnedProductIds: isOccasionSection ? [] : (Array.isArray(preference.pinnedProductIds) ? preference.pinnedProductIds : []),
-        protectedTopCount: isOccasionSection ? 0 : Number(
+        mode: preference.mode || defaultStrategy.mode || 'smart_rotation',
+        pinnedProductIds: Array.isArray(preference.pinnedProductIds) ? preference.pinnedProductIds : [],
+        protectedTopCount: Number(
           preference.protectedTopCount !== undefined
             ? preference.protectedTopCount
-            : (defaultStrategy.protectedTopCount !== undefined ? defaultStrategy.protectedTopCount : 4)
+            : (defaultStrategy.protectedTopCount !== undefined ? defaultStrategy.protectedTopCount : 0)
         ),
         rotationFrequency: preference.rotationFrequency || defaultStrategy.rotationFrequency || globalSettings.rotationFrequency || (isOccasionSection ? 'hourly' : 'daily'),
         rotationVersion: Number(preference.rotationVersion || globalSettings.rotationVersion || 1),
@@ -229,7 +225,7 @@ async function getSectionMerchandisingConfig(section) {
     section,
     mode: defaultStrategy.mode || 'smart_rotation',
     pinnedProductIds: [],
-    protectedTopCount: isOccasionSection ? 0 : (defaultStrategy.protectedTopCount !== undefined ? defaultStrategy.protectedTopCount : 4),
+    protectedTopCount: defaultStrategy.protectedTopCount !== undefined ? defaultStrategy.protectedTopCount : 0,
     rotationFrequency: defaultStrategy.rotationFrequency || globalSettings.rotationFrequency || (isOccasionSection ? 'hourly' : 'daily'),
     rotationVersion: globalSettings.rotationVersion || 1,
     isRotationEnabled: globalSettings.isRotationEnabled,
@@ -845,13 +841,11 @@ async function merchandiseProducts(products, section, options = {}, contextArg =
     const preference = {
       ...basePreference,
       ...(options || {}),
-      mode: isOccasionSection ? 'smart_rotation' : (options?.mode || overrideMode || basePreference.mode || 'smart_rotation'),
-      pinnedProductIds: isOccasionSection ? [] : (options?.pinnedProductIds !== undefined ? options.pinnedProductIds : (basePreference.pinnedProductIds || [])),
-      protectedTopCount: isOccasionSection
-        ? 0
-        : (options?.protectedTopCount !== undefined
-            ? Number(options.protectedTopCount)
-            : Number(basePreference.protectedTopCount !== undefined ? basePreference.protectedTopCount : 4)),
+      mode: options?.mode || overrideMode || basePreference.mode || 'smart_rotation',
+      pinnedProductIds: options?.pinnedProductIds !== undefined ? options.pinnedProductIds : (basePreference.pinnedProductIds || []),
+      protectedTopCount: options?.protectedTopCount !== undefined
+        ? Number(options.protectedTopCount)
+        : Number(basePreference.protectedTopCount !== undefined ? basePreference.protectedTopCount : 0),
       rotationFrequency: options?.rotationFrequency || basePreference.rotationFrequency || (isOccasionSection ? 'hourly' : 'daily'),
       rotationVersion: options?.rotationVersion !== undefined ? Number(options.rotationVersion) : Number(basePreference.rotationVersion || 1),
       isRotationEnabled: options?.isRotationEnabled !== undefined ? options.isRotationEnabled : basePreference.isRotationEnabled,
@@ -943,12 +937,9 @@ async function generateMerchandisingPreview(products, section, requestedMode = n
   const smartOrder = applySmartRanking([...products], salesStats, activeConfig);
   const rotationOrder = applySmartRotation([...products], section, salesStats, activeConfig);
 
-  const isOccasionSection = (section || '').startsWith('occasion:') || section === 'occasions';
   // Compute rich scoring breakdowns and tags for preview items
-  const pinnedSet = new Set((isOccasionSection ? [] : (activeConfig.pinnedProductIds || [])).map(String));
-  const protectedTopCount = isOccasionSection
-    ? 0
-    : Number(activeConfig.protectedTopCount !== undefined ? activeConfig.protectedTopCount : 4);
+  const pinnedSet = new Set((activeConfig.pinnedProductIds || []).map(String));
+  const protectedTopCount = Number(activeConfig.protectedTopCount !== undefined ? activeConfig.protectedTopCount : 0);
 
   const previewList = (mode === 'manual' ? manualOrder : mode === 'smart' ? smartOrder : rotationOrder).map((prod, index) => {
     const prodId = String(prod.id || prod._id || '');

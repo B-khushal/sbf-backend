@@ -21,7 +21,7 @@ class SectionSortingPreferenceDocument {
       sequence: this.sequence || {},
       mode: isOccasion ? 'smart_rotation' : (this.mode || 'smart_rotation'),
       pinnedProductIds: isOccasion ? [] : (Array.isArray(this.pinnedProductIds) ? this.pinnedProductIds : []),
-      protectedTopCount: isOccasion ? 0 : Number(this.protectedTopCount !== undefined ? this.protectedTopCount : 4),
+      protectedTopCount: Number(this.protectedTopCount !== undefined ? this.protectedTopCount : 0),
       rotationFrequency: this.rotationFrequency || (isOccasion ? 'hourly' : 'daily'),
       rotationVersion: Number(this.rotationVersion || 1),
       isRotationEnabled: this.isRotationEnabled !== false,

@@ -1853,7 +1853,7 @@ const getSectionProductsForSorting = asyncHandler(async (req, res) => {
     section,
     mode: isOccasionSection ? 'smart_rotation' : (preference.mode || 'smart_rotation'),
     pinnedProductIds: isOccasionSection ? [] : (preference.pinnedProductIds || []),
-    protectedTopCount: isOccasionSection ? 0 : (preference.protectedTopCount !== undefined ? preference.protectedTopCount : 4),
+    protectedTopCount: preference.protectedTopCount !== undefined ? preference.protectedTopCount : 0,
     rotationFrequency: preference.rotationFrequency || (isOccasionSection ? 'hourly' : 'daily'),
     rotationVersion: preference.rotationVersion || 1,
     isRotationEnabled: preference.isRotationEnabled !== false,
