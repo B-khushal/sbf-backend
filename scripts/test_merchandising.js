@@ -392,6 +392,31 @@ async function runMerchandisingTests() {
     assert.ok(Array.isArray(analytics.strategies), 'Strategies breakdown must be an array');
   });
 
+  // ----------------------------------------------------
+  // TEST SUITE 8: Occasion Merchandising (Full Dynamic Rotation, 0 Top Zone)
+  // ----------------------------------------------------
+  console.log('\n📌 Suite 8: Occasion Merchandising Rules');
+
+  await runAsyncTest('Occasion sections strictly enforce protectedTopCount: 0 and empty pinned items', async () => {
+    const config = await merchandisingService.getSectionMerchandisingConfig('occasion:birthday');
+    assert.strictEqual(config.protectedTopCount, 0, 'Occasion protectedTopCount must strictly be 0');
+    assert.deepStrictEqual(config.pinnedProductIds, [], 'Occasion pinnedProductIds must strictly be empty');
+    assert.strictEqual(config.mode, 'smart_rotation', 'Occasion mode must be smart_rotation');
+
+    // Test merchandising products for occasion: birthday
+    const testOccasionProducts = [
+      { id: 'occ-1', title: 'Birthday Cake', price: 599, stock: 10, inStock: true, countInStock: 10 },
+      { id: 'occ-2', title: 'Rose Bouquet', price: 799, stock: 15, inStock: true, countInStock: 15 },
+      { id: 'occ-3', title: 'Choco Combo', price: 999, stock: 5, inStock: true, countInStock: 5 },
+      { id: 'occ-4', title: 'Teddy Hamper', price: 1299, stock: 8, inStock: true, countInStock: 8 }
+    ];
+
+    const preview = await merchandisingService.generateMerchandisingPreview(testOccasionProducts, 'occasion:birthday');
+    assert.strictEqual(preview.counts.protectedTop, 0, 'Occasion preview must report 0 protectedTop items');
+    assert.strictEqual(preview.counts.pinned, 0, 'Occasion preview must report 0 pinned items');
+    assert.strictEqual(preview.counts.rotating, 4, 'All 4 in-stock products must be rotating');
+  });
+
   console.log('\n======================================================');
   console.log(`🏁 TEST RESULTS: ${passedTests}/${totalTests} PASSED (${Math.round((passedTests / totalTests) * 100)}%)`);
   console.log('======================================================\n');

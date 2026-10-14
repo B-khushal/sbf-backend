@@ -22,8 +22,8 @@ const DEFAULT_SECTION_STRATEGIES = {
   'category:gifts': { mode: 'smart_rotation', protectedTopCount: 4, rotationFrequency: 'daily' },
   gifts: { mode: 'smart_rotation', protectedTopCount: 4, rotationFrequency: 'daily' },
   newArrivals: { mode: 'manual', sortBy: 'date', sortDirection: 'desc', protectedTopCount: 4, rotationFrequency: 'daily' },
-  occasions: { mode: 'manual', protectedTopCount: 4, rotationFrequency: 'daily' },
-  shop: { mode: 'smart_rotation', protectedTopCount: 4, rotationFrequency: 'daily' },
+  occasions: { mode: 'smart_rotation', protectedTopCount: 0, rotationFrequency: 'hourly' },
+  shop: { mode: 'smart_rotation', protectedTopCount: 4, rotationFrequency: 'hourly' },
   recommended: { mode: 'smart_rotation', protectedTopCount: 4, rotationFrequency: 'daily' },
   budget_friendly: { mode: 'smart', protectedTopCount: 4, rotationFrequency: 'daily' },
   'category:budget-friendly': { mode: 'smart', protectedTopCount: 4, rotationFrequency: 'daily' }
@@ -184,26 +184,31 @@ async function updateGlobalMerchandisingSettings(newSettings) {
  * Get section-specific merchandising configuration, merging defaults with stored preferences
  */
 async function getSectionMerchandisingConfig(section) {
+  const isOccasionSection = (section || '').startsWith('occasion:') || section === 'occasions';
   const globalSettings = await getGlobalMerchandisingSettings();
-  const defaultStrategy = DEFAULT_SECTION_STRATEGIES[section] || {
+  const defaultStrategy = DEFAULT_SECTION_STRATEGIES[section] || (isOccasionSection ? {
+    mode: 'smart_rotation',
+    protectedTopCount: 0,
+    rotationFrequency: 'hourly'
+  } : {
     mode: globalSettings.defaultMode || 'smart_rotation',
-    protectedTopCount: globalSettings.defaultProtectedTopCount || 4,
+    protectedTopCount: globalSettings.defaultProtectedTopCount !== undefined ? globalSettings.defaultProtectedTopCount : 4,
     rotationFrequency: globalSettings.rotationFrequency || 'daily'
-  };
+  });
 
   try {
     const preference = await SectionSortingPreferenceModel.findOne({ section });
     if (preference) {
       return {
         section,
-        mode: preference.mode || defaultStrategy.mode || 'smart_rotation',
-        pinnedProductIds: Array.isArray(preference.pinnedProductIds) ? preference.pinnedProductIds : [],
-        protectedTopCount: Number(
+        mode: isOccasionSection ? 'smart_rotation' : (preference.mode || defaultStrategy.mode || 'smart_rotation'),
+        pinnedProductIds: isOccasionSection ? [] : (Array.isArray(preference.pinnedProductIds) ? preference.pinnedProductIds : []),
+        protectedTopCount: isOccasionSection ? 0 : Number(
           preference.protectedTopCount !== undefined
             ? preference.protectedTopCount
-            : defaultStrategy.protectedTopCount || 4
+            : (defaultStrategy.protectedTopCount !== undefined ? defaultStrategy.protectedTopCount : 4)
         ),
-        rotationFrequency: preference.rotationFrequency || defaultStrategy.rotationFrequency || globalSettings.rotationFrequency || 'daily',
+        rotationFrequency: preference.rotationFrequency || defaultStrategy.rotationFrequency || globalSettings.rotationFrequency || (isOccasionSection ? 'hourly' : 'daily'),
         rotationVersion: Number(preference.rotationVersion || globalSettings.rotationVersion || 1),
         isRotationEnabled: preference.isRotationEnabled !== undefined ? preference.isRotationEnabled : globalSettings.isRotationEnabled,
         isPersonalizationEnabled: preference.isPersonalizationEnabled !== undefined ? preference.isPersonalizationEnabled : globalSettings.isPersonalizationEnabled,
@@ -224,8 +229,8 @@ async function getSectionMerchandisingConfig(section) {
     section,
     mode: defaultStrategy.mode || 'smart_rotation',
     pinnedProductIds: [],
-    protectedTopCount: defaultStrategy.protectedTopCount || 4,
-    rotationFrequency: defaultStrategy.rotationFrequency || globalSettings.rotationFrequency || 'daily',
+    protectedTopCount: isOccasionSection ? 0 : (defaultStrategy.protectedTopCount !== undefined ? defaultStrategy.protectedTopCount : 4),
+    rotationFrequency: defaultStrategy.rotationFrequency || globalSettings.rotationFrequency || (isOccasionSection ? 'hourly' : 'daily'),
     rotationVersion: globalSettings.rotationVersion || 1,
     isRotationEnabled: globalSettings.isRotationEnabled,
     isPersonalizationEnabled: globalSettings.isPersonalizationEnabled,
@@ -835,14 +840,19 @@ async function merchandiseProducts(products, section, options = {}, contextArg =
   const activeContext = contextArg || personalizationContext || options?.personalizationContext || {};
 
   try {
+    const isOccasionSection = (section || '').startsWith('occasion:') || section === 'occasions';
     const basePreference = await getSectionMerchandisingConfig(section);
     const preference = {
       ...basePreference,
       ...(options || {}),
-      mode: options?.mode || overrideMode || basePreference.mode || 'smart_rotation',
-      pinnedProductIds: options?.pinnedProductIds !== undefined ? options.pinnedProductIds : (basePreference.pinnedProductIds || []),
-      protectedTopCount: options?.protectedTopCount !== undefined ? Number(options.protectedTopCount) : Number(basePreference.protectedTopCount || 4),
-      rotationFrequency: options?.rotationFrequency || basePreference.rotationFrequency || 'daily',
+      mode: isOccasionSection ? 'smart_rotation' : (options?.mode || overrideMode || basePreference.mode || 'smart_rotation'),
+      pinnedProductIds: isOccasionSection ? [] : (options?.pinnedProductIds !== undefined ? options.pinnedProductIds : (basePreference.pinnedProductIds || [])),
+      protectedTopCount: isOccasionSection
+        ? 0
+        : (options?.protectedTopCount !== undefined
+            ? Number(options.protectedTopCount)
+            : Number(basePreference.protectedTopCount !== undefined ? basePreference.protectedTopCount : 4)),
+      rotationFrequency: options?.rotationFrequency || basePreference.rotationFrequency || (isOccasionSection ? 'hourly' : 'daily'),
       rotationVersion: options?.rotationVersion !== undefined ? Number(options.rotationVersion) : Number(basePreference.rotationVersion || 1),
       isRotationEnabled: options?.isRotationEnabled !== undefined ? options.isRotationEnabled : basePreference.isRotationEnabled,
       isPersonalizationEnabled: options?.isPersonalizationEnabled !== undefined ? options.isPersonalizationEnabled : basePreference.isPersonalizationEnabled
@@ -933,9 +943,12 @@ async function generateMerchandisingPreview(products, section, requestedMode = n
   const smartOrder = applySmartRanking([...products], salesStats, activeConfig);
   const rotationOrder = applySmartRotation([...products], section, salesStats, activeConfig);
 
+  const isOccasionSection = (section || '').startsWith('occasion:') || section === 'occasions';
   // Compute rich scoring breakdowns and tags for preview items
-  const pinnedSet = new Set((activeConfig.pinnedProductIds || []).map(String));
-  const protectedTopCount = Number(activeConfig.protectedTopCount || 4);
+  const pinnedSet = new Set((isOccasionSection ? [] : (activeConfig.pinnedProductIds || [])).map(String));
+  const protectedTopCount = isOccasionSection
+    ? 0
+    : Number(activeConfig.protectedTopCount !== undefined ? activeConfig.protectedTopCount : 4);
 
   const previewList = (mode === 'manual' ? manualOrder : mode === 'smart' ? smartOrder : rotationOrder).map((prod, index) => {
     const prodId = String(prod.id || prod._id || '');
@@ -948,7 +961,7 @@ async function generateMerchandisingPreview(products, section, requestedMode = n
 
     const isPinned = pinnedSet.has(prodId);
     const pinIndex = isPinned ? (activeConfig.pinnedProductIds || []).indexOf(prodId) + 1 : null;
-    const isProtected = !isPinned && !scoreData.isOutOfStock && index < (pinnedSet.size + protectedTopCount);
+    const isProtected = !isPinned && !scoreData.isOutOfStock && protectedTopCount > 0 && index < (pinnedSet.size + protectedTopCount);
     const isRotating = !isPinned && !isProtected && !scoreData.isOutOfStock;
 
     return {

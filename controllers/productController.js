@@ -1848,12 +1848,13 @@ const getSectionProductsForSorting = asyncHandler(async (req, res) => {
     skipCache: true
   });
   
+  const isOccasionSection = (section || '').startsWith('occasion:') || section === 'occasions';
   res.json({
     section,
-    mode: preference.mode || 'smart_rotation',
-    pinnedProductIds: preference.pinnedProductIds || [],
-    protectedTopCount: preference.protectedTopCount !== undefined ? preference.protectedTopCount : 4,
-    rotationFrequency: preference.rotationFrequency || 'daily',
+    mode: isOccasionSection ? 'smart_rotation' : (preference.mode || 'smart_rotation'),
+    pinnedProductIds: isOccasionSection ? [] : (preference.pinnedProductIds || []),
+    protectedTopCount: isOccasionSection ? 0 : (preference.protectedTopCount !== undefined ? preference.protectedTopCount : 4),
+    rotationFrequency: preference.rotationFrequency || (isOccasionSection ? 'hourly' : 'daily'),
     rotationVersion: preference.rotationVersion || 1,
     isRotationEnabled: preference.isRotationEnabled !== false,
     isPersonalizationEnabled: preference.isPersonalizationEnabled !== false,
@@ -1942,12 +1943,13 @@ const updateSectionProductsOrder = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'Section is required' });
   }
   
+  const isOccasionSection = (section || '').startsWith('occasion:') || section === 'occasions';
   const prefUpdates = {};
   if (sortBy) prefUpdates.sortBy = sortBy;
   if (sortDirection) prefUpdates.sortDirection = sortDirection;
-  if (mode !== undefined) prefUpdates.mode = mode;
-  if (pinnedProductIds !== undefined) prefUpdates.pinnedProductIds = pinnedProductIds;
-  if (protectedTopCount !== undefined) prefUpdates.protectedTopCount = Number(protectedTopCount);
+  if (mode !== undefined) prefUpdates.mode = isOccasionSection ? 'smart_rotation' : mode;
+  if (pinnedProductIds !== undefined) prefUpdates.pinnedProductIds = isOccasionSection ? [] : pinnedProductIds;
+  if (protectedTopCount !== undefined) prefUpdates.protectedTopCount = isOccasionSection ? 0 : Number(protectedTopCount);
   if (rotationFrequency !== undefined) prefUpdates.rotationFrequency = rotationFrequency;
   if (rotationVersion !== undefined) prefUpdates.rotationVersion = Number(rotationVersion);
   if (isRotationEnabled !== undefined) prefUpdates.isRotationEnabled = Boolean(isRotationEnabled);
@@ -3251,6 +3253,12 @@ const updateMerchandisingSettings = asyncHandler(async (req, res) => {
 
   let updatedSection = null;
   if (section && sectionConfig && typeof sectionConfig === 'object') {
+    const isOccasionSection = (section || '').startsWith('occasion:') || section === 'occasions';
+    if (isOccasionSection) {
+      sectionConfig.protectedTopCount = 0;
+      sectionConfig.pinnedProductIds = [];
+      sectionConfig.mode = 'smart_rotation';
+    }
     updatedSection = await SectionSortingPreference.findOneAndUpdate(
       { section },
       sectionConfig,
@@ -3283,8 +3291,15 @@ const getMerchandisingPreview = asyncHandler(async (req, res) => {
     products = await Product.find(query);
   }
 
+  const isOccasionSection = (section || '').startsWith('occasion:') || section === 'occasions';
   const customConfig = {};
-  if (protectedTopCount !== undefined) customConfig.protectedTopCount = Number(protectedTopCount);
+  if (isOccasionSection) {
+    customConfig.protectedTopCount = 0;
+    customConfig.pinnedProductIds = [];
+    customConfig.mode = 'smart_rotation';
+  } else {
+    if (protectedTopCount !== undefined) customConfig.protectedTopCount = Number(protectedTopCount);
+  }
   if (rotationFrequency !== undefined) customConfig.rotationFrequency = rotationFrequency;
   if (rotationVersion !== undefined) customConfig.rotationVersion = Number(rotationVersion);
 

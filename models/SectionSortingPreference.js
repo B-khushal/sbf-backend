@@ -13,15 +13,16 @@ class SectionSortingPreferenceDocument {
 
   async save() {
     const id = this._id || `pref_${this.section}`;
+    const isOccasion = (this.section || '').startsWith('occasion:') || this.section === 'occasions';
     const rawData = {
       section: this.section,
       sortBy: this.sortBy || 'custom',
       sortDirection: this.sortDirection || 'asc',
       sequence: this.sequence || {},
-      mode: this.mode || 'smart_rotation',
-      pinnedProductIds: Array.isArray(this.pinnedProductIds) ? this.pinnedProductIds : [],
-      protectedTopCount: Number(this.protectedTopCount !== undefined ? this.protectedTopCount : 4),
-      rotationFrequency: this.rotationFrequency || 'daily',
+      mode: isOccasion ? 'smart_rotation' : (this.mode || 'smart_rotation'),
+      pinnedProductIds: isOccasion ? [] : (Array.isArray(this.pinnedProductIds) ? this.pinnedProductIds : []),
+      protectedTopCount: isOccasion ? 0 : Number(this.protectedTopCount !== undefined ? this.protectedTopCount : 4),
+      rotationFrequency: this.rotationFrequency || (isOccasion ? 'hourly' : 'daily'),
       rotationVersion: Number(this.rotationVersion || 1),
       isRotationEnabled: this.isRotationEnabled !== false,
       isPersonalizationEnabled: this.isPersonalizationEnabled !== false,
