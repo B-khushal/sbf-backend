@@ -160,7 +160,7 @@ const getProducts = async (req, res) => {
       section = 'valentine';
       products = products.filter(p => p.isValentineProduct || p.productType === 'valentine');
     } else if (isBudgetCategory) {
-      section = 'category:budget-friendly';
+      section = 'budget_friendly';
     } else if (req.query.category) {
       section = `category:${req.query.category}`;
     }
@@ -186,7 +186,7 @@ const getBudgetFriendlyProducts = async (req, res) => {
       return finalPrice > 0 && finalPrice <= 1000 && p.isAvailable !== false;
     });
 
-    products = await applySavedSortingToProducts(products, 'category:budget-friendly');
+    products = await applySavedSortingToProducts(products, 'budget_friendly');
     const productsWithReviews = await addReviewStats(products);
 
     return res.json({ products: productsWithReviews, total: productsWithReviews.length });
@@ -1592,7 +1592,7 @@ const getProductsForSectionQuery = (section) => {
       { rating: { $gte: 4.5 } },
       { numReviews: { $gte: 1 } }
     ];
-  } else if (section === 'budget_friendly' || section === 'budget-friendly') {
+  } else if (section === 'budget_friendly' || section === 'budget-friendly' || section === 'category:budget-friendly' || section === 'category:budget_friendly') {
     query.price = { $lte: 1000 };
   } else if (section === 'cakes' || section === 'category:cakes') {
     query.$or = [
@@ -1703,7 +1703,9 @@ const getDisplayOrderValue = (product, section) => {
   if (section === 'bestsellers') return dobj.bestsellers || 0;
   if (section === 'combos' || section === 'category:combos') return dobj.combos || dobj.categories?.combos || 0;
   if (section === 'cakes' || section === 'category:cakes') return dobj.cakes || dobj.categories?.cakes || 0;
-  if (section === 'budget_friendly' || section === 'budget-friendly') return dobj.budgetFriendly || dobj['budget-friendly'] || 0;
+  if (secKey === 'budget_friendly' || secKey === 'budget-friendly' || secKey === 'under-1000') {
+    return dobj.budgetFriendly || dobj['budget-friendly'] || dobj.budget_friendly || dobj.categories?.['budget-friendly'] || dobj.categories?.budget_friendly || 0;
+  }
   
   if (dobj.occasions && typeof dobj.occasions === 'object') {
     if (dobj.occasions[secKey] !== undefined) return Number(dobj.occasions[secKey]) || 0;
@@ -1837,6 +1839,12 @@ const getSectionProductsForSorting = asyncHandler(async (req, res) => {
       if (title.includes('basket') && !title.includes('combo') && catalogType !== 'combo') return false;
       return true;
     });
+  } else if (section === 'budget_friendly' || section === 'budget-friendly' || section === 'category:budget-friendly' || section === 'category:budget_friendly') {
+    const allCandidates = await Product.find({ hidden: false });
+    products = allCandidates.filter(p => {
+      const finalPrice = calculateFinalSellingPrice(p);
+      return finalPrice > 0 && finalPrice <= 1000 && p.isAvailable !== false;
+    });
   } else {
     const query = getProductsForSectionQuery(section);
     products = await Product.find(query);
@@ -1892,9 +1900,15 @@ const setProductSectionOrder = (displayOrders, section, numOrder) => {
     dobj.cakes = orderVal;
     if (!dobj.categories || typeof dobj.categories !== 'object') dobj.categories = {};
     dobj.categories.cakes = orderVal;
-  } else if (section === 'budget_friendly' || section === 'budget-friendly') {
+  } else if (secKey === 'budget_friendly' || secKey === 'budget-friendly' || secKey === 'under-1000') {
     dobj.budgetFriendly = orderVal;
     dobj['budget-friendly'] = orderVal;
+    dobj.budget_friendly = orderVal;
+    if (!dobj.categories || typeof dobj.categories !== 'object' || Array.isArray(dobj.categories)) {
+      dobj.categories = {};
+    }
+    dobj.categories['budget-friendly'] = orderVal;
+    dobj.categories.budget_friendly = orderVal;
   } else if (section.startsWith('category:')) {
     const categoryName = section.substring(9).trim().toLowerCase();
     if (!dobj.categories || typeof dobj.categories !== 'object' || Array.isArray(dobj.categories)) {
@@ -1943,11 +1957,19 @@ const updateSectionProductsOrder = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'Section is required' });
   }
   
+  const secKey = (section || '').replace(/^(category:|occasion:)/, '').trim().toLowerCase();
+  const isBudget = secKey === 'budget_friendly' || secKey === 'budget-friendly' || secKey === 'under-1000';
   const isOccasionSection = (section || '').startsWith('occasion:') || section === 'occasions';
   const prefUpdates = {};
   if (sortBy) prefUpdates.sortBy = sortBy;
   if (sortDirection) prefUpdates.sortDirection = sortDirection;
-  if (mode !== undefined) prefUpdates.mode = isOccasionSection ? 'smart_rotation' : mode;
+  if (mode !== undefined) {
+    prefUpdates.mode = isOccasionSection ? 'smart_rotation' : mode;
+  } else if (sortBy === 'custom' && !isOccasionSection) {
+    prefUpdates.mode = 'manual';
+  } else if (displayOrders && Object.keys(displayOrders).length > 0 && !isOccasionSection) {
+    prefUpdates.mode = 'manual';
+  }
   if (pinnedProductIds !== undefined) prefUpdates.pinnedProductIds = isOccasionSection ? [] : pinnedProductIds;
   if (protectedTopCount !== undefined) prefUpdates.protectedTopCount = isOccasionSection ? 0 : Number(protectedTopCount);
   if (rotationFrequency !== undefined) prefUpdates.rotationFrequency = rotationFrequency;
@@ -1958,12 +1980,18 @@ const updateSectionProductsOrder = asyncHandler(async (req, res) => {
   if (minDataThreshold !== undefined) prefUpdates.minDataThreshold = Number(minDataThreshold);
 
   if (Object.keys(prefUpdates).length > 0) {
-    await SectionSortingPreference.findOneAndUpdate(
-      { section },
-      prefUpdates,
-      { upsert: true, new: true }
-    );
-    merchandisingService.invalidateMerchandisingCache(section);
+    const sectionsToUpdate = isBudget
+      ? ['budget_friendly', 'budget-friendly', 'category:budget-friendly']
+      : [section];
+
+    for (const sec of sectionsToUpdate) {
+      await SectionSortingPreference.findOneAndUpdate(
+        { section: sec },
+        prefUpdates,
+        { upsert: true, new: true }
+      );
+      merchandisingService.invalidateMerchandisingCache(sec);
+    }
   }
   
   if (displayOrders && typeof displayOrders === 'object') {
@@ -2053,10 +2081,20 @@ const bulkReorderProducts = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'displayOrders mapping is required' });
   }
 
+  const secKey = (section || '').replace(/^(category:|occasion:)/, '').trim().toLowerCase();
+  const isBudget = secKey === 'budget_friendly' || secKey === 'budget-friendly' || secKey === 'under-1000';
+  const isOccasionSection = (section || '').startsWith('occasion:') || section === 'occasions';
+
   const prefUpdates = {};
   if (sortBy) prefUpdates.sortBy = sortBy;
   if (sortDirection) prefUpdates.sortDirection = sortDirection;
-  if (mode !== undefined) prefUpdates.mode = mode;
+  if (mode !== undefined) {
+    prefUpdates.mode = isOccasionSection ? 'smart_rotation' : mode;
+  } else if (sortBy === 'custom' && !isOccasionSection) {
+    prefUpdates.mode = 'manual';
+  } else if (displayOrders && Object.keys(displayOrders).length > 0 && !isOccasionSection) {
+    prefUpdates.mode = 'manual';
+  }
   if (pinnedProductIds !== undefined) prefUpdates.pinnedProductIds = pinnedProductIds;
   if (protectedTopCount !== undefined) prefUpdates.protectedTopCount = Number(protectedTopCount);
   if (rotationFrequency !== undefined) prefUpdates.rotationFrequency = rotationFrequency;
@@ -2067,12 +2105,18 @@ const bulkReorderProducts = asyncHandler(async (req, res) => {
   if (minDataThreshold !== undefined) prefUpdates.minDataThreshold = Number(minDataThreshold);
 
   if (Object.keys(prefUpdates).length > 0) {
-    await SectionSortingPreference.findOneAndUpdate(
-      { section },
-      prefUpdates,
-      { upsert: true, new: true }
-    );
-    merchandisingService.invalidateMerchandisingCache(section);
+    const sectionsToUpdate = isBudget
+      ? ['budget_friendly', 'budget-friendly', 'category:budget-friendly']
+      : [section];
+
+    for (const sec of sectionsToUpdate) {
+      await SectionSortingPreference.findOneAndUpdate(
+        { section: sec },
+        prefUpdates,
+        { upsert: true, new: true }
+      );
+      merchandisingService.invalidateMerchandisingCache(sec);
+    }
   }
 
   const entries = Object.entries(displayOrders);
@@ -2363,6 +2407,12 @@ const resetSectionProductsOrder = asyncHandler(async (req, res) => {
       if (title.includes('basket') && !title.includes('combo') && catalogType !== 'combo') return false;
       return true;
     });
+  } else if (section === 'budget_friendly' || section === 'budget-friendly' || section === 'category:budget-friendly' || section === 'category:budget_friendly') {
+    const allCandidates = await Product.find({ hidden: false });
+    products = allCandidates.filter(p => {
+      const finalPrice = calculateFinalSellingPrice(p);
+      return finalPrice > 0 && finalPrice <= 1000 && p.isAvailable !== false;
+    });
   } else {
     const query = getProductsForSectionQuery(section);
     products = await Product.find(query);
@@ -2374,6 +2424,8 @@ const resetSectionProductsOrder = asyncHandler(async (req, res) => {
       await product.save();
     }
   }
+
+  merchandisingService.invalidateMerchandisingCache(section);
   
   res.json({ success: true, message: 'Display order reset successfully' });
 });

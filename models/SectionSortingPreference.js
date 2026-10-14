@@ -69,13 +69,23 @@ class SectionSortingPreferenceModel {
     } else if (where && typeof where.page === 'string') {
       section = where.page;
     }
-    const id = `pref_${section}`;
+
+    const cleanSec = section.trim().toLowerCase();
+    const isBudget = cleanSec === 'budget_friendly' || cleanSec === 'budget-friendly' || cleanSec === 'category:budget-friendly' || cleanSec === 'category:budget_friendly' || cleanSec === 'under-1000' || cleanSec === 'category:under-1000';
+
+    const searchSections = isBudget
+      ? ['budget_friendly', 'category:budget-friendly', 'budget-friendly', 'category:budget_friendly']
+      : [section];
+
+    const orConditions = [];
+    for (const s of searchSections) {
+      orConditions.push({ id: `pref_${s}` });
+      orConditions.push({ page: s });
+    }
+
     const doc = await prisma.sectionSortingPreference.findFirst({
       where: {
-        OR: [
-          { id },
-          { page: section }
-        ]
+        OR: orConditions
       }
     });
     if (doc) return new SectionSortingPreferenceDocument(doc);

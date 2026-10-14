@@ -25,8 +25,9 @@ const DEFAULT_SECTION_STRATEGIES = {
   occasions: { mode: 'smart_rotation', protectedTopCount: 0, rotationFrequency: 'hourly' },
   shop: { mode: 'smart_rotation', protectedTopCount: 0, rotationFrequency: 'hourly' },
   recommended: { mode: 'smart_rotation', protectedTopCount: 0, rotationFrequency: 'daily' },
-  budget_friendly: { mode: 'smart', protectedTopCount: 0, rotationFrequency: 'daily' },
-  'category:budget-friendly': { mode: 'smart', protectedTopCount: 0, rotationFrequency: 'daily' }
+  budget_friendly: { mode: 'manual', protectedTopCount: 0, rotationFrequency: 'daily' },
+  'category:budget-friendly': { mode: 'manual', protectedTopCount: 0, rotationFrequency: 'daily' },
+  'budget-friendly': { mode: 'manual', protectedTopCount: 0, rotationFrequency: 'daily' }
 };
 
 const DEFAULT_GLOBAL_SETTINGS = {
@@ -121,9 +122,17 @@ function getRotationWindowKey(frequency) {
  */
 function invalidateMerchandisingCache(section = null) {
   if (section) {
+    const secKey = String(section).replace(/^(category:|occasion:)/, '').trim().toLowerCase();
+    const isBudget = secKey === 'budget_friendly' || secKey === 'budget-friendly' || secKey === 'under-1000';
+    const targets = isBudget
+      ? ['budget_friendly', 'budget-friendly', 'category:budget-friendly', 'category:budget_friendly']
+      : [section];
+
     for (const key of sectionRankingsCache.keys()) {
-      if (key.startsWith(`${section}:`)) {
-        sectionRankingsCache.delete(key);
+      for (const tgt of targets) {
+        if (key.startsWith(`${tgt}:`)) {
+          sectionRankingsCache.delete(key);
+        }
       }
     }
   } else {
@@ -184,20 +193,24 @@ async function updateGlobalMerchandisingSettings(newSettings) {
  * Get section-specific merchandising configuration, merging defaults with stored preferences
  */
 async function getSectionMerchandisingConfig(section) {
+  const cleanSec = (section || '').replace(/^(category:|occasion:)/, '').trim().toLowerCase();
+  const isBudget = cleanSec === 'budget_friendly' || cleanSec === 'budget-friendly' || cleanSec === 'under-1000';
+  const effectiveSection = isBudget ? 'budget_friendly' : section;
+
   const isOccasionSection = (section || '').startsWith('occasion:') || section === 'occasions';
   const globalSettings = await getGlobalMerchandisingSettings();
-  const defaultStrategy = DEFAULT_SECTION_STRATEGIES[section] || {
-    mode: globalSettings.defaultMode || 'smart_rotation',
+  const defaultStrategy = DEFAULT_SECTION_STRATEGIES[effectiveSection] || DEFAULT_SECTION_STRATEGIES[section] || {
+    mode: isBudget ? 'manual' : (globalSettings.defaultMode || 'smart_rotation'),
     protectedTopCount: 0,
     rotationFrequency: isOccasionSection ? 'hourly' : (globalSettings.rotationFrequency || 'daily')
   };
 
   try {
-    const preference = await SectionSortingPreferenceModel.findOne({ section });
+    const preference = await SectionSortingPreferenceModel.findOne({ section: effectiveSection });
     if (preference) {
       return {
-        section,
-        mode: preference.mode || defaultStrategy.mode || 'smart_rotation',
+        section: effectiveSection,
+        mode: preference.mode || defaultStrategy.mode || (isBudget ? 'manual' : 'smart_rotation'),
         pinnedProductIds: Array.isArray(preference.pinnedProductIds) ? preference.pinnedProductIds : [],
         protectedTopCount: Number(
           preference.protectedTopCount !== undefined
@@ -222,8 +235,8 @@ async function getSectionMerchandisingConfig(section) {
   }
 
   return {
-    section,
-    mode: defaultStrategy.mode || 'smart_rotation',
+    section: effectiveSection,
+    mode: defaultStrategy.mode || (isBudget ? 'manual' : 'smart_rotation'),
     pinnedProductIds: [],
     protectedTopCount: defaultStrategy.protectedTopCount !== undefined ? defaultStrategy.protectedTopCount : 0,
     rotationFrequency: defaultStrategy.rotationFrequency || globalSettings.rotationFrequency || (isOccasionSection ? 'hourly' : 'daily'),
@@ -282,6 +295,11 @@ function getProductDisplayOrderValue(product, section) {
   const dobj = product.displayOrders && typeof product.displayOrders === 'object' && !Array.isArray(product.displayOrders)
     ? product.displayOrders
     : {};
+
+  const cleanSec = (section || '').replace(/^(category:|occasion:)/, '').trim().toLowerCase();
+  if (cleanSec === 'budget_friendly' || cleanSec === 'budget-friendly' || cleanSec === 'under-1000') {
+    return Number(dobj.budgetFriendly) || Number(dobj['budget-friendly']) || Number(dobj.budget_friendly) || Number(dobj.categories?.['budget-friendly']) || Number(dobj.categories?.budget_friendly) || 0;
+  }
 
   if (section === 'featured') return Number(dobj.featured) || 0;
   if (section === 'shop' || section === 'none') return Number(dobj.shop) || 0;
