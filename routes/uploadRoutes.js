@@ -7,10 +7,11 @@ const { uploadToCloudinary, uploadToCloudinarySecure } = require("../config/clou
 
 const router = express.Router();
 
-// Upload rate limiter: 5 uploads per minute
+// Upload rate limiter: 60 uploads per minute, with bypass for admin/staff/vendor
 const uploadLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 5,
+  max: 60,
+  skip: (req) => Boolean(req.user && ['admin', 'staff', 'superadmin', 'vendor'].includes(req.user.role)),
   message: { message: "Too many upload attempts. Please try again after a minute." },
   standardHeaders: true,
   legacyHeaders: false,
@@ -124,7 +125,7 @@ router.get("/auth-test", protect, admin, (req, res) => {
 // @route   POST /api/uploads
 // @desc    Upload an image to Cloudinary
 // @access  Private/Admin/Vendor
-router.post("/", uploadLimiter, protect, enforceUploadRole, (req, res, next) => {
+router.post("/", protect, enforceUploadRole, uploadLimiter, (req, res, next) => {
   upload.single("image")(req, res, (err) => {
     if (err instanceof multer.MulterError) {
       console.error('âŒ Multer error:', err);
@@ -202,6 +203,10 @@ router.post("/", uploadLimiter, protect, enforceUploadRole, (req, res, next) => 
       review: 'sbf-reviews',
       product: 'sbf-products',
       video: 'sbf-videos',
+      offer: 'sbf-offers',
+      offers: 'sbf-offers',
+      campaign: 'sbf-campaigns',
+      campaigns: 'sbf-campaigns',
     };
     const folder = folderByType[uploadType] || (isVideo ? 'sbf-videos' : 'sbf-products');
     
