@@ -55,7 +55,14 @@ class QueryChain {
 class ReviewImageModel {
   static find(where = {}) {
     const filter = {};
-    if (where.reviewId || where.review) filter.reviewId = String(where.reviewId || where.review);
+    if (where.reviewId || where.review) {
+      const r = where.reviewId || where.review;
+      if (typeof r === 'object' && r !== null && r.$in && Array.isArray(r.$in)) {
+        filter.reviewId = { in: r.$in.map(String) };
+      } else {
+        filter.reviewId = String(r);
+      }
+    }
     const query = prisma.reviewImage.findMany({ where: filter });
     return new QueryChain(query);
   }
@@ -77,6 +84,38 @@ class ReviewImageModel {
     const doc = new ReviewImageDocument(data);
     await doc.save();
     return doc;
+  }
+
+  static async deleteMany(where = {}) {
+    const filter = {};
+    if (where.reviewId || where.review) {
+      const r = where.reviewId || where.review;
+      if (typeof r === 'object' && r !== null && r.$in && Array.isArray(r.$in)) {
+        filter.reviewId = { in: r.$in.map(String) };
+      } else {
+        filter.reviewId = String(r);
+      }
+    }
+    return await prisma.reviewImage.deleteMany({ where: filter });
+  }
+
+  static async insertMany(images = []) {
+    if (!Array.isArray(images) || images.length === 0) return [];
+    const createdList = [];
+    for (const img of images) {
+      const id = img.id || img._id || `rev_img_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+      const reviewId = String(img.reviewId || img.review || '');
+      const item = await prisma.reviewImage.create({
+        data: {
+          id,
+          reviewId,
+          url: img.url || '',
+          publicId: img.publicId || null
+        }
+      });
+      createdList.push(new ReviewImageDocument(item));
+    }
+    return createdList;
   }
 
   static async countDocuments(where = {}) {

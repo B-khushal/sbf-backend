@@ -39,6 +39,9 @@ class QueryChain {
   sort() { return this; }
   skip() { return this; }
   limit() { return this; }
+  lean() { return this; }
+  select() { return this; }
+  populate() { return this; }
   exec() { return this.then(r => r); }
   async then(resolve, reject) {
     try {
@@ -53,7 +56,14 @@ class QueryChain {
 class ReviewReplyModel {
   static find(where = {}) {
     const filter = {};
-    if (where.reviewId || where.review) filter.reviewId = String(where.reviewId || where.review);
+    if (where.reviewId || where.review) {
+      const r = where.reviewId || where.review;
+      if (typeof r === 'object' && r !== null && r.$in && Array.isArray(r.$in)) {
+        filter.reviewId = { in: r.$in.map(String) };
+      } else {
+        filter.reviewId = String(r);
+      }
+    }
     const query = prisma.reviewReply.findMany({ where: filter, orderBy: { createdAt: 'asc' } });
     return new QueryChain(query);
   }
@@ -75,6 +85,19 @@ class ReviewReplyModel {
     const doc = new ReviewReplyDocument(data);
     await doc.save();
     return doc;
+  }
+
+  static async deleteMany(where = {}) {
+    const filter = {};
+    if (where.reviewId || where.review) {
+      const r = where.reviewId || where.review;
+      if (typeof r === 'object' && r !== null && r.$in && Array.isArray(r.$in)) {
+        filter.reviewId = { in: r.$in.map(String) };
+      } else {
+        filter.reviewId = String(r);
+      }
+    }
+    return await prisma.reviewReply.deleteMany({ where: filter });
   }
 
   static async countDocuments(where = {}) {

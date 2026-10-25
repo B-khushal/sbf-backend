@@ -1355,6 +1355,7 @@ module.exports = {
   getProductReviews,
   getReviewEligibility,
   getUserReviews,
+  getViewerReviewState,
   moderateReview,
   respondToReview,
   sendReviewRequestEmailForOrder,

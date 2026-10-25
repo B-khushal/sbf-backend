@@ -46,6 +46,11 @@ class ReviewDocument {
       title: this.title,
       comment: this.comment,
       status: this.status || 'approved',
+      orderId: this.orderId,
+      images: this.images || [],
+      imageCount: this.imageCount || (this.images ? this.images.length : 0),
+      helpfulVotes: this.helpfulVotes || this.likeCount || 0,
+      totalVotes: this.totalVotes || 0,
       isVerifiedPurchase: !!this.isVerifiedPurchase,
       likeCount: this.likeCount || 0,
       moderatorNotes: this.moderatorNotes,
@@ -134,6 +139,7 @@ class QueryChain {
   skip() { return this; }
   limit() { return this; }
   select() { return this; }
+  lean() { return this; }
   exec() { return this.then(res => res); }
 
   async then(resolve, reject) {
@@ -261,14 +267,19 @@ class ReviewModel {
   }
 
   static async findByIdAndUpdate(id, update) {
-    const dataToUpdate = update.$set ? update.$set : update;
+    const rawData = update.$set ? update.$set : update;
+    const { images, imageCount, id: _id, _id: __id, ...dataToUpdate } = rawData;
     try {
       const updated = await prisma.review.update({
         where: { id: String(id) },
-        data: dataToUpdate
+        data: dataToUpdate,
+        include: { user: true, images: true, replies: true }
       });
       return new ReviewDocument(updated);
-    } catch (e) { return null; }
+    } catch (e) {
+      console.error('Review.findByIdAndUpdate error:', e);
+      return null;
+    }
   }
 
   static async countDocuments(where = {}) {

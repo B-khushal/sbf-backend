@@ -2568,9 +2568,9 @@ const getOrderInvoice = async (req, res) => {
 
     // Build customer object from order data
     const customer = {
-      name: order.user?.name || order.shippingDetails?.fullName || 'Customer',
-      email: order.user?.email || order.shippingDetails?.email || '',
-      phone: order.user?.phone || order.shippingDetails?.phone || ''
+      name: order.customerName || order.shippingDetails?.fullName || order.shipping?.fullName || order.user?.name || 'Customer',
+      email: order.customerEmail || order.shippingDetails?.email || order.shipping?.email || order.user?.email || '',
+      phone: order.customerPhone || order.shippingDetails?.phone || order.shipping?.phone || order.user?.phone || ''
     };
 
     // Prepare data for invoice generation

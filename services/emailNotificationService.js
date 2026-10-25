@@ -108,7 +108,9 @@ const formatCurrency = (amount, currency = 'INR') => {
     'GBP': '£'
   };
 
-  return `${symbols[currency] || currency} ${Number(amount).toLocaleString()}`;
+  const num = Number(amount);
+  const safe = isNaN(num) ? 0 : num;
+  return `${symbols[currency] || currency} ${safe.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
 // Format date for display (forcing Asia/Kolkata timezone to avoid UTC offset discrepancies on server)
@@ -122,23 +124,41 @@ const formatDate = (date) => {
   });
 };
 
+// Compact date for invoice header (fits on single line cleanly)
+const formatInvoiceDate = (date) => {
+  if (!date) return 'N/A';
+  try {
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return 'N/A';
+    return d.toLocaleDateString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      timeZone: 'Asia/Kolkata'
+    });
+  } catch (e) {
+    return 'N/A';
+  }
+};
+
+// Format time slot for display
+const formatTimeSlot = (timeSlot) => {
+  if (!timeSlot) return 'Standard Delivery (09:00 AM - 09:00 PM)';
+  const lower = String(timeSlot).toLowerCase().trim();
+  if (lower === 'same_day' || lower === 'sameday') return 'Same-Day Delivery (09:00 AM - 09:00 PM)';
+  if (lower === 'morning') return 'Morning Delivery (09:00 AM - 12:00 PM)';
+  if (lower === 'afternoon') return 'Afternoon Delivery (12:00 PM - 03:00 PM)';
+  if (lower === 'late_afternoon') return 'Late Afternoon Delivery (03:00 PM - 06:00 PM)';
+  if (lower === 'evening') return 'Evening Delivery (06:00 PM - 09:00 PM)';
+  if (lower.includes('midnight')) return 'Midnight Delivery (11:30 PM - 12:30 AM)';
+  if (lower === 'standard') return 'Standard Delivery (09:00 AM - 09:00 PM)';
+  if (lower === 'fixed_time' || lower === 'fixed') return 'Fixed Time Delivery';
+  return timeSlot.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+};
+
 // Format time for display
 const formatTime = (timeSlot) => {
-  if (!timeSlot) return 'Standard delivery';
-
-  const lowerSlot = timeSlot.toLowerCase();
-  if (lowerSlot === 'same_day') return 'Same-Day Delivery (09:00 AM - 09:00 PM)';
-  if (lowerSlot === 'morning') return 'Morning (09:00 AM - 12:00 PM)';
-  if (lowerSlot === 'afternoon') return 'Afternoon (12:00 PM - 03:00 PM)';
-  if (lowerSlot === 'late_afternoon') return 'Late Afternoon (03:00 PM - 06:00 PM)';
-  if (lowerSlot === 'evening') return 'Evening (06:00 PM - 09:00 PM)';
-
-  // Handle special cases
-  if (lowerSlot.includes('midnight')) {
-    return 'Midnight Delivery (12:00 AM - 6:00 AM)';
-  }
-
-  return timeSlot;
+  return formatTimeSlot(timeSlot);
 };
 
 // Format payment method helper to ensure consistent display
@@ -162,7 +182,26 @@ const generateInvoicePDF = async (htmlContent, orderNumber) => {
   }
 
   return new Promise((resolve, reject) => {
-    const options = getPdfOptions({ documentTitle: 'Tax Invoice' });
+    const options = {
+      format: 'A4',
+      orientation: 'portrait',
+      border: {
+        top: '10mm',
+        right: '10mm',
+        bottom: '10mm',
+        left: '10mm'
+      },
+      type: 'pdf',
+      quality: '100',
+      zoomFactor: '1'
+    };
+
+    const localPhantomPath = path.join(__dirname, '..', 'node_modules', 'phantomjs-prebuilt', 'lib', 'phantom', 'bin', 'phantomjs');
+    if (fs.existsSync(localPhantomPath)) {
+      options.phantomPath = localPhantomPath;
+    } else if (process.env.PHANTOM_PATH) {
+      options.phantomPath = process.env.PHANTOM_PATH;
+    }
 
     pdf.create(htmlContent, options).toBuffer((err, buffer) => {
       if (err) {
@@ -718,22 +757,26 @@ const generateAdminOrderNotificationEmail = (orderData) => {
 const generateInvoiceHTML = (orderData) => {
   const { order, customer } = orderData;
   const items = order.items || [];
-  const shipping = order.shippingDetails || order.shipping || {};
+  const shipping = order.shippingDetails || order.shippingAddress || order.shipping || {};
 
   // Calculate pricing
-  const itemsSubtotal = order.subtotal || items.reduce((sum, item) => {
-    return sum + ((item.finalPrice || item.price) * item.quantity);
+  const rawSub = Number(order.subtotal);
+  const itemsSubtotal = !isNaN(rawSub) && rawSub > 0 ? rawSub : items.reduce((sum, item) => {
+    const p = Number(item.finalPrice || item.price || 0);
+    const q = Number(item.quantity || 1);
+    return sum + (p * q);
   }, 0);
 
-  const deliveryFee = order.deliveryFee || order.shippingFee || order.shippingCharges || 0;
-  const promoDiscount = order.promoCode?.discount || order.discountAmount || order.promoDiscount || 0;
+  const deliveryFee = Number(order.shippingFee || order.deliveryFee || order.shippingCharges || 0) || 0;
+  const promoDiscount = Number(order.discountAmount || order.promoDiscount || order.promoCode?.discount || (order.discount || 0)) || 0;
   const hasDeliveryFee = deliveryFee > 0;
   const hasPromo = promoDiscount > 0;
-  const grandTotal = order.totalAmount || order.total || (itemsSubtotal + deliveryFee - promoDiscount);
+  const rawTotal = Number(order.totalAmount || order.total || order.finalTotal);
+  const grandTotal = !isNaN(rawTotal) && rawTotal > 0 ? rawTotal : (itemsSubtotal + deliveryFee - promoDiscount);
 
   const invoiceNumber = `INV-${order.orderNumber}`;
-  const orderDate = formatDate(order.createdAt);
-  const deliveryDate = formatDate(shipping.deliveryDate || order.deliveredAt || new Date());
+  const orderDate = formatInvoiceDate(order.createdAt);
+  const deliveryDate = formatInvoiceDate(shipping.deliveryDate || order.deliveryDate || order.createdAt);
 
   // Load logo
   let logoBase64 = '';
@@ -747,50 +790,65 @@ const generateInvoiceHTML = (orderData) => {
     console.error('Failed to load invoice logo:', err);
   }
 
-  const isGift = shipping.deliveryOption === 'gift' || (order.giftDetails && order.giftDetails.message);
+  // Gift & recipient resolution
+  const isGift = !!(order.giftDetails && order.giftDetails.recipientName && order.giftDetails.recipientName.trim() !== '');
+  const customerName = order.customerName || shipping.fullName || (shipping.firstName ? `${shipping.firstName || ''} ${shipping.lastName || ''}`.trim() : null) || customer?.name || 'Valued Customer';
+  const customerEmail = order.customerEmail || shipping.email || customer?.email || 'N/A';
+  const customerPhone = order.customerPhone || shipping.phone || customer?.phone || 'N/A';
+
   const recipientName = isGift
-    ? `${order.giftDetails?.recipientName || ''}`.trim() || `${shipping.receiverFirstName || ''} ${shipping.receiverLastName || ''}`.trim() || 'N/A'
-    : `${shipping.firstName || ''} ${shipping.lastName || ''}`.trim() || shipping.fullName || customer.name || 'N/A';
+    ? (order.giftDetails.recipientName || customerName)
+    : customerName;
   const recipientPhone = isGift
-    ? (order.giftDetails?.recipientPhone || shipping.receiverPhone || 'N/A')
-    : (shipping.phone || customer.phone || 'N/A');
+    ? (order.giftDetails.recipientPhone || shipping.receiverPhone || customerPhone)
+    : (shipping.phone || customerPhone);
   const recipientAddress = isGift
-    ? (order.giftDetails?.recipientAddress || shipping.receiverAddress || 'N/A')
+    ? (order.giftDetails.recipientAddress || shipping.receiverAddress || shipping.address || 'N/A')
     : (shipping.address || 'N/A');
   const recipientApartment = isGift
-    ? (order.giftDetails?.recipientApartment || shipping.receiverApartment)
+    ? (order.giftDetails.recipientApartment || shipping.receiverApartment)
     : (shipping.apartment);
   const recipientCity = isGift
-    ? (order.giftDetails?.recipientCity || shipping.receiverCity || '')
+    ? (order.giftDetails.recipientCity || shipping.receiverCity || '')
     : (shipping.city || '');
   const recipientState = isGift
-    ? (order.giftDetails?.recipientState || shipping.receiverState || '')
+    ? (order.giftDetails.recipientState || shipping.receiverState || '')
     : (shipping.state || '');
   const recipientZip = isGift
-    ? (order.giftDetails?.recipientZipCode || shipping.receiverZipCode || '')
+    ? (order.giftDetails.recipientZipCode || shipping.receiverZipCode || '')
     : (shipping.zipCode || '');
 
-  // Payment details (supports both Order and InvoiceOrder interfaces)
-  const rawMethod = order.payment?.method || order.paymentDetails?.method || order.paymentMethod;
+  const houseNo = isGift ? order.giftDetails?.houseNo : shipping.houseNo;
+  const floor = isGift ? order.giftDetails?.floor : shipping.floor;
+  const landmark = isGift ? order.giftDetails?.landmark : shipping.landmark;
+
+  // Payment details
+  const rawMethod = order.paymentMethod || order.paymentDetails?.method || order.payment?.method || (order.payments?.[0]?.provider);
   const paymentMethod = formatPaymentMethod(rawMethod);
-  const paymentStatus = order.payment?.status || order.paymentDetails?.status || order.paymentStatus || 'Completed';
-  const transactionId = order.payment?.transactionId || order.paymentDetails?.transactionId || order.paymentDetails?.razorpayPaymentId || order.paymentDetails?.paymentId || '';
+  const paymentStatus = order.paymentStatus || order.paymentDetails?.status || order.payment?.status || 'Completed';
+  const transactionId = order.razorpayPaymentId || order.paymentDetails?.transactionId || order.paymentDetails?.razorpayPaymentId || order.payment?.transactionId || (order.payments?.[0]?.transactionId) || '';
+
+  const deliverySlotFormatted = formatTimeSlot(shipping.timeSlot || order.deliverySlot);
+  const cardMessage = shipping.cardMessage || shipping.giftMessage || order.cardMessage || order.giftDetails?.message;
+  const deliveryInstructions = shipping.deliverySpecialInstructions || shipping.deliveryInstructions || order.deliveryInstruction || order.giftDetails?.deliveryInstructions;
 
   const itemRows = items.map((item, index) => {
-    const title = item.product?.title || item.product?.name || item.title || 'Florist Arrangement';
-    const variantText = item.selectedVariant?.label ? `Variant: ${item.selectedVariant.label}` : 'Premium Arrangement';
+    const title = item.product?.title || item.product?.name || item.productName || item.title || 'Florist Arrangement';
+    const variantText = item.selectedVariant?.label || item.variantName || 'Standard Arrangement';
     const customTextHTML = formatItemCustomizationHTML(item, { isCompact: true });
+    const unitPrice = item.finalPrice || item.price || 0;
+    const total = unitPrice * item.quantity;
     
     return `
       <tr style="border-bottom: 1px solid #e2e8f0;">
-        <td style="padding: 10px 12px; color: #1e293b; font-size: 11px; font-weight: 500; word-break: break-word;">
+        <td style="padding: 8px 10px; color: #1e293b; font-size: 11px; word-break: break-word;">
           <div style="font-weight: 700; color: #0f172a;">${title}</div>
-          <div style="font-size: 10px; color: #64748b; margin-top: 2px;">${variantText}</div>
+          <div style="font-size: 10px; color: #64748b; margin-top: 1px;">${variantText}</div>
           ${customTextHTML}
         </td>
-        <td style="padding: 10px 12px; text-align: center; color: #475569; font-size: 11px; vertical-align: middle;">${item.quantity}</td>
-        <td style="padding: 10px 12px; text-align: right; color: #475569; font-size: 11px; vertical-align: middle; white-space: nowrap;">${formatCurrency(item.finalPrice || item.price, order.currency)}</td>
-        <td style="padding: 10px 12px; text-align: right; color: #1e293b; font-size: 11px; font-weight: 700; vertical-align: middle; white-space: nowrap;">${formatCurrency((item.finalPrice || item.price) * item.quantity, order.currency)}</td>
+        <td style="padding: 8px 10px; text-align: center; color: #475569; font-size: 11px; vertical-align: middle;">${item.quantity}</td>
+        <td style="padding: 8px 10px; text-align: right; color: #475569; font-size: 11px; vertical-align: middle; white-space: nowrap;">${formatCurrency(unitPrice, order.currency)}</td>
+        <td style="padding: 8px 10px; text-align: right; color: #1e293b; font-size: 11px; font-weight: 700; vertical-align: middle; white-space: nowrap;">${formatCurrency(total, order.currency)}</td>
       </tr>
     `;
   }).join('');
@@ -804,8 +862,8 @@ const generateInvoiceHTML = (orderData) => {
       <title>Invoice ${invoiceNumber}</title>
       <style>
         @page {
-          size: A4;
-          margin: 12mm;
+          size: A4 portrait;
+          margin: 0;
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -814,18 +872,15 @@ const generateInvoiceHTML = (orderData) => {
           color: #334155;
           background: #fff;
           line-height: 1.4;
-          zoom: 1;
-          transform: none;
           -webkit-print-color-adjust: exact;
         }
         .invoice-container {
-          width: 186mm;
-          min-height: 273mm;
+          width: 100%;
+          max-width: 100%;
           margin: 0 auto;
           box-sizing: border-box;
-          position: relative;
           background-color: #fff;
-          padding-bottom: 25mm; /* Allocate space for absolute positioned footer */
+          page-break-inside: avoid;
         }
         table {
           width: 100%;
@@ -835,32 +890,30 @@ const generateInvoiceHTML = (orderData) => {
           border: 1px solid #e2e8f0;
           border-radius: 6px;
           background: #f8fafc;
-          padding: 10px 12px;
-          margin-bottom: 12px;
+          padding: 8px 12px;
+          box-sizing: border-box;
         }
         .card-title {
-          font-size: 12px; /* Section Titles: 12-14px bold uppercase */
+          font-size: 11px;
           font-weight: 700;
           color: #064e3b;
           text-transform: uppercase;
           letter-spacing: 0.8px;
-          margin-bottom: 6px;
+          margin-bottom: 5px;
           border-bottom: 1px solid #e2e8f0;
-          padding-bottom: 4px;
+          padding-bottom: 3px;
         }
         .invoice-footer {
-          position: absolute;
-          bottom: 0;
-          left: 0;
-          right: 0;
+          margin-top: 14px;
           text-align: center;
           border-top: 1px solid #e2e8f0;
-          padding-top: 10px;
+          padding-top: 8px;
+          page-break-inside: avoid;
         }
         .footer-text {
-          font-size: 8.5px; /* Footer Text: 8-9px */
+          font-size: 8.5px;
           color: #94a3b8;
-          line-height: 1.4;
+          line-height: 1.35;
         }
       </style>
     </head>
@@ -868,28 +921,28 @@ const generateInvoiceHTML = (orderData) => {
       <div class="invoice-container">
 
         <!-- BRAND HEADER -->
-        <table style="margin-bottom: 15px;">
+        <table style="width: 100%; margin-bottom: 12px;">
           <tr>
-            <td style="vertical-align: top; width: 60%;">
-              <table>
+            <td style="vertical-align: top; width: 56%;">
+              <table style="width: 100%;">
                 <tr>
-                  ${logoBase64 ? `<td style="vertical-align: middle; width: 55px; padding-right: 12px;"><img src="${logoBase64}" alt="Logo" style="height: 50px; object-fit: contain;" /></td>` : ''}
+                  ${logoBase64 ? `<td style="vertical-align: middle; width: 55px; padding-right: 12px;"><img src="${logoBase64}" alt="Logo" style="height: 52px; object-fit: contain;" /></td>` : ''}
                   <td style="vertical-align: top;">
-                    <h1 style="font-size: 26px; font-weight: 800; color: #064e3b; line-height: 1.1; margin: 0 0 2px 0;">Spring Blossoms Florist</h1>
-                    <p style="font-size: 10px; color: #c5a880; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 4px 0;">A Reason to Express</p>
-                    <p style="font-size: 10px; color: #64748b; line-height: 1.3; margin: 0;">
+                    <div style="font-size: 24px; font-weight: 800; color: #064e3b; line-height: 1.1; margin-bottom: 2px;">Spring Blossoms Florist</div>
+                    <div style="font-size: 10px; color: #c5a880; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 3px;">A Reason to Express</div>
+                    <div style="font-size: 10px; color: #64748b; line-height: 1.35;">
                       Door No. 12-2-786/A & B, Najam Centre, Pillar No. 32,<br>
                       Rethi Bowli, Mehdipatnam, Hyderabad, Telangana 500028<br>
                       <strong>Ph:</strong> +91 9949683222
-                    </p>
+                    </div>
                   </td>
                 </tr>
               </table>
             </td>
-            <td style="vertical-align: top; text-align: right; width: 40%;">
-              <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 10px 12px; display: inline-block; text-align: left; width: 65mm;">
-                <h2 style="font-size: 28px; font-weight: 850; color: #064e3b; text-transform: uppercase; letter-spacing: 1px; border-bottom: 2px solid #064e3b; padding-bottom: 4px; margin-bottom: 6px; text-align: right;">TAX INVOICE</h2>
-                <table style="font-size: 10px; line-height: 1.3;">
+            <td style="vertical-align: top; text-align: right; width: 44%;">
+              <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 8px 12px; display: inline-block; text-align: left; width: 235px; box-sizing: border-box;">
+                <div style="font-size: 24px; font-weight: 850; color: #064e3b; text-transform: uppercase; letter-spacing: 1px; border-bottom: 2px solid #064e3b; padding-bottom: 3px; margin-bottom: 5px; text-align: right;">TAX INVOICE</div>
+                <table style="width: 100%; font-size: 10px; line-height: 1.4;">
                   <tr>
                     <td style="color: #64748b; font-weight: 600; padding: 1px 0;">Invoice No:</td>
                     <td style="font-weight: 700; color: #064e3b; text-align: right; padding: 1px 0;">${invoiceNumber}</td>
@@ -909,35 +962,39 @@ const generateInvoiceHTML = (orderData) => {
         </table>
 
         <!-- DOUBLE DECORATIVE BORDER -->
-        <div style="height: 3px; background: #064e3b; margin-bottom: 2px; border-radius: 2px;"></div>
-        <div style="height: 1px; background: #c5a880; margin-bottom: 12px;"></div>
+        <div style="height: 2px; background: #064e3b; margin-bottom: 2px; border-radius: 2px;"></div>
+        <div style="height: 1px; background: #c5a880; margin-bottom: 10px;"></div>
 
         <!-- CUSTOMER & SHIPPING CARDS ROW -->
-        <table style="margin-bottom: 12px;">
+        <table style="width: 100%; margin-bottom: 10px; table-layout: fixed;">
           <tr>
-            <td style="width: 48%; vertical-align: top;">
-              <div class="details-card" style="margin-bottom: 0; min-height: 48mm; border-left: 3px solid #064e3b;">
+            <td style="width: 49%; vertical-align: top;">
+              <div class="details-card" style="border-left: 3px solid #064e3b;">
                 <div class="card-title">Billing Details</div>
-                <div style="font-size: 11px; font-weight: 700; color: #0f172a; margin-bottom: 4px;">
-                  ${order.shippingDetails?.fullName || customer.name || 'Valued Customer'}
+                <div style="font-size: 11px; font-weight: 700; color: #0f172a; margin-bottom: 3px;">
+                  ${customerName}
                 </div>
-                <div style="font-size: 10px; color: #475569; line-height: 1.4; margin-top: 4px;">
-                  <strong>Email:</strong> ${customer.email || 'N/A'}<br>
-                  <strong>Phone:</strong> ${customer.phone || 'N/A'}<br>
+                <div style="font-size: 10px; color: #475569; line-height: 1.4;">
+                  <strong>Email:</strong> ${customerEmail}<br>
+                  <strong>Phone:</strong> ${customerPhone}<br>
                   <strong>Billing Address:</strong> Same as Shipping Address
                 </div>
               </div>
             </td>
-            <td style="width: 4%;"></td>
-            <td style="width: 48%; vertical-align: top;">
-              <div class="details-card" style="margin-bottom: 0; min-height: 48mm; border-left: 3px solid #c5a880;">
+            <td style="width: 2%;"></td>
+            <td style="width: 49%; vertical-align: top;">
+              <div class="details-card" style="border-left: 3px solid #c5a880;">
                 <div class="card-title">${isGift ? 'Delivery Recipient (Gift)' : 'Delivery Address'}</div>
-                <div style="font-size: 11px; font-weight: 700; color: #0f172a; margin-bottom: 4px;">
+                <div style="font-size: 11px; font-weight: 700; color: #0f172a; margin-bottom: 3px;">
                   ${recipientName}
                 </div>
-                <div style="font-size: 10px; color: #475569; line-height: 1.4; margin-top: 4px;">
+                <div style="font-size: 10px; color: #475569; line-height: 1.4;">
                   <strong>Phone:</strong> ${recipientPhone}<br>
-                  <strong>Address:</strong> ${recipientAddress}${recipientApartment ? ', ' + recipientApartment : ''}, ${recipientCity}${recipientState ? ', ' + recipientState : ''} ${recipientZip}
+                  ${houseNo ? `<strong>House/Flat No:</strong> ${houseNo}<br>` : ''}
+                  ${floor ? `<strong>Floor:</strong> ${floor}<br>` : ''}
+                  <strong>Address:</strong> ${recipientAddress}${recipientApartment ? ', ' + recipientApartment : ''}
+                  ${landmark ? `<br><strong>Landmark:</strong> ${landmark}` : ''}
+                  <br>${recipientCity}${recipientState ? ', ' + recipientState : ''} ${recipientZip}
                 </div>
               </div>
             </td>
@@ -945,13 +1002,13 @@ const generateInvoiceHTML = (orderData) => {
         </table>
 
         <!-- ITEMS TABLE -->
-        <table style="margin-bottom: 12px; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; table-layout: auto;">
+        <table style="width: 100%; margin-bottom: 10px; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; table-layout: fixed;">
           <thead>
             <tr style="background-color: #f0fdf4; border-bottom: 2px solid #064e3b;">
-              <th style="padding: 10px 12px; text-align: left; font-weight: 700; color: #064e3b; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">Item Description</th>
-              <th style="padding: 10px 12px; text-align: center; font-weight: 700; color: #064e3b; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; width: 12%;">Qty</th>
-              <th style="padding: 10px 12px; text-align: right; font-weight: 700; color: #064e3b; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; width: 18%;">Unit Price</th>
-              <th style="padding: 10px 12px; text-align: right; font-weight: 700; color: #064e3b; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; width: 18%;">Total</th>
+              <th style="padding: 8px 10px; text-align: left; font-weight: 700; color: #064e3b; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.5px; width: 54%;">Item Description</th>
+              <th style="padding: 8px 10px; text-align: center; font-weight: 700; color: #064e3b; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.5px; width: 10%;">Qty</th>
+              <th style="padding: 8px 10px; text-align: right; font-weight: 700; color: #064e3b; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.5px; width: 18%;">Unit Price</th>
+              <th style="padding: 8px 10px; text-align: right; font-weight: 700; color: #064e3b; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.5px; width: 18%;">Total</th>
             </tr>
           </thead>
           <tbody>
@@ -960,68 +1017,77 @@ const generateInvoiceHTML = (orderData) => {
         </table>
 
         <!-- TOTALS & METADATA GRID ROW -->
-        <table style="margin-bottom: 12px;">
+        <table style="width: 100%; margin-bottom: 10px; table-layout: fixed;">
           <tr>
-            <td style="width: 55%; vertical-align: top;">
+            <td style="width: 58%; vertical-align: top;">
               <!-- PAYMENT & LOGISTICS -->
-              <table style="margin-bottom: 8px;">
+              <table style="width: 100%; margin-bottom: 6px; table-layout: fixed;">
                 <tr>
-                  <td style="padding-right: 10px; vertical-align: top; width: 50%;">
-                    <div class="details-card" style="padding: 8px 10px; min-height: 28mm; border-left: 2px solid #3b82f6; margin-bottom: 0;">
+                  <td style="padding-right: 5px; vertical-align: top; width: 50%;">
+                    <div class="details-card" style="padding: 8px 10px; border-left: 2px solid #3b82f6; margin-bottom: 0;">
                       <div class="card-title" style="font-size: 10px; color: #3b82f6; border-bottom: 1px solid #eff6ff; margin-bottom: 4px; padding-bottom: 2px;">Payment Status</div>
-                      <div style="font-size: 10px; color: #334155; line-height: 1.4;">
+                      <div style="font-size: 10px; color: #334155; line-height: 1.35;">
                         <strong>Method:</strong> ${paymentMethod}<br>
                         <strong>Status:</strong> <span style="color: #059669; font-weight: 700;">● ${paymentStatus}</span>
-                        ${transactionId ? '<br><strong style="font-size: 8.5px; color: #64748b;">TxID: ' + transactionId + '</strong>' : ''}
+                        ${transactionId ? '<br><strong style="font-size: 8.5px; color: #64748b; word-break: break-all;">TxID: ' + transactionId + '</strong>' : ''}
                       </div>
                     </div>
                   </td>
-                  <td style="vertical-align: top; width: 50%;">
-                    <div class="details-card" style="padding: 8px 10px; min-height: 28mm; border-left: 2px solid #8b5cf6; margin-bottom: 0;">
+                  <td style="padding-left: 5px; vertical-align: top; width: 50%;">
+                    <div class="details-card" style="padding: 8px 10px; border-left: 2px solid #8b5cf6; margin-bottom: 0;">
                       <div class="card-title" style="font-size: 10px; color: #8b5cf6; border-bottom: 1px solid #f5f3ff; margin-bottom: 4px; padding-bottom: 2px;">Delivery Logistics</div>
-                      <div style="font-size: 10px; color: #334155; line-height: 1.4;">
+                      <div style="font-size: 10px; color: #334155; line-height: 1.35;">
                         <strong>Date:</strong> ${deliveryDate}<br>
-                        <strong>Slot:</strong> ${shipping.timeSlot || 'Standard Delivery'}
+                        <strong>Slot:</strong> ${deliverySlotFormatted}
                       </div>
                     </div>
                   </td>
                 </tr>
               </table>
 
-              ${(shipping.cardMessage || shipping.giftMessage) ? `
-                <div class="details-card" style="border: 1px dashed #c5a880; background: #fffdf5; padding: 8px 10px; margin-bottom: 0;">
-                  <div class="card-title" style="font-size: 10px; color: #c5a880; border-bottom: 1px dashed #fed7aa; margin-bottom: 4px;">💌 Card Message</div>
+              ${cardMessage ? `
+                <div class="details-card" style="border: 1px dashed #c5a880; background: #fffdf5; padding: 7px 10px; margin-top: 6px; margin-bottom: 0;">
+                  <div class="card-title" style="font-size: 10px; color: #c5a880; border-bottom: 1px dashed #fed7aa; margin-bottom: 3px; padding-bottom: 2px;">💌 Card Message</div>
                   <div style="font-size: 10px; font-style: italic; color: #475569; line-height: 1.3;">
-                    "${shipping.cardMessage || shipping.giftMessage}"
+                    "${cardMessage}"
+                  </div>
+                </div>
+              ` : ''}
+
+              ${deliveryInstructions ? `
+                <div class="details-card" style="border: 1px dashed #3b82f6; background: #f0f9ff; padding: 7px 10px; margin-top: 6px; margin-bottom: 0;">
+                  <div class="card-title" style="font-size: 10px; color: #3b82f6; border-bottom: 1px dashed #bae6fd; margin-bottom: 3px; padding-bottom: 2px;">🚚 Delivery Instructions</div>
+                  <div style="font-size: 10px; font-style: italic; color: #475569; line-height: 1.3;">
+                    "${deliveryInstructions}"
                   </div>
                 </div>
               ` : ''}
             </td>
-            <td style="width: 5%;"></td>
-            <td style="width: 40%; vertical-align: top;">
+            <td style="width: 4%;"></td>
+            <td style="width: 38%; vertical-align: top;">
               <!-- PRICING SUMMARY -->
-              <table style="font-size: 11px; line-height: 1.5;">
+              <table style="width: 100%; font-size: 10.5px; line-height: 1.5;">
                 <tr>
-                  <td style="padding: 4px 0; color: #64748b; font-weight: 500;">Subtotal:</td>
-                  <td style="padding: 4px 0; text-align: right; color: #1e293b; font-weight: 600;">${formatCurrency(itemsSubtotal, order.currency)}</td>
+                  <td style="padding: 3px 0; color: #64748b; font-weight: 500;">Subtotal:</td>
+                  <td style="padding: 3px 0; text-align: right; color: #1e293b; font-weight: 600;">${formatCurrency(itemsSubtotal, order.currency)}</td>
                 </tr>
                 <tr>
-                  <td style="padding: 4px 0; color: #64748b; font-weight: 500;">Delivery Fee:</td>
-                  <td style="padding: 4px 0; text-align: right; color: #1e293b; font-weight: 600;">
+                  <td style="padding: 3px 0; color: #64748b; font-weight: 500;">Delivery Fee:</td>
+                  <td style="padding: 3px 0; text-align: right; color: #1e293b; font-weight: 600;">
                     ${order.isFirstOrderFreeDelivery 
-                      ? `FREE (${formatCurrency((order.shippingDetails?.timeSlot === 'midnight' ? 300 : 150) * (order.currencyRate || 1), order.currency)} waived)` 
+                      ? 'FREE' 
                       : (hasDeliveryFee ? formatCurrency(deliveryFee, order.currency) : 'FREE')}
                   </td>
                 </tr>
                 ${hasPromo ? `
                 <tr>
-                  <td style="padding: 4px 0; color: #64748b; font-weight: 500;">Promo Discount${order.promoCode?.code ? ' (' + order.promoCode.code + ')' : ''}:</td>
-                  <td style="padding: 4px 0; text-align: right; color: #dc2626; font-weight: 600;">-${formatCurrency(promoDiscount, order.currency)}</td>
+                  <td style="padding: 3px 0; color: #64748b; font-weight: 500;">Promo Discount${order.promoCode?.code || order.promoCode ? ' (' + (order.promoCode?.code || order.promoCode) + ')' : ''}:</td>
+                  <td style="padding: 3px 0; text-align: right; color: #dc2626; font-weight: 600;">-${formatCurrency(promoDiscount, order.currency)}</td>
                 </tr>
                 ` : ''}
                 <tr style="border-top: 2px solid #064e3b;">
-                  <td style="padding: 8px 0; font-weight: 700; font-size: 13px; color: #064e3b;">Grand Total:</td>
-                  <td style="padding: 8px 0; text-align: right; font-weight: 700; font-size: 13px; color: #064e3b;">${formatCurrency(grandTotal, order.currency)}</td>
+                  <td style="padding: 6px 0; font-weight: 700; font-size: 13px; color: #064e3b;">Grand Total:</td>
+                  <td style="padding: 6px 0; text-align: right; font-weight: 700; font-size: 13px; color: #064e3b;">${formatCurrency(grandTotal, order.currency)}</td>
                 </tr>
               </table>
             </td>
@@ -1030,11 +1096,11 @@ const generateInvoiceHTML = (orderData) => {
 
         <!-- FOOTER -->
         <div class="invoice-footer">
-          <div style="font-weight: 700; color: #064e3b; margin-bottom: 2px; font-size: 11px;">Thank you for choosing Spring Blossoms Florist.</div>
+          <div style="font-weight: 700; color: #064e3b; margin-bottom: 2px; font-size: 10.5px;">Thank you for choosing Spring Blossoms Florist.</div>
           <div class="footer-text">
             We design premium floral arrangements and curated gift solutions to make your moments unforgettable.<br>
             For any queries or modifications to your delivery, please contact +91 9949683222 or email contact@sbflorist.in.<br>
-            This is a computer-generated invoice and requires no signature.
+            This is a computer-generated tax invoice and requires no signature.
           </div>
         </div>
 
@@ -1043,8 +1109,6 @@ const generateInvoiceHTML = (orderData) => {
     </html>
   `;
 };
-
-
 // Generate delivery confirmation email template with invoice
 const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
   const { order, customer, partner, proofImageUrl } = orderData;
@@ -1491,14 +1555,14 @@ const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
                   <td class="sum-label">Subtotal</td>
                   <td class="sum-value">${formatCurrency(itemsSubtotal, order.currency)}</td>
                 </tr>
-                ${hasShipping ? `
+                <tr>
+                  <td class="sum-label">Delivery Charges</td>
+                  <td class="sum-value">${order.isFirstOrderFreeDelivery ? 'FREE' : (shippingCharges > 0 ? formatCurrency(shippingCharges, order.currency) : 'FREE')}</td>
+                </tr>
+                ${hasPromo ? `
                   <tr>
-                    <td class="sum-label">Delivery Charges</td>
-                    <td class="sum-value">${formatCurrency(shippingCharges, order.currency)}</td>
-                  </tr>
-                  <tr>
-                    <td class="sum-label">Tax (CGST + SGST)</td>
-                    <td class="sum-value">${formatCurrency(cgst + sgst, order.currency)}</td>
+                    <td class="sum-label" style="color: #dc2626;">Promo Discount${order.promoCode?.code || order.promoCode ? ' (' + (order.promoCode?.code || order.promoCode) + ')' : ''}</td>
+                    <td class="sum-value" style="color: #dc2626;">-${formatCurrency(promoDiscount, order.currency)}</td>
                   </tr>
                 ` : ''}
                 <tr class="grand">
