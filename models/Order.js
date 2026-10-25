@@ -70,6 +70,12 @@ function cleanOrderWhere(where = {}) {
     clean.items = { some: { productName: { contains: pat, mode: 'insensitive' } } };
   }
 
+  const prodIdVal = where['items.product'] || where['items.productId'] || where.productId;
+  if (prodIdVal) {
+    clean.items = clean.items || {};
+    clean.items.some = { ...(clean.items.some || {}), productId: String(prodIdVal) };
+  }
+
   const statusFilter = where.orderStatus || where.status;
   if (statusFilter) {
     if (typeof statusFilter === 'string') {

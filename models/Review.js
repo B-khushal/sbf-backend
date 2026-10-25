@@ -152,6 +152,13 @@ const cleanReviewWhere = (where = {}) => {
   if (where.productId || where.product) filter.productId = String(where.productId || where.product);
   if (where.userId || where.user) filter.userId = String(where.userId || where.user);
   if (where.status) filter.status = where.status;
+  if (where.orderId) {
+    if (typeof where.orderId === 'object' && where.orderId.$in && Array.isArray(where.orderId.$in)) {
+      filter.orderId = { in: where.orderId.$in.map(String) };
+    } else {
+      filter.orderId = String(where.orderId);
+    }
+  }
   return filter;
 };
 
@@ -230,12 +237,24 @@ class ReviewModel {
     const created = await prisma.review.create({
       data: {
         id: data.id || data._id || `rev_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-        userId: data.userId || (typeof data.user === 'string' ? data.user : null),
-        productId: data.productId || (typeof data.product === 'string' ? data.product : ''),
+        userId: data.userId || (typeof data.user === 'string' ? data.user : (data.user?.id || data.user?._id || null)),
+        productId: data.productId || (typeof data.product === 'string' ? data.product : (data.product?.id || data.product?._id || '')),
         rating: parseInt(data.rating || 5),
         title: data.title || null,
         comment: data.comment || '',
-        status: data.status || 'approved'
+        status: data.status || 'approved',
+        orderId: data.orderId || null,
+        name: data.name || null,
+        email: data.email || null,
+        isVerifiedPurchase: Boolean(data.isVerifiedPurchase),
+        qualityRating: data.qualityRating ? parseInt(data.qualityRating) : null,
+        valueRating: data.valueRating ? parseInt(data.valueRating) : null,
+        deliveryRating: data.deliveryRating ? parseInt(data.deliveryRating) : null,
+        pros: Array.isArray(data.pros) ? data.pros : [],
+        cons: Array.isArray(data.cons) ? data.cons : [],
+        deviceInfo: data.deviceInfo || null,
+        ipAddress: data.ipAddress || null,
+        source: data.source || null,
       }
     });
     return new ReviewDocument(created);

@@ -4,6 +4,7 @@ const {
   addReviewReply,
   getAdminReviewAnalytics,
   getAdminReviews,
+  getPendingDeliveredReviews,
   moderateReview,
   toggleReviewLike,
   updateReview,
@@ -13,6 +14,11 @@ const {
 } = require("../controllers/reviewController");
 const { protect, admin } = require("../middleware/authMiddleware");
 const { createRateLimiter } = require("../middleware/rateLimiter");
+
+// @route   GET /api/reviews/pending-delivered
+// @desc    Get delivered products awaiting review for current user
+// @access  Private
+router.get("/pending-delivered", protect, getPendingDeliveredReviews);
 
 // @route   GET /api/reviews/my-reviews
 // @desc    Get current user's reviews

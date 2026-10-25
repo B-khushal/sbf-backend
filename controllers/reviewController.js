@@ -1214,12 +1214,144 @@ const sendReviewRequestEmailForOrder = async (req, res) => {
   }
 };
 
+const checkUserHasPendingDeliveredReview = async (userId) => {
+  if (!userId) return false;
+  try {
+    const deliveredOrders = await Order.find({
+      user: userId,
+      status: "delivered",
+    });
+
+    if (!deliveredOrders || deliveredOrders.length === 0) {
+      return false;
+    }
+
+    const userReviews = await Review.find({ user: userId });
+    const reviewedKeys = new Set(
+      userReviews.map((r) => `${String(r.orderId || "")}_${String(r.productId || r.product || "")}`)
+    );
+
+    for (const order of deliveredOrders) {
+      const orderIdStr = String(order._id || order.id);
+      const items = Array.isArray(order.items) ? order.items : [];
+      for (const item of items) {
+        const productId = String(
+          item.productId ||
+          (typeof item.product === "object" ? item.product?._id || item.product?.id : item.product) ||
+          ""
+        );
+        if (productId) {
+          const key = `${orderIdStr}_${productId}`;
+          if (!reviewedKeys.has(key)) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  } catch (err) {
+    console.error("Error in checkUserHasPendingDeliveredReview:", err);
+    return false;
+  }
+};
+
+const getPendingDeliveredReviews = async (req, res) => {
+  try {
+    const userId = req.user?._id || req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ message: "Authentication required." });
+    }
+
+    const deliveredOrders = await Order.find({
+      user: userId,
+      status: "delivered",
+    }).sort({ createdAt: -1 });
+
+    if (!deliveredOrders || deliveredOrders.length === 0) {
+      return res.json({
+        hasPendingReview: false,
+        pendingCount: 0,
+        pendingItems: [],
+        requiresReviewToPurchase: false,
+      });
+    }
+
+    const userReviews = await Review.find({ user: userId });
+    const reviewedKeys = new Set(
+      userReviews.map((r) => `${String(r.orderId || "")}_${String(r.productId || r.product || "")}`)
+    );
+
+    const pendingItems = [];
+
+    for (const order of deliveredOrders) {
+      const orderIdStr = String(order._id || order.id);
+      const items = Array.isArray(order.items) ? order.items : [];
+
+      for (const item of items) {
+        const productId = String(
+          item.productId ||
+          (typeof item.product === "object" ? item.product?._id || item.product?.id : item.product) ||
+          ""
+        );
+
+        if (!productId) continue;
+
+        const key = `${orderIdStr}_${productId}`;
+        if (!reviewedKeys.has(key)) {
+          let productTitle = item.productName || item.title || item.name || "Handcrafted Bouquet";
+          let productImage = item.image || (Array.isArray(item.images) ? item.images[0] : "");
+
+          if (!productImage || !productTitle) {
+            try {
+              const p = await Product.findById(productId).select("title images primaryImage");
+              if (p) {
+                productTitle = productTitle || p.title;
+                productImage = productImage || p.primaryImage || (Array.isArray(p.images) ? p.images[0] : "");
+              }
+            } catch (pErr) {
+              // ignore
+            }
+          }
+
+          pendingItems.push({
+            orderId: orderIdStr,
+            orderNumber: order.orderNumber,
+            deliveredAt: order.deliveredAt || order.updatedAt || order.createdAt,
+            deliveryDate: order.shippingDetails?.deliveryDate || order.deliveryDate,
+            productId,
+            productTitle,
+            productImage,
+            productPrice: item.price ? parseFloat(item.price) : 0,
+            quantity: item.quantity || 1,
+            recipientName: order.recipientName || order.shippingDetails?.fullName || order.customerName || null,
+          });
+        }
+      }
+    }
+
+    return res.json({
+      hasPendingReview: pendingItems.length > 0,
+      pendingCount: pendingItems.length,
+      pendingItems,
+      requiresReviewToPurchase: pendingItems.length > 0,
+    });
+  } catch (error) {
+    console.error("Error fetching pending delivered reviews:", error);
+    return res.status(500).json({
+      message: "Failed to retrieve pending reviews",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   addReviewReply,
+  checkUserHasPendingDeliveredReview,
   createProductReview,
   deleteReview,
   getAdminReviewAnalytics,
   getAdminReviews,
+  getPendingDeliveredReviews,
   getProductReviews,
   getReviewEligibility,
   getUserReviews,

@@ -396,6 +396,18 @@ const createOrder = async (req, res) => {
     }
 
     const userId = req.user?._id || null;
+    if (userId) {
+      const { checkUserHasPendingDeliveredReview } = require('./reviewController');
+      const hasPending = await checkUserHasPendingDeliveredReview(userId);
+      if (hasPending) {
+        return res.status(403).json({
+          success: false,
+          requireReview: true,
+          message: 'Please review your previously delivered bouquet before purchasing another one.'
+        });
+      }
+    }
+
     if (!userId && (!shippingDetails?.email || !shippingDetails?.phone)) {
       return res.status(400).json({
         success: false,
@@ -1780,6 +1792,19 @@ const createRazorpayOrderHandler = async (req, res) => {
         success: false,
         message: 'Amount is required'
       });
+    }
+
+    const userId = req.user?._id || req.user?.id;
+    if (userId) {
+      const { checkUserHasPendingDeliveredReview } = require('./reviewController');
+      const hasPending = await checkUserHasPendingDeliveredReview(userId);
+      if (hasPending) {
+        return res.status(403).json({
+          success: false,
+          requireReview: true,
+          message: 'Please review your previously delivered bouquet before placing a new order.'
+        });
+      }
     }
 
     // Amount should already be in paise from frontend
