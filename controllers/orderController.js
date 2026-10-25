@@ -13,6 +13,50 @@ const { logActivity } = require('../utils/activityLogger');
 const { calculateDeliveryFee } = require('../services/deliveryService');
 const Offer = require('../models/Offer');
 const { normalizeEmail } = require('../utils/emailNormalizer');
+const prisma = require('../config/prisma');
+
+// Centralized helper to reliably generate unique sequential order numbers (YYMM-XXX-DD)
+const generateUniqueOrderNumber = async () => {
+  const date = new Date();
+  const year = date.getFullYear().toString().slice(-2);
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const day = date.getDate().toString().padStart(2, '0');
+  const prefix = `${year}${month}`;
+
+  // Find all orders starting with YYMM to accurately compute the highest sequence
+  const existingOrders = await prisma.order.findMany({
+    where: {
+      orderNumber: {
+        startsWith: prefix
+      }
+    },
+    select: {
+      orderNumber: true
+    }
+  });
+
+  let maxSequence = 0;
+  for (const o of existingOrders) {
+    if (o.orderNumber && o.orderNumber.length >= 7) {
+      const seqStr = o.orderNumber.substring(4, 7);
+      const seqNum = parseInt(seqStr, 10);
+      if (!isNaN(seqNum) && seqNum > maxSequence) {
+        maxSequence = seqNum;
+      }
+    }
+  }
+
+  let nextSeq = maxSequence + 1;
+  let candidate = `${year}${month}${nextSeq.toString().padStart(3, '0')}${day}`;
+
+  // Ensure candidate does not collide with any existing order
+  while (await prisma.order.findUnique({ where: { orderNumber: candidate } })) {
+    nextSeq++;
+    candidate = `${year}${month}${nextSeq.toString().padStart(3, '0')}${day}`;
+  }
+
+  return candidate;
+};
 
 // Helper to increment offer conversion if order has promo code
 const trackPromoCodeConversion = async (promoCodeObj) => {
@@ -415,25 +459,8 @@ const createOrder = async (req, res) => {
       });
     }
 
-    // Generate order number in YYMM-XXX-DD format
-    const date = new Date();
-    const year = date.getFullYear().toString().slice(-2);
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const day = date.getDate().toString().padStart(2, '0');
-
-    // Find the last order for the current year and month
-    const lastOrder = await Order.findOne({
-      orderNumber: new RegExp(`^${year}${month}`)
-    }, {}, { sort: { 'orderNumber': -1 } });
-
-    let sequence = '001';
-    if (lastOrder) {
-      // Extract the sequence number from the last order (positions 4-6 in YYMMDDDDD format)
-      const lastSequence = parseInt(lastOrder.orderNumber.substring(4, 7));
-      sequence = (lastSequence + 1).toString().padStart(3, '0');
-    }
-
-    const orderNumber = `${year}${month}${sequence}${day}`;
+    // Generate order number in YYMM-XXX-DD format using robust sequence calculation
+    const orderNumber = await generateUniqueOrderNumber();
 
     // Server-side calculation and validation
     const subtotalCalculated = items.reduce((sum, item) => sum + (item.finalPrice || item.price) * item.quantity, 0);
@@ -780,22 +807,7 @@ const createOrder = async (req, res) => {
 // Function to get the next order number (useful for previews)
 const getNextOrderNumber = async (req, res) => {
   try {
-    const date = new Date();
-    const year = date.getFullYear().toString().slice(-2);
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const day = date.getDate().toString().padStart(2, '0');
-
-    const lastOrder = await Order.findOne({
-      orderNumber: new RegExp(`^${year}${month}`)
-    }, {}, { sort: { 'orderNumber': -1 } });
-
-    let sequence = '001';
-    if (lastOrder) {
-      const lastSequence = parseInt(lastOrder.orderNumber.substring(4, 7));
-      sequence = (lastSequence + 1).toString().padStart(3, '0');
-    }
-
-    const nextOrderNumber = `${year}${month}${sequence}${day}`;
+    const nextOrderNumber = await generateUniqueOrderNumber();
 
     res.json({
       success: true,
@@ -1916,25 +1928,8 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
         });
       }
 
-      // Generate order number in YYMM-XXX-DD format
-      const date = new Date();
-      const year = date.getFullYear().toString().slice(-2);
-      const month = (date.getMonth() + 1).toString().padStart(2, '0');
-      const day = date.getDate().toString().padStart(2, '0');
-
-      // Find the last order for the current year and month
-      const lastOrder = await Order.findOne({
-        orderNumber: new RegExp(`^${year}${month}`)
-      }, {}, { sort: { 'orderNumber': -1 } });
-
-      let sequence = '001';
-      if (lastOrder) {
-        // Extract the sequence number from the last order (positions 4-6 in YYMMDDDDD format)
-        const lastSequence = parseInt(lastOrder.orderNumber.substring(4, 7));
-        sequence = (lastSequence + 1).toString().padStart(3, '0');
-      }
-
-      const orderNumber = `${year}${month}${sequence}${day}`;
+      // Generate order number in YYMM-XXX-DD format using robust sequence calculation
+      const orderNumber = await generateUniqueOrderNumber();
 
       // Server-side calculation and validation
       const subtotalCalculated = orderData.items.reduce((sum, item) => sum + (item.finalPrice || item.price) * item.quantity, 0);

@@ -33,7 +33,13 @@ function cleanOrderWhere(where = {}) {
 
   if (where.orderNumber) {
     const pat = extractPattern(where.orderNumber);
-    clean.orderNumber = { contains: pat, mode: 'insensitive' };
+    if (typeof pat === 'string' && pat.startsWith('^')) {
+      clean.orderNumber = { startsWith: pat.substring(1), mode: 'insensitive' };
+    } else if (typeof pat === 'string' && pat.endsWith('$')) {
+      clean.orderNumber = { endsWith: pat.slice(0, -1), mode: 'insensitive' };
+    } else {
+      clean.orderNumber = { contains: pat, mode: 'insensitive' };
+    }
   }
 
   if (where.userId || where.user) clean.userId = String(where.userId || where.user);
@@ -288,19 +294,43 @@ class OrderDocument {
     let orderId = this.id || this._id;
     let orderNum = this.orderNumber;
 
-    if (!orderId && orderNum) {
-      const existingOrder = await prisma.order.findUnique({ where: { orderNumber: orderNum } });
-      if (existingOrder) {
-        orderId = existingOrder.id;
-      }
-    }
-
     if (!orderId) {
       orderId = `ord_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
     }
 
     if (!orderNum) {
       orderNum = `SBF-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`;
+    } else {
+      // Safety guard: if this is a new order creation (no preexisting this.id / this._id)
+      // and orderNum is already taken in the database, automatically generate a collision-free number
+      if (!this.id && !this._id) {
+        const collision = await prisma.order.findUnique({ where: { orderNumber: orderNum } });
+        if (collision) {
+          const date = new Date();
+          const year = date.getFullYear().toString().slice(-2);
+          const month = (date.getMonth() + 1).toString().padStart(2, '0');
+          const day = date.getDate().toString().padStart(2, '0');
+          const prefix = `${year}${month}`;
+          const existingOrders = await prisma.order.findMany({
+            where: { orderNumber: { startsWith: prefix } },
+            select: { orderNumber: true }
+          });
+          let maxSeq = 0;
+          for (const o of existingOrders) {
+            if (o.orderNumber && o.orderNumber.length >= 7) {
+              const s = parseInt(o.orderNumber.substring(4, 7), 10);
+              if (!isNaN(s) && s > maxSeq) maxSeq = s;
+            }
+          }
+          let nextSequence = maxSeq + 1;
+          orderNum = `${year}${month}${nextSequence.toString().padStart(3, '0')}${day}`;
+          while (await prisma.order.findUnique({ where: { orderNumber: orderNum } })) {
+            nextSequence++;
+            orderNum = `${year}${month}${nextSequence.toString().padStart(3, '0')}${day}`;
+          }
+          this.orderNumber = orderNum;
+        }
+      }
     }
 
     const userId = typeof this.user === 'object' ? this.user.id : (this.userId || this.user || null);
@@ -503,11 +533,18 @@ class OrderModel {
     return new QueryChain(query);
   }
 
-  static findOne(where = {}) {
+  static findOne(where = {}, projection = {}, options = {}) {
     const prismaWhere = cleanOrderWhere(where);
+    let orderBy = undefined;
+    if (options && options.sort) {
+      const sortKey = Object.keys(options.sort)[0];
+      const sortVal = options.sort[sortKey];
+      orderBy = { [sortKey]: (sortVal === -1 || sortVal === 'desc') ? 'desc' : 'asc' };
+    }
 
     const query = prisma.order.findFirst({
       where: prismaWhere,
+      orderBy: orderBy,
       include: {
         items: true,
         timeline: true,
