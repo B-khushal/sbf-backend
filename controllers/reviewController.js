@@ -6,6 +6,7 @@ const ReviewEmailLog = require("../models/ReviewEmailLog");
 const Product = require("../models/Product");
 const Order = require("../models/Order");
 const User = require("../models/User");
+const prisma = require("../config/prisma");
 const { createAdminNotification } = require("./notificationController");
 const {
   MAX_REVIEW_IMAGES,
@@ -985,102 +986,102 @@ const getAdminReviewAnalytics = async (req, res) => {
     const fromDate = new Date();
     fromDate.setDate(fromDate.getDate() - days);
 
-    const [totals, trend, mostReviewed] = await Promise.all([
-      Review.aggregate([
-        {
-          $group: {
-            _id: null,
-            totalReviews: { $sum: 1 },
-            approvedReviews: {
-              $sum: { $cond: [{ $eq: ["$status", "approved"] }, 1, 0] },
-            },
-            pendingReviews: {
-              $sum: { $cond: [{ $eq: ["$status", "pending"] }, 1, 0] },
-            },
-            spamReviews: {
-              $sum: { $cond: [{ $eq: ["$status", "spam"] }, 1, 0] },
-            },
-            averageRating: {
-              $avg: {
-                $cond: [{ $eq: ["$status", "approved"] }, "$rating", null],
-              },
-            },
-          },
-        },
-      ]),
-      Review.aggregate([
-        {
-          $match: {
-            createdAt: { $gte: fromDate },
-          },
-        },
-        {
-          $group: {
-            _id: {
-              year: { $year: "$createdAt" },
-              month: { $month: "$createdAt" },
-              day: { $dayOfMonth: "$createdAt" },
-            },
-            totalReviews: { $sum: 1 },
-            averageRating: { $avg: "$rating" },
-          },
-        },
-        {
-          $sort: {
-            "_id.year": 1,
-            "_id.month": 1,
-            "_id.day": 1,
-          },
-        },
-      ]),
-      Review.aggregate([
-        {
-          $group: {
-            _id: "$product",
-            totalReviews: { $sum: 1 },
-            averageRating: { $avg: "$rating" },
-            approvedReviews: {
-              $sum: { $cond: [{ $eq: ["$status", "approved"] }, 1, 0] },
-            },
-          },
-        },
-        { $sort: { totalReviews: -1, approvedReviews: -1 } },
-        { $limit: 6 },
-      ]),
-    ]);
+    const allReviews = await prisma.review.findMany({
+      select: {
+        id: true,
+        rating: true,
+        status: true,
+        productId: true,
+        createdAt: true,
+      },
+    });
 
-    const products = await Product.find({
-      _id: { $in: mostReviewed.map((item) => item._id) },
-    })
-      .select("title images category")
-      .lean();
+    let totalReviews = allReviews.length;
+    let approvedReviews = 0;
+    let pendingReviews = 0;
+    let spamReviews = 0;
+    let approvedRatingSum = 0;
 
-    const productMap = new Map(products.map((product) => [String(product._id), product]));
+    for (const r of allReviews) {
+      if (r.status === "approved") {
+        approvedReviews++;
+        approvedRatingSum += (r.rating || 0);
+      } else if (r.status === "pending") {
+        pendingReviews++;
+      } else if (r.status === "spam") {
+        spamReviews++;
+      }
+    }
+
+    const averageRating = approvedReviews > 0 ? Number((approvedRatingSum / approvedReviews).toFixed(2)) : 0;
+
+    const trendMap = new Map();
+    for (const r of allReviews) {
+      if (r.createdAt && new Date(r.createdAt) >= fromDate) {
+        const d = new Date(r.createdAt);
+        const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        const curr = trendMap.get(dateKey) || { totalReviews: 0, ratingSum: 0 };
+        curr.totalReviews++;
+        curr.ratingSum += (r.rating || 0);
+        trendMap.set(dateKey, curr);
+      }
+    }
+
+    const ratingTrends = Array.from(trendMap.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([date, data]) => ({
+        date,
+        totalReviews: data.totalReviews,
+        averageRating: Number((data.ratingSum / data.totalReviews).toFixed(2)),
+      }));
+
+    const productStatsMap = new Map();
+    for (const r of allReviews) {
+      if (!r.productId) continue;
+      const pId = String(r.productId);
+      const curr = productStatsMap.get(pId) || { totalReviews: 0, approvedReviews: 0, ratingSum: 0 };
+      curr.totalReviews++;
+      if (r.status === "approved") {
+        curr.approvedReviews++;
+      }
+      curr.ratingSum += (r.rating || 0);
+      productStatsMap.set(pId, curr);
+    }
+
+    const topProductEntries = Array.from(productStatsMap.entries())
+      .sort((a, b) => b[1].totalReviews - a[1].totalReviews || b[1].approvedReviews - a[1].approvedReviews)
+      .slice(0, 6);
+
+    const topProductIds = topProductEntries.map(([id]) => id);
+    const products = topProductIds.length > 0
+      ? await Product.find({ _id: { $in: topProductIds } }).select("title images category").lean()
+      : [];
+
+    const productMap = new Map(products.map((product) => [String(product._id || product.id), product]));
+
+    const mostReviewedProducts = topProductEntries.map(([productId, stats]) => {
+      const product = productMap.get(productId);
+      return {
+        productId,
+        title: product?.title || product?.name || "Unknown Product",
+        image: product?.images?.[0] || "",
+        category: product?.category || "",
+        totalReviews: stats.totalReviews,
+        approvedReviews: stats.approvedReviews,
+        averageRating: Number((stats.ratingSum / stats.totalReviews).toFixed(2)),
+      };
+    });
 
     return res.json({
-      overview: totals[0] || {
-        totalReviews: 0,
-        approvedReviews: 0,
-        pendingReviews: 0,
-        spamReviews: 0,
-        averageRating: 0,
+      overview: {
+        totalReviews,
+        approvedReviews,
+        pendingReviews,
+        spamReviews,
+        averageRating,
       },
-      ratingTrends: trend.map((item) => ({
-        date: `${item._id.year}-${String(item._id.month).padStart(2, "0")}-${String(
-          item._id.day
-        ).padStart(2, "0")}`,
-        totalReviews: item.totalReviews,
-        averageRating: Number((item.averageRating || 0).toFixed(2)),
-      })),
-      mostReviewedProducts: mostReviewed.map((item) => ({
-        productId: item._id,
-        title: productMap.get(String(item._id))?.title || "Unknown Product",
-        image: productMap.get(String(item._id))?.images?.[0] || "",
-        category: productMap.get(String(item._id))?.category || "",
-        totalReviews: item.totalReviews,
-        approvedReviews: item.approvedReviews,
-        averageRating: Number((item.averageRating || 0).toFixed(2)),
-      })),
+      ratingTrends,
+      mostReviewedProducts,
     });
   } catch (error) {
     console.error("Error fetching review analytics:", error);

@@ -53,7 +53,16 @@ function cleanProductWhere(where = {}) {
     clean.showInValentineShop = Boolean(where.showInValentineShop);
   }
 
-  if (where._id || where.id) clean.id = String(where._id || where.id);
+  if (where._id || where.id) {
+    const rawId = where._id || where.id;
+    if (typeof rawId === 'object' && rawId !== null && rawId.$in && Array.isArray(rawId.$in)) {
+      clean.id = { in: rawId.$in.map(String) };
+    } else if (typeof rawId === 'object' && rawId !== null && rawId.in && Array.isArray(rawId.in)) {
+      clean.id = { in: rawId.in.map(String) };
+    } else {
+      clean.id = String(rawId);
+    }
+  }
 
   if (where.approvalStatus) {
     if (typeof where.approvalStatus === 'string') {
