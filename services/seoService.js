@@ -59,131 +59,450 @@ const getHtmlTemplate = () => {
   return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>${BRAND_NAME}</title></head><body><div id="root"></div></body></html>`;
 };
 
-// Generate Dynamic XML Sitemap using real database records
-const generateSitemapXml = async () => {
-  const Product = require('../models/Product');
-  const Category = require('../models/Category');
-  const Occasion = require('../models/Occasion');
+// In-memory cache for XML sitemaps (TTL: 1 hour)
+const SITEMAP_CACHE_TTL = 3600 * 1000;
+const sitemapCache = {
+  index: { xml: null, expiresAt: 0, count: 0 },
+  pages: { xml: null, expiresAt: 0, count: 0 },
+  categories: { xml: null, expiresAt: 0, count: 0 },
+  products: { xml: null, expiresAt: 0, count: 0 },
+  occasions: { xml: null, expiresAt: 0, count: 0 },
+  full: { xml: null, expiresAt: 0, count: 0 }
+};
 
-  const now = new Date().toISOString().split('T')[0];
+// Invalidate in-memory sitemap cache (e.g. after catalog update)
+const invalidateSitemapCache = () => {
+  for (const key of Object.keys(sitemapCache)) {
+    sitemapCache[key] = { xml: null, expiresAt: 0, count: 0 };
+  }
+};
 
-  // Core Static Routes
-  const staticRoutes = [
-    { loc: `${SITE_URL}/`, priority: '1.0', changefreq: 'daily' },
-    { loc: `${SITE_URL}/flower-delivery-hyderabad`, priority: '0.95', changefreq: 'weekly' },
-    { loc: `${SITE_URL}/flower-delivery-secunderabad`, priority: '0.95', changefreq: 'weekly' },
-    { loc: `${SITE_URL}/shop`, priority: '0.90', changefreq: 'daily' },
-    { loc: `${SITE_URL}/cakes`, priority: '0.85', changefreq: 'weekly' },
-    { loc: `${SITE_URL}/combos`, priority: '0.85', changefreq: 'weekly' },
-    { loc: `${SITE_URL}/about`, priority: '0.70', changefreq: 'monthly' },
-    { loc: `${SITE_URL}/contact`, priority: '0.70', changefreq: 'monthly' },
-    { loc: `${SITE_URL}/shipping`, priority: '0.60', changefreq: 'monthly' },
-    { loc: `${SITE_URL}/terms`, priority: '0.50', changefreq: 'monthly' },
-    { loc: `${SITE_URL}/privacy`, priority: '0.50', changefreq: 'monthly' },
-    { loc: `${SITE_URL}/refund-policy`, priority: '0.50', changefreq: 'monthly' },
-    { loc: `${SITE_URL}/cancellation-policy`, priority: '0.50', changefreq: 'monthly' }
-  ];
+// Format date into standard W3C date (YYYY-MM-DD)
+const formatW3cDate = (date) => {
+  if (!date) return null;
+  try {
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return null;
+    return d.toISOString().split('T')[0];
+  } catch {
+    return null;
+  }
+};
+
+// Authoritative list of static & location pages
+const STATIC_PAGE_DEFS = [
+  { path: '/', lastmod: '2026-10-27' },
+  { path: '/shop', lastmod: '2026-10-27' },
+  { path: '/flower-delivery-hyderabad', lastmod: '2026-10-27' },
+  { path: '/flower-delivery-secunderabad', lastmod: '2026-10-27' },
+  { path: '/about', lastmod: '2026-10-14' },
+  { path: '/contact', lastmod: '2026-10-14' },
+  { path: '/shipping', lastmod: '2026-10-14' },
+  { path: '/privacy', lastmod: '2026-10-14' },
+  { path: '/terms', lastmod: '2026-10-14' },
+  { path: '/refund-policy', lastmod: '2026-10-14' },
+  { path: '/cancellation-policy', lastmod: '2026-10-14' }
+];
+
+// Reserved static paths to prevent duplicate category inclusion
+const RESERVED_STATIC_PATHS = new Set(STATIC_PAGE_DEFS.map(p => p.path));
+
+// 1. Generate Static & Location Pages Sitemap
+const generatePagesSitemapXml = async (forceRefresh = false) => {
+  const now = Date.now();
+  if (!forceRefresh && sitemapCache.pages.xml && sitemapCache.pages.expiresAt > now) {
+    return sitemapCache.pages.xml;
+  }
 
   let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
-  xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n';
+  xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
 
-  // 1. Add Static Routes
-  for (const route of staticRoutes) {
+  for (const page of STATIC_PAGE_DEFS) {
+    const loc = page.path === '/' ? `${SITE_URL}/` : `${SITE_URL}${page.path}`;
     xml += '  <url>\n';
-    xml += `    <loc>${escapeXml(route.loc)}</loc>\n`;
-    xml += `    <lastmod>${now}</lastmod>\n`;
-    xml += `    <changefreq>${route.changefreq}</changefreq>\n`;
-    xml += `    <priority>${route.priority}</priority>\n`;
+    xml += `    <loc>${escapeXml(loc)}</loc>\n`;
+    if (page.lastmod) {
+      xml += `    <lastmod>${escapeXml(page.lastmod)}</lastmod>\n`;
+    }
     xml += '  </url>\n';
   }
 
-  // 2. Add Dynamic Categories from Database
+  xml += '</urlset>\n';
+
+  sitemapCache.pages = {
+    xml,
+    expiresAt: now + SITEMAP_CACHE_TTL,
+    count: STATIC_PAGE_DEFS.length
+  };
+
+  return xml;
+};
+
+// 2. Generate Product Categories Sitemap
+const generateCategoriesSitemapXml = async (forceRefresh = false) => {
+  const now = Date.now();
+  if (!forceRefresh && sitemapCache.categories.xml && sitemapCache.categories.expiresAt > now) {
+    return sitemapCache.categories.xml;
+  }
+
+  const prisma = require('../config/prisma');
+  let categories = [];
   try {
-    const categories = await Category.find({
-      $or: [{ status: 'active' }, { isActive: true }, { status: { $exists: false } }]
+    categories = await prisma.category.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        categoryUrl: true,
+        updatedAt: true
+      },
+      orderBy: { displayOrder: 'asc' }
     });
-
-    for (const cat of categories) {
-      if (!cat.slug) continue;
-      const catUrl = cat.categoryUrl ? `${SITE_URL}${cat.categoryUrl.startsWith('/') ? '' : '/'}${cat.categoryUrl}` : `${SITE_URL}/${cat.slug}`;
-      const catDate = cat.updatedAt ? new Date(cat.updatedAt).toISOString().split('T')[0] : now;
-
-      xml += '  <url>\n';
-      xml += `    <loc>${escapeXml(catUrl)}</loc>\n`;
-      xml += `    <lastmod>${catDate}</lastmod>\n`;
-      xml += '    <changefreq>weekly</changefreq>\n';
-      xml += '    <priority>0.80</priority>\n';
-      xml += '  </url>\n';
-    }
   } catch (err) {
     console.error('Error fetching categories for sitemap:', err.message);
   }
 
-  // 3. Add Dynamic Occasions from Database
-  try {
-    const occasions = await Occasion.find({
-      $or: [{ isActive: true }, { status: 'active' }, { isActive: { $exists: false } }]
-    });
+  let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+  xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
 
-    for (const occ of occasions) {
-      if (!occ.slug) continue;
-      const occUrl = `${SITE_URL}/occasions/${occ.slug}`;
-      const occDate = occ.updatedAt ? new Date(occ.updatedAt).toISOString().split('T')[0] : now;
+  const seenUrls = new Set();
+  let count = 0;
 
-      xml += '  <url>\n';
-      xml += `    <loc>${escapeXml(occUrl)}</loc>\n`;
-      xml += `    <lastmod>${occDate}</lastmod>\n`;
-      xml += '    <changefreq>weekly</changefreq>\n';
-      xml += '    <priority>0.75</priority>\n';
-      xml += '  </url>\n';
+  for (const cat of categories) {
+    if (!cat.slug && !cat.categoryUrl) continue;
+
+    let cleanPath = cat.categoryUrl;
+    if (!cleanPath || cleanPath === '/') {
+      cleanPath = `/${cat.slug}`;
     }
-  } catch (err) {
-    console.error('Error fetching occasions for sitemap:', err.message);
+    if (!cleanPath.startsWith('/')) {
+      cleanPath = `/${cleanPath}`;
+    }
+    cleanPath = cleanPath.replace(/\/+$/, '') || '/';
+
+    // Avoid duplicate static routes like /shop
+    if (RESERVED_STATIC_PATHS.has(cleanPath)) continue;
+
+    const fullUrl = `${SITE_URL}${cleanPath}`;
+    if (seenUrls.has(fullUrl)) continue;
+    seenUrls.add(fullUrl);
+
+    const lastmod = formatW3cDate(cat.updatedAt);
+
+    xml += '  <url>\n';
+    xml += `    <loc>${escapeXml(fullUrl)}</loc>\n`;
+    if (lastmod) {
+      xml += `    <lastmod>${escapeXml(lastmod)}</lastmod>\n`;
+    }
+    xml += '  </url>\n';
+    count++;
   }
 
-  // 4. Add Real Active Products from Database
+  xml += '</urlset>\n';
+
+  sitemapCache.categories = {
+    xml,
+    expiresAt: now + SITEMAP_CACHE_TTL,
+    count
+  };
+
+  return xml;
+};
+
+// 3. Generate Individual Products Sitemap (with Google Image XML support)
+const generateProductsSitemapXml = async (forceRefresh = false) => {
+  const now = Date.now();
+  if (!forceRefresh && sitemapCache.products.xml && sitemapCache.products.expiresAt > now) {
+    return sitemapCache.products.xml;
+  }
+
+  const prisma = require('../config/prisma');
+  let products = [];
   try {
-    const products = await Product.find({
-      hidden: { $ne: true },
-      $or: [
-        { isVisible: true },
-        { isVisible: { $exists: false } }
-      ]
-    });
-
-    for (const prod of products) {
-      const prodUrl = `${SITE_URL}/product/${prod._id}`;
-      const prodDate = prod.updatedAt
-        ? new Date(prod.updatedAt).toISOString().split('T')[0]
-        : (prod.createdAt ? new Date(prod.createdAt).toISOString().split('T')[0] : now);
-
-      xml += '  <url>\n';
-      xml += `    <loc>${escapeXml(prodUrl)}</loc>\n`;
-      xml += `    <lastmod>${prodDate}</lastmod>\n`;
-      xml += '    <changefreq>weekly</changefreq>\n';
-      xml += '    <priority>0.70</priority>\n';
-
-      // Include product primary image if available
-      if (prod.images && prod.images.length > 0 && prod.images[0]) {
-        let imgUrl = prod.images[0];
-        if (imgUrl.startsWith('/')) {
-          imgUrl = `${SITE_URL}${imgUrl}`;
+    products = await prisma.product.findMany({
+      where: {
+        isVisible: true,
+        approvalStatus: 'approved'
+      },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        updatedAt: true,
+        createdAt: true,
+        images: {
+          select: { url: true, alt: true, isPrimary: true },
+          orderBy: { isPrimary: 'desc' },
+          take: 1
         }
-        xml += '    <image:image>\n';
-        xml += `      <image:loc>${escapeXml(imgUrl)}</image:loc>\n`;
-        xml += `      <image:title>${escapeXml(prod.title || '')}</image:title>\n`;
-        xml += '    </image:image>\n';
-      }
-
-      xml += '  </url>\n';
-    }
+      },
+      orderBy: { updatedAt: 'desc' }
+    });
   } catch (err) {
     console.error('Error fetching products for sitemap:', err.message);
   }
 
+  let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+  xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n';
+
+  const seenUrls = new Set();
+  let count = 0;
+
+  for (const prod of products) {
+    if (!prod.id) continue;
+
+    const prodUrl = `${SITE_URL}/product/${prod.id}`;
+    if (seenUrls.has(prodUrl)) continue;
+    seenUrls.add(prodUrl);
+
+    const lastmod = formatW3cDate(prod.updatedAt || prod.createdAt);
+
+    xml += '  <url>\n';
+    xml += `    <loc>${escapeXml(prodUrl)}</loc>\n`;
+    if (lastmod) {
+      xml += `    <lastmod>${escapeXml(lastmod)}</lastmod>\n`;
+    }
+
+    // Google Image Sitemap XML Extension
+    if (prod.images && prod.images.length > 0 && prod.images[0] && prod.images[0].url) {
+      let imgUrl = prod.images[0].url.trim();
+      if (imgUrl.startsWith('//')) {
+        imgUrl = `https:${imgUrl}`;
+      } else if (imgUrl.startsWith('/')) {
+        imgUrl = `${SITE_URL}${imgUrl}`;
+      }
+
+      if (imgUrl.startsWith('https://') || imgUrl.startsWith('http://')) {
+        const imgTitle = prod.images[0].alt || prod.name || 'Spring Blossoms Florist';
+        xml += '    <image:image>\n';
+        xml += `      <image:loc>${escapeXml(imgUrl)}</image:loc>\n`;
+        xml += `      <image:title>${escapeXml(imgTitle)}</image:title>\n`;
+        xml += '    </image:image>\n';
+      }
+    }
+
+    xml += '  </url>\n';
+    count++;
+  }
+
   xml += '</urlset>\n';
+
+  sitemapCache.products = {
+    xml,
+    expiresAt: now + SITEMAP_CACHE_TTL,
+    count
+  };
+
   return xml;
 };
+
+// 4. Generate Occasions Sitemap
+const generateOccasionsSitemapXml = async (forceRefresh = false) => {
+  const now = Date.now();
+  if (!forceRefresh && sitemapCache.occasions.xml && sitemapCache.occasions.expiresAt > now) {
+    return sitemapCache.occasions.xml;
+  }
+
+  const prisma = require('../config/prisma');
+  let occasions = [];
+  try {
+    occasions = await prisma.occasion.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        updatedAt: true
+      },
+      orderBy: { displayOrder: 'asc' }
+    });
+  } catch (err) {
+    console.error('Error fetching occasions for sitemap:', err.message);
+  }
+
+  let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+  xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
+
+  const seenUrls = new Set();
+  let count = 0;
+
+  for (const occ of occasions) {
+    if (!occ.slug) continue;
+
+    const occUrl = `${SITE_URL}/occasions/${occ.slug}`;
+    if (seenUrls.has(occUrl)) continue;
+    seenUrls.add(occUrl);
+
+    const lastmod = formatW3cDate(occ.updatedAt);
+
+    xml += '  <url>\n';
+    xml += `    <loc>${escapeXml(occUrl)}</loc>\n`;
+    if (lastmod) {
+      xml += `    <lastmod>${escapeXml(lastmod)}</lastmod>\n`;
+    }
+    xml += '  </url>\n';
+    count++;
+  }
+
+  xml += '</urlset>\n';
+
+  sitemapCache.occasions = {
+    xml,
+    expiresAt: now + SITEMAP_CACHE_TTL,
+    count
+  };
+
+  return xml;
+};
+
+// 5. Generate Primary Sitemap Index (/sitemap.xml)
+const generateSitemapIndexXml = async (forceRefresh = false) => {
+  const now = Date.now();
+  if (!forceRefresh && sitemapCache.index.xml && sitemapCache.index.expiresAt > now) {
+    return sitemapCache.index.xml;
+  }
+
+  const prisma = require('../config/prisma');
+
+  // Discover latest modification dates for each child sitemap
+  let latestPagesDate = '2026-10-27';
+  let latestCatDate = '2026-10-27';
+  let latestProdDate = '2026-10-27';
+  let latestOccDate = '2026-10-27';
+
+  try {
+    const latestProd = await prisma.product.findFirst({
+      where: { isVisible: true, approvalStatus: 'approved' },
+      select: { updatedAt: true },
+      orderBy: { updatedAt: 'desc' }
+    });
+    if (latestProd && latestProd.updatedAt) {
+      latestProdDate = formatW3cDate(latestProd.updatedAt) || latestProdDate;
+    }
+
+    const latestCat = await prisma.category.findFirst({
+      where: { isActive: true },
+      select: { updatedAt: true },
+      orderBy: { updatedAt: 'desc' }
+    });
+    if (latestCat && latestCat.updatedAt) {
+      latestCatDate = formatW3cDate(latestCat.updatedAt) || latestCatDate;
+    }
+
+    const latestOcc = await prisma.occasion.findFirst({
+      where: { isActive: true },
+      select: { updatedAt: true },
+      orderBy: { updatedAt: 'desc' }
+    });
+    if (latestOcc && latestOcc.updatedAt) {
+      latestOccDate = formatW3cDate(latestOcc.updatedAt) || latestOccDate;
+    }
+  } catch (err) {
+    console.error('Error fetching latest timestamps for sitemap index:', err.message);
+  }
+
+  let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+  xml += '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
+
+  // Child Sitemaps
+  const childSitemaps = [
+    { loc: `${SITE_URL}/sitemap-pages.xml`, lastmod: latestPagesDate },
+    { loc: `${SITE_URL}/sitemap-categories.xml`, lastmod: latestCatDate },
+    { loc: `${SITE_URL}/sitemap-products.xml`, lastmod: latestProdDate },
+    { loc: `${SITE_URL}/sitemap-occasions.xml`, lastmod: latestOccDate }
+  ];
+
+  for (const sitemap of childSitemaps) {
+    xml += '  <sitemap>\n';
+    xml += `    <loc>${escapeXml(sitemap.loc)}</loc>\n`;
+    if (sitemap.lastmod) {
+      xml += `    <lastmod>${escapeXml(sitemap.lastmod)}</lastmod>\n`;
+    }
+    xml += '  </sitemap>\n';
+  }
+
+  xml += '</sitemapindex>\n';
+
+  sitemapCache.index = {
+    xml,
+    expiresAt: now + SITEMAP_CACHE_TTL,
+    count: childSitemaps.length
+  };
+
+  return xml;
+};
+
+// 6. Generate Full Monolithic Sitemap (Single XML with all URLs)
+const generateFullSitemapXml = async (forceRefresh = false) => {
+  const now = Date.now();
+  if (!forceRefresh && sitemapCache.full.xml && sitemapCache.full.expiresAt > now) {
+    return sitemapCache.full.xml;
+  }
+
+  // Pre-generate parts
+  await Promise.all([
+    generatePagesSitemapXml(forceRefresh),
+    generateCategoriesSitemapXml(forceRefresh),
+    generateProductsSitemapXml(forceRefresh),
+    generateOccasionsSitemapXml(forceRefresh)
+  ]);
+
+  let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+  xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n';
+
+  const extractUrls = (subXml) => {
+    const matches = subXml.match(/<url>[\s\S]*?<\/url>/g);
+    return matches ? matches.map(u => `  ${u.trim()}`).join('\n') : '';
+  };
+
+  const pagesBody = extractUrls(sitemapCache.pages.xml || '');
+  const catBody = extractUrls(sitemapCache.categories.xml || '');
+  const occBody = extractUrls(sitemapCache.occasions.xml || '');
+  const prodBody = extractUrls(sitemapCache.products.xml || '');
+
+  if (pagesBody) xml += `${pagesBody}\n`;
+  if (catBody) xml += `${catBody}\n`;
+  if (occBody) xml += `${occBody}\n`;
+  if (prodBody) xml += `${prodBody}\n`;
+
+  xml += '</urlset>\n';
+
+  const totalCount = (sitemapCache.pages.count || 0) +
+    (sitemapCache.categories.count || 0) +
+    (sitemapCache.occasions.count || 0) +
+    (sitemapCache.products.count || 0);
+
+  sitemapCache.full = {
+    xml,
+    expiresAt: now + SITEMAP_CACHE_TTL,
+    count: totalCount
+  };
+
+  return xml;
+};
+
+// Master router function: defaults to Sitemap Index XML (or child by type)
+const generateSitemapXml = async (type = 'index', forceRefresh = false) => {
+  switch (type) {
+    case 'pages':
+    case 'static':
+      return generatePagesSitemapXml(forceRefresh);
+    case 'categories':
+      return generateCategoriesSitemapXml(forceRefresh);
+    case 'products':
+      return generateProductsSitemapXml(forceRefresh);
+    case 'occasions':
+      return generateOccasionsSitemapXml(forceRefresh);
+    case 'full':
+    case 'single':
+      return generateFullSitemapXml(forceRefresh);
+    case 'index':
+    default:
+      return generateSitemapIndexXml(forceRefresh);
+  }
+};
+
 
 // Generate standard robots.txt
 const generateRobotsTxt = () => {
@@ -814,6 +1133,14 @@ const renderCrawlerHtml = async (reqPath) => {
 
 module.exports = {
   generateSitemapXml,
+  generateSitemapIndexXml,
+  generatePagesSitemapXml,
+  generateCategoriesSitemapXml,
+  generateProductsSitemapXml,
+  generateOccasionsSitemapXml,
+  generateFullSitemapXml,
+  invalidateSitemapCache,
+  sitemapCache,
   generateRobotsTxt,
   renderCrawlerHtml,
   BRAND_NAME,

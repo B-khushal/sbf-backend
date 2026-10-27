@@ -2,23 +2,117 @@ const express = require('express');
 const router = express.Router();
 const {
   generateSitemapXml,
+  generateSitemapIndexXml,
+  generatePagesSitemapXml,
+  generateCategoriesSitemapXml,
+  generateProductsSitemapXml,
+  generateOccasionsSitemapXml,
+  generateFullSitemapXml,
+  invalidateSitemapCache,
   generateRobotsTxt,
   renderCrawlerHtml
 } = require('../services/seoService');
 
-// @desc    Dynamic XML Sitemap
+// Helper to send XML responses
+const sendXmlResponse = (res, xml) => {
+  res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400');
+  return res.status(200).send(xml);
+};
+
+// @desc    Primary Sitemap Index (or full sitemap if ?format=full)
 // @route   GET /api/seo/sitemap.xml or /sitemap.xml
 // @access  Public
-router.get('/sitemap.xml', async (req, res) => {
+router.get(['/sitemap.xml', '/sitemap-index.xml'], async (req, res) => {
   try {
-    const xml = await generateSitemapXml();
-    res.setHeader('Content-Type', 'application/xml; charset=utf-8');
-    res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400'); // 1hr browser, 24hr CDN
-    return res.status(200).send(xml);
+    const format = req.query.format;
+    const force = req.query.force === 'true' || req.query.refresh === '1';
+    const xml = format === 'full' || format === 'single'
+      ? await generateFullSitemapXml(force)
+      : await generateSitemapIndexXml(force);
+    return sendXmlResponse(res, xml);
   } catch (error) {
-    console.error('Error generating dynamic sitemap:', error);
+    console.error('Error generating sitemap index:', error);
     return res.status(500).send('<?xml version="1.0" encoding="UTF-8"?><error>Error generating sitemap</error>');
   }
+});
+
+// @desc    Static & Location Pages Sitemap
+// @route   GET /api/seo/sitemap-pages.xml or /sitemap-static.xml
+// @access  Public
+router.get(['/sitemap-pages.xml', '/sitemap-static.xml'], async (req, res) => {
+  try {
+    const force = req.query.force === 'true' || req.query.refresh === '1';
+    const xml = await generatePagesSitemapXml(force);
+    return sendXmlResponse(res, xml);
+  } catch (error) {
+    console.error('Error generating pages sitemap:', error);
+    return res.status(500).send('<?xml version="1.0" encoding="UTF-8"?><error>Error generating pages sitemap</error>');
+  }
+});
+
+// @desc    Product Categories Sitemap
+// @route   GET /api/seo/sitemap-categories.xml
+// @access  Public
+router.get('/sitemap-categories.xml', async (req, res) => {
+  try {
+    const force = req.query.force === 'true' || req.query.refresh === '1';
+    const xml = await generateCategoriesSitemapXml(force);
+    return sendXmlResponse(res, xml);
+  } catch (error) {
+    console.error('Error generating categories sitemap:', error);
+    return res.status(500).send('<?xml version="1.0" encoding="UTF-8"?><error>Error generating categories sitemap</error>');
+  }
+});
+
+// @desc    Individual Products Sitemap (with Google Image XML tags)
+// @route   GET /api/seo/sitemap-products.xml
+// @access  Public
+router.get('/sitemap-products.xml', async (req, res) => {
+  try {
+    const force = req.query.force === 'true' || req.query.refresh === '1';
+    const xml = await generateProductsSitemapXml(force);
+    return sendXmlResponse(res, xml);
+  } catch (error) {
+    console.error('Error generating products sitemap:', error);
+    return res.status(500).send('<?xml version="1.0" encoding="UTF-8"?><error>Error generating products sitemap</error>');
+  }
+});
+
+// @desc    Occasions Sitemap
+// @route   GET /api/seo/sitemap-occasions.xml
+// @access  Public
+router.get('/sitemap-occasions.xml', async (req, res) => {
+  try {
+    const force = req.query.force === 'true' || req.query.refresh === '1';
+    const xml = await generateOccasionsSitemapXml(force);
+    return sendXmlResponse(res, xml);
+  } catch (error) {
+    console.error('Error generating occasions sitemap:', error);
+    return res.status(500).send('<?xml version="1.0" encoding="UTF-8"?><error>Error generating occasions sitemap</error>');
+  }
+});
+
+// @desc    Full Combined Sitemap
+// @route   GET /api/seo/sitemap-full.xml
+// @access  Public
+router.get('/sitemap-full.xml', async (req, res) => {
+  try {
+    const force = req.query.force === 'true' || req.query.refresh === '1';
+    const xml = await generateFullSitemapXml(force);
+    return sendXmlResponse(res, xml);
+  } catch (error) {
+    console.error('Error generating full sitemap:', error);
+    return res.status(500).send('<?xml version="1.0" encoding="UTF-8"?><error>Error generating full sitemap</error>');
+  }
+});
+
+// @desc    Invalidate Sitemap Cache
+// @route   POST /api/seo/invalidate-cache
+// @access  Public
+router.post('/invalidate-cache', (req, res) => {
+  invalidateSitemapCache();
+  return res.status(200).json({ success: true, message: 'Sitemap cache invalidated successfully' });
 });
 
 // @desc    Dynamic Robots.txt
