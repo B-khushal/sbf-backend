@@ -108,6 +108,8 @@ class CategoryDocument {
 
     this.seoTitle = data.seoTitle || data.metaTitle || data.name || '';
     this.seoDescription = data.seoDescription || data.metaDescription || data.description || '';
+    this.metaTitle = data.metaTitle || this.seoTitle;
+    this.metaDescription = data.metaDescription || this.seoDescription;
 
     if (data.parent && typeof data.parent === 'object') {
       const pId = String(data.parent.id || data.parent._id || '');

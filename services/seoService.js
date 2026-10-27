@@ -105,7 +105,7 @@ const generateSitemapXml = async () => {
 
     for (const cat of categories) {
       if (!cat.slug) continue;
-      const catUrl = `${SITE_URL}/${cat.slug}`;
+      const catUrl = cat.categoryUrl ? `${SITE_URL}${cat.categoryUrl.startsWith('/') ? '' : '/'}${cat.categoryUrl}` : `${SITE_URL}/${cat.slug}`;
       const catDate = cat.updatedAt ? new Date(cat.updatedAt).toISOString().split('T')[0] : now;
 
       xml += '  <url>\n';
@@ -193,8 +193,14 @@ Allow: /
 Allow: /shop
 Allow: /flower-delivery-hyderabad
 Allow: /flower-delivery-secunderabad
+Allow: /bouquets
+Allow: /roses
 Allow: /cakes
 Allow: /combos
+Allow: /sunflowers
+Allow: /lilies
+Allow: /flower-baskets
+Allow: /hydrangea
 Allow: /occasions/
 Allow: /product/
 Allow: /products/
@@ -273,10 +279,20 @@ const renderCrawlerHtml = async (reqPath) => {
         ? Math.round(product.price * (1 - product.discount / 100))
         : product.price;
 
-      pageTitle = `${product.title} - ₹${finalPrice} | Spring Blossoms Florist`;
-      metaDescription = product.description
-        ? product.description.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim().slice(0, 155)
-        : `Order ${product.title} online with same-day and midnight flower delivery across Hyderabad from Spring Blossoms Florist.`;
+      const categoryName = typeof product.category === 'string'
+        ? product.category
+        : (product.category && product.category.name) || 'Flowers';
+
+      const giftType = product.flowerType 
+        ? `${product.flowerType} Flowers`
+        : (categoryName === 'Cakes' ? 'Celebration Cakes' : categoryName === 'Combos' ? 'Flower & Cake Combos' : `${categoryName} Bouquets`);
+
+      const productFeatures = product.shortDescription
+        ? product.shortDescription.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim()
+        : (product.flowerType || (product.tags && product.tags.length > 0 ? (Array.isArray(product.tags) ? product.tags.slice(0, 3).join(', ') : product.tags) : giftType.toLowerCase()));
+
+      pageTitle = `${product.title} | ${giftType} in Hyderabad`;
+      metaDescription = `Discover ${product.title}, featuring ${productFeatures}. Explore available variants, pricing from ₹${finalPrice}, and express same-day or midnight delivery in Hyderabad from Spring Blossoms Florist.`;
       canonicalUrl = `${SITE_URL}/product/${product._id}`;
       ogType = 'product';
 
@@ -445,7 +461,13 @@ const renderCrawlerHtml = async (reqPath) => {
     const segments = cleanPath.split('/').filter(Boolean);
     const candidateSlug = segments[segments.length - 1];
 
-    let category = await Category.findOne({ slug: candidateSlug });
+    let category = await Category.findOne({
+      $or: [
+        { slug: candidateSlug },
+        { categoryUrl: cleanPath },
+        { categoryUrl: `/${candidateSlug}` }
+      ]
+    });
     let occasion = null;
 
     if (!category) {
@@ -454,11 +476,29 @@ const renderCrawlerHtml = async (reqPath) => {
 
     if (category || occasion) {
       const entityName = category ? category.name : occasion.name;
-      const entityDesc = (category ? category.description : occasion.description) ||
+      const entityDesc = (category ? (category.metaDescription || category.description) : occasion.description) ||
         `Explore handcrafted ${entityName} floral arrangements, bouquets, and gift sets from Spring Blossoms Florist in Hyderabad.`;
 
-      pageTitle = `${entityName} Delivery in Hyderabad | Spring Blossoms Florist`;
-      metaDescription = entityDesc;
+      const categoryH1Map = {
+        'bouquets': 'Flower Bouquets in Hyderabad',
+        'roses': 'Rose Bouquets in Hyderabad',
+        'cakes': 'Cakes in Hyderabad for Every Celebration',
+        'combos': 'Flower and Cake Combos in Hyderabad',
+        'cake-flower-combos': 'Flower and Cake Combos in Hyderabad',
+        'sunflowers': 'Sunflower Bouquets',
+        'lilies': 'Lily Flowers and Bouquets',
+        'flower-baskets': 'Flower Baskets for Special Occasions',
+        'baskets': 'Flower Baskets for Special Occasions',
+        'hydrangea': 'Hydrangea Flower Bouquets in Hyderabad'
+      };
+      const pageH1 = categoryH1Map[candidateSlug] || `${entityName} in Hyderabad`;
+
+      pageTitle = (category && (category.metaTitle || category.seoTitle))
+        ? (category.metaTitle || category.seoTitle)
+        : `${entityName} Delivery in Hyderabad | Spring Blossoms Florist`;
+      metaDescription = (category && (category.metaDescription || category.seoDescription))
+        ? (category.metaDescription || category.seoDescription)
+        : entityDesc;
       canonicalUrl = `${SITE_URL}${cleanPath}`;
 
       const breadcrumbSchema = {
@@ -491,8 +531,8 @@ const renderCrawlerHtml = async (reqPath) => {
             <a href="/">Home</a> &gt; <a href="/shop">Shop</a> &gt; <span>${escapeHtml(entityName)}</span>
           </nav>
           <header class="mb-8">
-            <h1 class="text-3xl font-extrabold text-slate-900 mb-3">${escapeHtml(entityName)} in Hyderabad</h1>
-            <p class="text-slate-700 leading-relaxed">${escapeHtml(entityDesc)}</p>
+            <h1 class="text-3xl font-extrabold text-slate-900 mb-3">${escapeHtml(pageH1)}</h1>
+            <p class="text-slate-700 leading-relaxed">${escapeHtml(metaDescription)}</p>
           </header>
           <section class="products-grid">
             <h2 class="text-2xl font-bold text-slate-800 mb-4">Available ${escapeHtml(entityName)} Arrangements</h2>
@@ -516,7 +556,7 @@ const renderCrawlerHtml = async (reqPath) => {
   // ── 5. DEFAULT HOMEPAGE ──────────────────────────────────────────
   if (!bodyContent) {
     pageTitle = 'Flower Delivery in Hyderabad | Spring Blossoms Florist';
-    metaDescription = 'Send fresh flower bouquets, roses and thoughtful gifts with Spring Blossoms Florist in Hyderabad. Explore flowers for birthdays, anniversaries and special occasions.';
+    metaDescription = 'Shop fresh bouquets, roses and flower gifts in Hyderabad with Spring Blossoms Florist. Explore flowers for special occasions, cakes and gift combos.';
     canonicalUrl = `${SITE_URL}/`;
 
     // Fetch sample featured products for crawlable homepage links
@@ -585,14 +625,15 @@ const renderCrawlerHtml = async (reqPath) => {
         <nav aria-label="Main Navigation" class="mb-8 pb-4 border-b border-slate-200">
           <ul class="flex flex-wrap gap-4 text-sm font-semibold text-slate-700">
             <li><a href="/shop" class="hover:text-rose-600">All Flowers</a></li>
-            <li><a href="/shop?category=Roses" class="hover:text-rose-600">Roses</a></li>
-            <li><a href="/shop?category=Bouquets" class="hover:text-rose-600">Bouquets</a></li>
+            <li><a href="/bouquets" class="hover:text-rose-600">Bouquets in Hyderabad</a></li>
+            <li><a href="/roses" class="hover:text-rose-600">Roses</a></li>
             <li><a href="/cakes" class="hover:text-rose-600">Cakes</a></li>
-            <li><a href="/combos" class="hover:text-rose-600">Flowers &amp; Cake Combos</a></li>
-            <li><a href="/occasions/birthday" class="hover:text-rose-600">Birthday Flowers</a></li>
-            <li><a href="/occasions/anniversary" class="hover:text-rose-600">Anniversary Flowers</a></li>
+            <li><a href="/combos" class="hover:text-rose-600">Flower &amp; Cake Combos</a></li>
+            <li><a href="/sunflowers" class="hover:text-rose-600">Sunflowers</a></li>
+            <li><a href="/lilies" class="hover:text-rose-600">Lilies</a></li>
+            <li><a href="/flower-baskets" class="hover:text-rose-600">Flower Baskets</a></li>
+            <li><a href="/hydrangea" class="hover:text-rose-600">Hydrangeas</a></li>
             <li><a href="/flower-delivery-hyderabad" class="hover:text-rose-600">Hyderabad Delivery</a></li>
-            <li><a href="/flower-delivery-secunderabad" class="hover:text-rose-600">Secunderabad Delivery</a></li>
             <li><a href="/contact" class="hover:text-rose-600">Contact Us</a></li>
           </ul>
         </nav>
@@ -603,14 +644,56 @@ const renderCrawlerHtml = async (reqPath) => {
             Flower Delivery in Hyderabad for Every Special Occasion
           </h1>
           <p class="text-lg text-slate-700 leading-relaxed mb-6">
-            Send farm-fresh floral bouquets, handcrafted roses, delicious gourmet cakes, and customized celebration gift sets with <strong>Spring Blossoms Florist</strong> in Hyderabad. We deliver joy across the Twin Cities with guaranteed same-day delivery and our signature midnight surprise delivery slots.
+            Send fresh bouquets, roses and flower gifts in Hyderabad with Spring Blossoms Florist. Explore flowers for special occasions, cakes and gift combos with guaranteed same-day delivery and signature midnight slots.
           </p>
           <div class="flex flex-wrap justify-center gap-4 text-sm font-semibold">
-            <a href="/shop" class="px-6 py-3 bg-rose-600 text-white rounded-xl shadow-md hover:bg-rose-700">Shop Fresh Flowers</a>
+            <a href="/bouquets" class="px-6 py-3 bg-rose-600 text-white rounded-xl shadow-md hover:bg-rose-700">Shop Bouquets</a>
+            <a href="/roses" class="px-6 py-3 bg-white text-slate-800 border border-slate-300 rounded-xl hover:bg-slate-50">Rose Bouquets</a>
             <a href="/cakes" class="px-6 py-3 bg-white text-slate-800 border border-slate-300 rounded-xl hover:bg-slate-50">Explore Cakes</a>
-            <a href="/flower-delivery-hyderabad" class="px-6 py-3 bg-rose-50 text-rose-700 border border-rose-200 rounded-xl hover:bg-rose-100">Check Delivery Areas</a>
+            <a href="/combos" class="px-6 py-3 bg-white text-slate-800 border border-slate-300 rounded-xl hover:bg-slate-50">Combos</a>
           </div>
         </header>
+
+        <!-- Category Highlights Section with Semantic H2s -->
+        <section class="category-highlights mb-16 space-y-10">
+          <div class="p-6 bg-slate-50 rounded-2xl border border-slate-200">
+            <h2 class="text-2xl font-bold text-slate-900 mb-2">Shop Bouquets in Hyderabad</h2>
+            <p class="text-slate-600 text-sm leading-relaxed mb-3">Discover handcrafted flower bouquets in Hyderabad designed for birthdays, anniversaries, and congratulations. From wrapped Dutch blooms to elegant floral hampers, order bouquets near me with same-day express doorstep delivery.</p>
+            <a href="/bouquets" class="text-rose-600 font-semibold text-sm hover:underline">Explore All Bouquets &rarr;</a>
+          </div>
+
+          <div class="p-6 bg-rose-50/50 rounded-2xl border border-rose-100">
+            <h2 class="text-2xl font-bold text-slate-900 mb-2">Find Your Perfect Roses Bouquet</h2>
+            <p class="text-slate-600 text-sm leading-relaxed mb-3">Fresh Dutch and Indian roses in classic red, blush pink, radiant yellow, and pristine white. Express romance, admiration, or gratitude with handcrafted rose bouquets in Hyderabad.</p>
+            <div class="flex flex-wrap gap-3 text-xs font-semibold">
+              <a href="/roses" class="px-3 py-1.5 bg-white border border-rose-200 rounded-lg text-rose-700">All Roses Bouquet</a>
+              <a href="/roses?color=red" class="px-3 py-1.5 bg-white border border-rose-200 rounded-lg text-rose-700">Red Roses</a>
+              <a href="/roses?color=pink" class="px-3 py-1.5 bg-white border border-pink-200 rounded-lg text-pink-700">Pink Roses</a>
+              <a href="/roses?color=yellow" class="px-3 py-1.5 bg-white border border-amber-200 rounded-lg text-amber-700">Yellow Roses</a>
+              <a href="/roses?color=white" class="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-700">White Roses</a>
+            </div>
+          </div>
+
+          <div class="p-6 bg-amber-50/40 rounded-2xl border border-amber-100">
+            <h2 class="text-2xl font-bold text-slate-900 mb-2">Sunflowers, Lilies and Fresh Seasonal Flowers</h2>
+            <p class="text-slate-600 text-sm leading-relaxed mb-3">Brighten any room with golden sunflower bouquets, fragrant oriental lilies, and exotic hydrangea arrangements handpicked for longevity and vibrant aesthetics.</p>
+            <div class="flex flex-wrap gap-3 text-xs font-semibold">
+              <a href="/sunflowers" class="px-3 py-1.5 bg-white border border-amber-200 rounded-lg text-amber-800">Sunflowers</a>
+              <a href="/lilies" class="px-3 py-1.5 bg-white border border-amber-200 rounded-lg text-amber-800">Lilies</a>
+              <a href="/hydrangea" class="px-3 py-1.5 bg-white border border-amber-200 rounded-lg text-amber-800">Hydrangeas</a>
+            </div>
+          </div>
+
+          <div class="p-6 bg-purple-50/40 rounded-2xl border border-purple-100">
+            <h2 class="text-2xl font-bold text-slate-900 mb-2">Cakes and Flower Gift Combos</h2>
+            <p class="text-slate-600 text-sm leading-relaxed mb-3">Pair farm-fresh floral bouquets with delectable gourmet bakery cakes (Dutch Truffle, Red Velvet, Black Forest) and gift baskets for seamless birthday and anniversary gifting in Hyderabad.</p>
+            <div class="flex flex-wrap gap-3 text-xs font-semibold">
+              <a href="/cakes" class="px-3 py-1.5 bg-white border border-purple-200 rounded-lg text-purple-700">Cakes Delivery</a>
+              <a href="/combos" class="px-3 py-1.5 bg-white border border-purple-200 rounded-lg text-purple-700">Flower &amp; Cake Combos</a>
+              <a href="/flower-baskets" class="px-3 py-1.5 bg-white border border-purple-200 rounded-lg text-purple-700">Flower Baskets</a>
+            </div>
+          </div>
+        </section>
 
         <!-- Featured Products Collection -->
         <section class="featured-products mb-16">
@@ -713,11 +796,18 @@ const renderCrawlerHtml = async (reqPath) => {
 
   finalHtml = finalHtml.replace(/<head>/i, `<head>${newHeadTags}`);
 
-  // Inject body content inside <div id="root">
-  finalHtml = finalHtml.replace(
-    /<div id=["']root["']><\/div>/i,
-    `<div id="root">${bodyContent}</div>`
-  );
+  // Inject body content inside <div id="root"> (handling either empty or populated root element)
+  if (/<div id=["']root["']>[\s\S]*?<\/div>(?=\s*<\/body>|\s*<script\b)/i.test(finalHtml)) {
+    finalHtml = finalHtml.replace(
+      /<div id=["']root["']>[\s\S]*?<\/div>(?=\s*<\/body>|\s*<script\b)/i,
+      `<div id="root">${bodyContent}</div>`
+    );
+  } else {
+    finalHtml = finalHtml.replace(
+      /<div id=["']root["']><\/div>/i,
+      `<div id="root">${bodyContent}</div>`
+    );
+  }
 
   return finalHtml;
 };

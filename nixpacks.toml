@@ -1,11 +1,10 @@
 providers = ["node"]
 
 [phases.setup]
-nixPkgs = ["nodejs_20"]
-aptPkgs = ["fontconfig", "libfreetype6", "libssl-dev", "bzip2"]
+nixPkgs = ["nodejs_20", "openssl"]
 
 [phases.install]
-cmds = ["npm install", "PHANTOMJS_CDNURL=https://npmmirror.com/mirrors/phantomjs node node_modules/phantomjs-prebuilt/install.js || true"]
+cmds = ["npm install", "npx prisma generate"]
 
 [start]
 cmd = "npm start"

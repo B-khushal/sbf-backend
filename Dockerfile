@@ -10,11 +10,15 @@ FROM node:20-alpine AS deps
 
 WORKDIR /app
 
-# Copy only package files for optimal Docker layer caching
-COPY package.json package-lock.json ./
+# Install openssl and libc6-compat for Prisma binary generation on Alpine
+RUN apk add --no-cache openssl libc6-compat
 
-# Install production dependencies only (ci ensures lockfile integrity)
-RUN npm ci --omit=dev
+# Copy package files and prisma schema
+COPY package.json package-lock.json ./
+COPY prisma/ ./prisma/
+
+# Install production dependencies and generate Prisma client
+RUN npm ci --omit=dev && npx prisma generate
 
 # ── Stage 2: Production ─────────────────────
 FROM node:20-alpine AS production
@@ -24,15 +28,16 @@ LABEL maintainer="B-khushal"
 LABEL description="SBF Florist Backend API"
 LABEL version="1.0.2"
 
-# Install curl for healthcheck, dumb-init, fontconfig, gcompat, libc6-compat and libstdc++ for phantomjs PDF rendering on Alpine
-RUN apk add --no-cache curl dumb-init fontconfig gcompat libc6-compat libstdc++
+# Install curl for healthcheck, dumb-init, openssl for prisma, fontconfig, gcompat, libc6-compat and libstdc++ for phantomjs PDF rendering on Alpine
+RUN apk add --no-cache curl dumb-init openssl fontconfig gcompat libc6-compat libstdc++
 
 # Set production environment
 ENV NODE_ENV=production
+ENV PORT=5000
 
 WORKDIR /app
 
-# Copy production dependencies from deps stage
+# Copy production dependencies from deps stage (includes generated @prisma/client)
 COPY --from=deps /app/node_modules ./node_modules
 
 # Copy application source code
@@ -44,14 +49,15 @@ COPY controllers/ ./controllers/
 COPY middleware/ ./middleware/
 COPY models/ ./models/
 COPY modules/ ./modules/
+COPY prisma/ ./prisma/
 COPY routes/ ./routes/
 COPY scripts/ ./scripts/
 COPY services/ ./services/
 COPY utils/ ./utils/
 COPY assets/ ./assets/
 
-# Create uploads directory with correct permissions
-RUN mkdir -p uploads && chown -R node:node /app
+# Create uploads and scratch directory with correct permissions
+RUN mkdir -p uploads scratch && chown -R node:node /app
 
 # Switch to non-root user for security
 USER node
