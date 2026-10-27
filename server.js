@@ -713,14 +713,6 @@ const startServer = async () => {
       return res.status(200).send(xml);
     };
 
-    // Serve Sitemap XSL Stylesheet for browser UI/UX styling
-    app.get('/sitemap.xsl', (req, res) => {
-      const path = require('path');
-      res.setHeader('Content-Type', 'text/xsl; charset=utf-8');
-      res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=604800');
-      return res.sendFile(path.join(__dirname, 'public/sitemap.xsl'));
-    });
-
     // Primary Sitemap Index
     app.get(['/sitemap.xml', '/sitemap-index.xml'], async (req, res) => {
       try {

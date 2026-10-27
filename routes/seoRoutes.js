@@ -20,16 +20,6 @@ const sendXmlResponse = (res, xml) => {
   return res.status(200).send(xml);
 };
 
-// @desc    Serve Sitemap XSL Stylesheet for browser UI/UX styling
-// @route   GET /api/seo/sitemap.xsl or /sitemap.xsl
-// @access  Public
-router.get('/sitemap.xsl', (req, res) => {
-  const path = require('path');
-  res.setHeader('Content-Type', 'text/xsl; charset=utf-8');
-  res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=604800');
-  return res.sendFile(path.join(__dirname, '../public/sitemap.xsl'));
-});
-
 // @desc    Primary Sitemap Index (or full sitemap if ?format=full)
 // @route   GET /api/seo/sitemap.xml or /sitemap.xml
 // @access  Public

@@ -93,7 +93,6 @@ const formatW3cDate = (date) => {
 const STATIC_PAGE_DEFS = [
   { path: '/', lastmod: '2026-10-27' },
   { path: '/shop', lastmod: '2026-10-27' },
-  { path: '/sitemap', lastmod: '2026-10-27' },
   { path: '/flower-delivery-hyderabad', lastmod: '2026-10-27' },
   { path: '/flower-delivery-secunderabad', lastmod: '2026-10-27' },
   { path: '/about', lastmod: '2026-10-14' },
@@ -116,7 +115,6 @@ const generatePagesSitemapXml = async (forceRefresh = false) => {
   }
 
   let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
-  xml += '<?xml-stylesheet type="text/xsl" href="/sitemap.xsl"?>\n';
   xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
 
   for (const page of STATIC_PAGE_DEFS) {
@@ -166,7 +164,6 @@ const generateCategoriesSitemapXml = async (forceRefresh = false) => {
   }
 
   let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
-  xml += '<?xml-stylesheet type="text/xsl" href="/sitemap.xsl"?>\n';
   xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
 
   const seenUrls = new Set();
@@ -247,7 +244,6 @@ const generateProductsSitemapXml = async (forceRefresh = false) => {
   }
 
   let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
-  xml += '<?xml-stylesheet type="text/xsl" href="/sitemap.xsl"?>\n';
   xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n';
 
   const seenUrls = new Set();
@@ -326,7 +322,6 @@ const generateOccasionsSitemapXml = async (forceRefresh = false) => {
   }
 
   let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
-  xml += '<?xml-stylesheet type="text/xsl" href="/sitemap.xsl"?>\n';
   xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
 
   const seenUrls = new Set();
@@ -408,7 +403,6 @@ const generateSitemapIndexXml = async (forceRefresh = false) => {
   }
 
   let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
-  xml += '<?xml-stylesheet type="text/xsl" href="/sitemap.xsl"?>\n';
   xml += '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
 
   // Child Sitemaps
@@ -455,7 +449,6 @@ const generateFullSitemapXml = async (forceRefresh = false) => {
   ]);
 
   let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
-  xml += '<?xml-stylesheet type="text/xsl" href="/sitemap.xsl"?>\n';
   xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n';
 
   const extractUrls = (subXml) => {
@@ -777,132 +770,6 @@ const renderCrawlerHtml = async (reqPath) => {
           <p class="text-slate-600 leading-relaxed">
             Every arrangement is prepared by our master florists and transported with temperature-conscious handling to preserve peak freshness and vibrant colors.
           </p>
-        </section>
-      </div>
-    `;
-  }
-
-  // ── 3B. HTML SITEMAP DIRECTORY ──────────────────────────────────
-  else if (cleanPath === '/sitemap') {
-    pageTitle = 'Sitemap | Spring Blossoms Florist — Flower Delivery Hyderabad';
-    metaDescription = 'Explore Spring Blossoms Florist HTML sitemap. Discover fresh flower bouquets, roses, cakes, combos, occasion gifts, and flower delivery across Hyderabad and Secunderabad.';
-    canonicalUrl = `${SITE_URL}/sitemap`;
-
-    bodyContent = `
-      <div class="sbf-crawler-shell p-6 max-w-5xl mx-auto font-sans">
-        <nav aria-label="Breadcrumb" class="text-sm mb-4">
-          <a href="/">Home</a> &gt; <span>Sitemap</span>
-        </nav>
-        <header class="mb-8 text-center">
-          <h1 class="text-3xl font-extrabold text-slate-900 mb-3">Explore Spring Blossoms Florist</h1>
-          <p class="text-lg text-slate-700 leading-relaxed max-w-2xl mx-auto">
-            Find our flower collections, bouquets, gifts, delivery information, and helpful pages in one place.
-          </p>
-        </header>
-
-        <section class="mb-8">
-          <h2 class="text-2xl font-bold text-slate-800 mb-4">Shop All Flowers &amp; Gifts</h2>
-          <ul class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-            <li><a href="/shop" class="text-rose-700 font-medium">Shop All Flowers</a></li>
-            <li><a href="/bouquets" class="text-rose-700 font-medium">Flower Bouquets</a></li>
-            <li><a href="/roses" class="text-rose-700 font-medium">Fresh Roses</a></li>
-            <li><a href="/flower-baskets" class="text-rose-700 font-medium">Flower Baskets</a></li>
-            <li><a href="/vase" class="text-rose-700 font-medium">Vase Arrangements</a></li>
-            <li><a href="/premium-roses" class="text-rose-700 font-medium">Premium Long-Stem Roses</a></li>
-            <li><a href="/orchids" class="text-rose-700 font-medium">Exotic Orchids</a></li>
-            <li><a href="/tulips" class="text-rose-700 font-medium">Dutch Tulips</a></li>
-            <li><a href="/carnation" class="text-rose-700 font-medium">Fresh Carnations</a></li>
-            <li><a href="/mixed-baskets" class="text-rose-700 font-medium">Mixed Flower Baskets</a></li>
-            <li><a href="/budget-friendly" class="text-rose-700 font-medium">Budget Friendly Flowers</a></li>
-            <li><a href="/lavender-lisianthus" class="text-rose-700 font-medium">Lavender Lisianthus</a></li>
-          </ul>
-        </section>
-
-        <section class="mb-8">
-          <h2 class="text-2xl font-bold text-slate-800 mb-4">Shop by Flower Type &amp; Colors</h2>
-          <ul class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-            <li><a href="/roses" class="text-rose-700 font-medium">Red Roses Collection</a></li>
-            <li><a href="/sunflowers" class="text-rose-700 font-medium">Sunflowers Collection</a></li>
-            <li><a href="/lilies" class="text-rose-700 font-medium">Asiatic &amp; Oriental Lilies</a></li>
-            <li><a href="/hydrangea" class="text-rose-700 font-medium">Royal Hydrangeas</a></li>
-            <li><a href="/lavender-lisianthus" class="text-rose-700 font-medium">Lavender Lisianthus</a></li>
-            <li><a href="/carnation" class="text-rose-700 font-medium">Fresh Carnations</a></li>
-            <li><a href="/orchids" class="text-rose-700 font-medium">Exotic Orchids</a></li>
-            <li><a href="/tulips" class="text-rose-700 font-medium">Dutch Tulips</a></li>
-            <li><a href="/bouquets" class="text-rose-700 font-medium">Mixed Floral Bouquets</a></li>
-            <li><a href="/party-arrangements" class="text-rose-700 font-medium">Party Flower Arrangements</a></li>
-          </ul>
-        </section>
-
-        <section class="mb-8">
-          <h2 class="text-2xl font-bold text-slate-800 mb-4">Shop by Occasion</h2>
-          <ul class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-            <li><a href="/birthday" class="text-rose-700 font-medium">Birthday Flowers &amp; Gifts</a></li>
-            <li><a href="/anniversary" class="text-rose-700 font-medium">Anniversary Flowers &amp; Gifts</a></li>
-            <li><a href="/love-romance" class="text-rose-700 font-medium">Love &amp; Romance Bouquets</a></li>
-            <li><a href="/wedding" class="text-rose-700 font-medium">Wedding &amp; Bridal Florals</a></li>
-            <li><a href="/congratulations" class="text-rose-700 font-medium">Congratulations Bouquets</a></li>
-            <li><a href="/thank-you" class="text-rose-700 font-medium">Thank You Flowers</a></li>
-            <li><a href="/get-well-soon" class="text-rose-700 font-medium">Get Well Soon Bouquets</a></li>
-            <li><a href="/sympathy" class="text-rose-700 font-medium">Sympathy &amp; Condolence Flowers</a></li>
-            <li><a href="/mothers-day" class="text-rose-700 font-medium">Mother's Day Flowers</a></li>
-            <li><a href="/fathers-day" class="text-rose-700 font-medium">Father's Day Gifts</a></li>
-            <li><a href="/valentines-day" class="text-rose-700 font-medium">Valentine's Day Special</a></li>
-            <li><a href="/friendship-day" class="text-rose-700 font-medium">Friendship Day Bouquets</a></li>
-            <li><a href="/baby-shower" class="text-rose-700 font-medium">Baby Shower Florals</a></li>
-            <li><a href="/housewarming" class="text-rose-700 font-medium">Housewarming Flowers</a></li>
-            <li><a href="/teachers-day" class="text-rose-700 font-medium">Teacher's Day Flowers</a></li>
-            <li><a href="/new-year" class="text-rose-700 font-medium">New Year Celebrations</a></li>
-            <li><a href="/christmas" class="text-rose-700 font-medium">Christmas Festive Florals</a></li>
-            <li><a href="/diwali" class="text-rose-700 font-medium">Diwali Festive Gifts</a></li>
-          </ul>
-        </section>
-
-        <section class="mb-8">
-          <h2 class="text-2xl font-bold text-slate-800 mb-4">Cakes &amp; Celebration Combos</h2>
-          <ul class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-            <li><a href="/cakes" class="text-rose-700 font-medium">All Celebration Cakes</a></li>
-            <li><a href="/cakes/chocolate-cakes" class="text-rose-700 font-medium">Dutch Truffle &amp; Chocolate Cakes</a></li>
-            <li><a href="/cakes/fruit-cakes" class="text-rose-700 font-medium">Fresh Fruit Cakes</a></li>
-            <li><a href="/cakes/red-velvet-cakes" class="text-rose-700 font-medium">Classic Red Velvet Cakes</a></li>
-            <li><a href="/cakes/black-forest-cakes" class="text-rose-700 font-medium">Traditional Black Forest Cakes</a></li>
-            <li><a href="/cakes/birthday-cakes" class="text-rose-700 font-medium">Special Birthday Cakes</a></li>
-            <li><a href="/cake-flower-combos" class="text-rose-700 font-medium">Cake &amp; Flower Combos</a></li>
-            <li><a href="/anniversary-combos" class="text-rose-700 font-medium">Anniversary Gift Combos</a></li>
-            <li><a href="/birthday-combos" class="text-rose-700 font-medium">Birthday Gift Combos</a></li>
-            <li><a href="/combo-packs" class="text-rose-700 font-medium">Celebration Combo Packs</a></li>
-            <li><a href="/fruit-baskets" class="text-rose-700 font-medium">Gourmet Fruit Baskets</a></li>
-            <li><a href="/chocolate-bouquets" class="text-rose-700 font-medium">Chocolate Bouquets &amp; Baskets</a></li>
-            <li><a href="/chocolate-gift-sets" class="text-rose-700 font-medium">Premium Chocolate Gift Sets</a></li>
-          </ul>
-        </section>
-
-        <section class="mb-8">
-          <h2 class="text-2xl font-bold text-slate-800 mb-4">Flower Delivery Locations</h2>
-          <ul class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <li><a href="/flower-delivery-hyderabad" class="text-rose-700 font-medium">Flower Delivery in Hyderabad (Same-Day &amp; Midnight)</a></li>
-            <li><a href="/flower-delivery-secunderabad" class="text-rose-700 font-medium">Flower Delivery in Secunderabad (Same-Day &amp; Midnight)</a></li>
-          </ul>
-        </section>
-
-        <section class="mb-8">
-          <h2 class="text-2xl font-bold text-slate-800 mb-4">About &amp; Customer Support</h2>
-          <ul class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-            <li><a href="/about" class="text-rose-700 font-medium">About Spring Blossoms Florist</a></li>
-            <li><a href="/contact" class="text-rose-700 font-medium">Contact Us &amp; Floral Studio</a></li>
-            <li><a href="/shipping" class="text-rose-700 font-medium">Shipping &amp; Delivery Guide</a></li>
-            <li><a href="/vendors-consent" class="text-rose-700 font-medium">Become a Partner Vendor</a></li>
-          </ul>
-        </section>
-
-        <section class="mb-8">
-          <h2 class="text-2xl font-bold text-slate-800 mb-4">Customer Policies &amp; Legal</h2>
-          <ul class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-            <li><a href="/terms" class="text-slate-700 font-medium">Terms of Service</a></li>
-            <li><a href="/privacy" class="text-slate-700 font-medium">Privacy Policy</a></li>
-            <li><a href="/refund-policy" class="text-slate-700 font-medium">Refund Policy</a></li>
-            <li><a href="/cancellation-policy" class="text-slate-700 font-medium">Cancellation Policy</a></li>
-          </ul>
         </section>
       </div>
     `;
