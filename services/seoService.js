@@ -516,6 +516,734 @@ const generateSitemapXml = async (type = 'index', forceRefresh = false) => {
   }
 };
 
+// Render Human-Friendly Interactive UI for Browser Visitors browsing .xml sitemaps
+const renderSitemapUiHtml = async (type = 'index') => {
+  const prisma = require('../config/prisma');
+
+  const PAGE_LABELS = {
+    '/': 'Home — Spring Blossoms Florist',
+    '/shop': 'Shop All Flowers & Gifts',
+    '/flower-delivery-hyderabad': 'Flower Delivery in Hyderabad (Local Hub)',
+    '/flower-delivery-secunderabad': 'Flower Delivery in Secunderabad (Local Hub)',
+    '/valentine-special': 'Valentine\'s Special Gifts Experience',
+    '/valentine-shop': 'Valentine\'s Day Shop',
+    '/vendor/register': 'Vendor Registration & Onboarding',
+    '/about': 'About Spring Blossoms Florist',
+    '/contact': 'Contact Us & Store Location',
+    '/shipping': 'Shipping & Delivery Policy',
+    '/privacy': 'Privacy Policy',
+    '/terms': 'Terms of Service',
+    '/refund-policy': 'Refund & Return Policy',
+    '/cancellation-policy': 'Order Cancellation Policy',
+    '/vendors-consent': 'Vendor Consent & Terms'
+  };
+
+  let pagesCount = STATIC_PAGE_DEFS.length;
+  let catCount = 44;
+  let prodCount = 180;
+  let occCount = 20;
+
+  try {
+    const [cCount, pCount, oCount] = await Promise.all([
+      prisma.category.count({ where: { isActive: true } }),
+      prisma.product.count({ where: { isVisible: true, approvalStatus: 'approved' } }),
+      prisma.occasion.count({ where: { isActive: true } })
+    ]);
+    if (cCount) catCount = cCount;
+    if (pCount) prodCount = pCount;
+    if (oCount) occCount = oCount + 1;
+  } catch (err) {
+    // fallback to defaults
+  }
+
+  const sitemapsMeta = [
+    { id: 'index', name: 'sitemap.xml', url: `${SITE_URL}/sitemap.xml`, label: 'All Sitemaps (Index)', count: 4 },
+    { id: 'pages', name: 'sitemap-pages.xml', url: `${SITE_URL}/sitemap-pages.xml`, label: 'Pages', count: pagesCount },
+    { id: 'categories', name: 'sitemap-categories.xml', url: `${SITE_URL}/sitemap-categories.xml`, label: 'Categories', count: catCount },
+    { id: 'products', name: 'sitemap-products.xml', url: `${SITE_URL}/sitemap-products.xml`, label: 'Products', count: prodCount },
+    { id: 'occasions', name: 'sitemap-occasions.xml', url: `${SITE_URL}/sitemap-occasions.xml`, label: 'Occasions', count: occCount }
+  ];
+
+  let currentTitle = 'XML Sitemap Index';
+  let currentSubtitle = `Master sitemap index containing 4 sub-sitemaps with ${pagesCount + catCount + prodCount + occCount} discoverable URLs for sbflorist.in`;
+  let currentFile = 'sitemap.xml';
+  let isIndex = false;
+  let rows = [];
+
+  if (type === 'index') {
+    isIndex = true;
+    currentTitle = 'XML Sitemap Index';
+    currentFile = 'sitemap.xml';
+  } else if (type === 'pages' || type === 'static') {
+    currentTitle = 'Static & Location Pages Sitemap';
+    currentSubtitle = 'Canonical public pages, local delivery hubs, policy pages, and vendor registration.';
+    currentFile = 'sitemap-pages.xml';
+
+    rows = STATIC_PAGE_DEFS.map((p, idx) => {
+      const fullUrl = p.path === '/' ? `${SITE_URL}/` : `${SITE_URL}${p.path}`;
+      const isHub = p.path.includes('delivery');
+      const isPolicy = p.path.includes('policy') || p.path.includes('terms') || p.path.includes('privacy');
+      return {
+        idx: idx + 1,
+        title: PAGE_LABELS[p.path] || p.path,
+        url: fullUrl,
+        lastmod: p.lastmod || '2026-10-27',
+        badge: isHub ? 'Location Hub' : (isPolicy ? 'Legal / Policy' : 'Main Page'),
+        badgeColor: isHub ? '#0284c7' : (isPolicy ? '#64748b' : '#be123c'),
+        badgeBg: isHub ? '#e0f2fe' : (isPolicy ? '#f1f5f9' : '#ffe4e6')
+      };
+    });
+  } else if (type === 'categories') {
+    currentTitle = 'Product Categories Sitemap';
+    currentSubtitle = 'Active category collections covering bouquets, roses, lilies, cakes, and gift combos.';
+    currentFile = 'sitemap-categories.xml';
+
+    let categories = [];
+    try {
+      categories = await prisma.category.findMany({
+        where: { isActive: true },
+        select: { id: true, name: true, slug: true, categoryUrl: true, updatedAt: true },
+        orderBy: { displayOrder: 'asc' }
+      });
+    } catch (e) {
+      console.error('Error fetching categories for UI:', e.message);
+    }
+
+    const seenUrls = new Set();
+    let idx = 1;
+    for (const cat of categories) {
+      if (!cat.slug && !cat.categoryUrl) continue;
+      let cleanPath = cat.categoryUrl;
+      if (!cleanPath || cleanPath === '/') cleanPath = `/${cat.slug}`;
+      if (!cleanPath.startsWith('/')) cleanPath = `/${cleanPath}`;
+      cleanPath = cleanPath.replace(/\/+$/, '') || '/';
+      if (RESERVED_STATIC_PATHS.has(cleanPath)) continue;
+
+      const fullUrl = `${SITE_URL}${cleanPath}`;
+      if (seenUrls.has(fullUrl)) continue;
+      seenUrls.add(fullUrl);
+
+      rows.push({
+        idx: idx++,
+        title: cat.name || cat.slug,
+        url: fullUrl,
+        lastmod: formatW3cDate(cat.updatedAt) || '2026-10-27',
+        badge: cleanPath.startsWith('/cakes') ? 'Cakes' : (cleanPath.startsWith('/combos') ? 'Combos' : 'Flowers'),
+        badgeColor: '#059669',
+        badgeBg: '#ecfdf5'
+      });
+    }
+  } else if (type === 'products') {
+    currentTitle = 'Products Catalog Sitemap';
+    currentSubtitle = 'Approved and visible handcrafted flower bouquets, cakes, and celebration gifts.';
+    currentFile = 'sitemap-products.xml';
+
+    let products = [];
+    try {
+      products = await prisma.product.findMany({
+        where: { isVisible: true, approvalStatus: 'approved' },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          updatedAt: true,
+          createdAt: true,
+          images: { select: { url: true, alt: true }, orderBy: { isPrimary: 'desc' }, take: 1 }
+        },
+        orderBy: { updatedAt: 'desc' }
+      });
+    } catch (e) {
+      console.error('Error fetching products for UI:', e.message);
+    }
+
+    const seenUrls = new Set();
+    let idx = 1;
+    for (const prod of products) {
+      if (!prod.id) continue;
+      const fullUrl = `${SITE_URL}/product/${prod.id}`;
+      if (seenUrls.has(fullUrl)) continue;
+      seenUrls.add(fullUrl);
+
+      rows.push({
+        idx: idx++,
+        title: prod.name,
+        url: fullUrl,
+        image: prod.images?.[0]?.url || '',
+        lastmod: formatW3cDate(prod.updatedAt || prod.createdAt) || '2026-10-25',
+        badge: 'In Stock',
+        badgeColor: '#b45309',
+        badgeBg: '#fef3c7'
+      });
+    }
+  } else if (type === 'occasions') {
+    currentTitle = 'Occasions & Celebrations Sitemap';
+    currentSubtitle = 'Curated celebration gift collections for Birthday, Anniversary, Festivals, and Holidays.';
+    currentFile = 'sitemap-occasions.xml';
+
+    let occasions = [];
+    try {
+      occasions = await prisma.occasion.findMany({
+        where: { isActive: true },
+        select: { id: true, name: true, slug: true, updatedAt: true },
+        orderBy: { displayOrder: 'asc' }
+      });
+    } catch (e) {
+      console.error('Error fetching occasions for UI:', e.message);
+    }
+
+    rows.push({
+      idx: 1,
+      title: 'All Occasions Directory Hub',
+      url: `${SITE_URL}/occasions`,
+      lastmod: formatW3cDate(new Date()),
+      badge: 'Hub',
+      badgeColor: '#7c3aed',
+      badgeBg: '#f5f3ff'
+    });
+
+    let idx = 2;
+    for (const occ of occasions) {
+      if (!occ.slug) continue;
+      rows.push({
+        idx: idx++,
+        title: `${occ.name} Gifts & Flowers`,
+        url: `${SITE_URL}/occasions/${occ.slug}`,
+        lastmod: formatW3cDate(occ.updatedAt) || '2026-07-31',
+        badge: 'Celebration',
+        badgeColor: '#db2777',
+        badgeBg: '#fdf2f8'
+      });
+    }
+  }
+
+  const childCards = [
+    {
+      name: 'sitemap-pages.xml',
+      url: `${SITE_URL}/sitemap-pages.xml`,
+      title: 'Static & Location Pages',
+      desc: 'Core shop pages, Hyderabad & Secunderabad local delivery hubs, policy pages, and vendor registration.',
+      count: pagesCount,
+      badge: '15 Pages',
+      color: '#be123c',
+      bg: '#fff1f2'
+    },
+    {
+      name: 'sitemap-categories.xml',
+      url: `${SITE_URL}/sitemap-categories.xml`,
+      title: 'Product Categories',
+      desc: 'All active catalog categories covering fresh bouquets, roses, lilies, celebration cakes, and hampers.',
+      count: catCount,
+      badge: `${catCount} Categories`,
+      color: '#059669',
+      bg: '#ecfdf5'
+    },
+    {
+      name: 'sitemap-products.xml',
+      url: `${SITE_URL}/sitemap-products.xml`,
+      title: 'Products Catalog',
+      desc: 'All active and approved handcrafted flower arrangements, cakes, and gifts with Google Images.',
+      count: prodCount,
+      badge: `${prodCount} Products`,
+      color: '#b45309',
+      bg: '#fef3c7'
+    },
+    {
+      name: 'sitemap-occasions.xml',
+      url: `${SITE_URL}/sitemap-occasions.xml`,
+      title: 'Occasions & Celebrations',
+      desc: 'Curated celebration hubs for Birthday, Anniversary, Romance, Congratulations, and festive holidays.',
+      count: occCount,
+      badge: `${occCount} Occasions`,
+      color: '#7c3aed',
+      bg: '#f5f3ff'
+    }
+  ];
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(currentTitle)} | ${BRAND_NAME}</title>
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <style>
+    :root {
+      --primary: #be123c;
+      --primary-hover: #9f1239;
+      --primary-light: #fff1f2;
+      --accent: #d97706;
+      --bg: #fcfaf7;
+      --card-bg: #ffffff;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --radius: 12px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", "Helvetica Neue", Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      padding: 24px 16px 64px;
+    }
+    .container { max-width: 1200px; margin: 0 auto; }
+    .top-header {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px 28px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    }
+    .brand-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .brand-col h1 {
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--primary);
+      letter-spacing: -0.02em;
+    }
+    .brand-col p {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+    .header-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      border-radius: 8px;
+      text-decoration: none;
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+    .btn-outline {
+      background: #f8fafc;
+      color: #334155;
+      border: 1px solid var(--border);
+    }
+    .btn-outline:hover {
+      background: #e2e8f0;
+      color: #0f172a;
+    }
+    .btn-xml {
+      background: #f1f5f9;
+      color: #0f172a;
+      border: 1px solid #cbd5e1;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: 12px;
+    }
+    .btn-xml:hover {
+      background: #e2e8f0;
+      border-color: #94a3b8;
+    }
+    .btn-primary {
+      background: var(--primary);
+      color: #ffffff;
+      border: 1px solid var(--primary);
+    }
+    .btn-primary:hover {
+      background: var(--primary-hover);
+    }
+    .tabs-nav {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      border-top: 1px solid var(--border);
+      padding-top: 16px;
+    }
+    .tab-link {
+      padding: 7px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-decoration: none;
+      border-radius: 6px;
+      transition: all 0.15s;
+    }
+    .tab-link:hover {
+      background: #f1f5f9;
+      color: var(--text);
+    }
+    .tab-link.active {
+      background: var(--primary-light);
+      color: var(--primary);
+    }
+    .info-banner {
+      background: #fffbeb;
+      border: 1px solid #fef3c7;
+      border-left: 4px solid var(--accent);
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      font-size: 13px;
+      color: #92400e;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .filter-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 18px;
+      margin-bottom: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .search-input {
+      flex: 1;
+      min-width: 220px;
+      padding: 8px 12px;
+      font-size: 14px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      outline: none;
+      background: #f8fafc;
+    }
+    .search-input:focus {
+      border-color: var(--primary);
+      background: #ffffff;
+      box-shadow: 0 0 0 3px rgba(190, 18, 60, 0.1);
+    }
+    .stats-badge {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+    .table-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+    }
+    .table-responsive {
+      overflow-x: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 14px;
+    }
+    thead {
+      background: #f8fafc;
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      padding: 12px 16px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+    }
+    td {
+      padding: 12px 16px;
+      border-bottom: 1px solid #f1f5f9;
+      vertical-align: middle;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background-color: #fafbfd; }
+    .link-title {
+      font-weight: 600;
+      color: var(--text);
+      display: block;
+      margin-bottom: 2px;
+      font-size: 14px;
+    }
+    .link-url {
+      color: var(--primary);
+      text-decoration: none;
+      word-break: break-all;
+      font-size: 13px;
+      transition: color 0.15s;
+    }
+    .link-url:hover {
+      text-decoration: underline;
+      color: var(--primary-hover);
+    }
+    .badge-chip {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 4px;
+    }
+    .date-badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: #f1f5f9;
+      color: #475569;
+      font-size: 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+    }
+    .thumb-img {
+      width: 44px;
+      height: 44px;
+      border-radius: 6px;
+      object-fit: cover;
+      border: 1px solid #e2e8f0;
+      background: #f8fafc;
+    }
+    .action-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--primary);
+      background: var(--primary-light);
+      border-radius: 6px;
+      text-decoration: none;
+      transition: all 0.15s;
+    }
+    .action-btn:hover {
+      background: var(--primary);
+      color: #ffffff;
+    }
+    .index-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      padding: 20px;
+    }
+    .sitemap-card {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+      background: #ffffff;
+      transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .sitemap-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(0,0,0,0.04);
+      border-color: #cbd5e1;
+    }
+    .card-tag {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+    }
+    .badge-count {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: var(--primary-light);
+      color: var(--primary);
+    }
+    .sitemap-card p {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.45;
+      margin-top: 6px;
+      margin-bottom: 16px;
+      flex-grow: 1;
+    }
+    .card-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 12px;
+      border-top: 1px solid #f1f5f9;
+      gap: 8px;
+    }
+    .page-footer {
+      margin-top: 32px;
+      text-align: center;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    .page-footer a {
+      color: var(--primary);
+      text-decoration: none;
+    }
+    @media (max-width: 640px) {
+      body { padding: 16px 10px 48px; }
+      .brand-row { flex-direction: column; align-items: flex-start; }
+      .header-actions { width: 100%; justify-content: flex-start; }
+      .tabs-nav { overflow-x: auto; flex-wrap: nowrap; padding-bottom: 6px; }
+      .tab-link { white-space: nowrap; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="top-header">
+      <div class="brand-row">
+        <div class="brand-col">
+          <h1>${BRAND_NAME}</h1>
+          <p>${escapeHtml(currentSubtitle)}</p>
+        </div>
+        <div class="header-actions">
+          <a href="/${escapeHtml(currentFile)}?format=xml" class="btn btn-xml" target="_blank" title="View underlying raw XML format">
+            &lt;/&gt; Raw XML
+          </a>
+          <a href="/" class="btn btn-outline" target="_blank">
+            Visit Store &nearr;
+          </a>
+        </div>
+      </div>
+      <div class="tabs-nav">
+        ${sitemapsMeta.map(tab => {
+          const isActive = (type === tab.id) || (type === 'static' && tab.id === 'pages');
+          return `<a href="${tab.url}" class="tab-link ${isActive ? 'active' : ''}">${escapeHtml(tab.label)} (${tab.count})</a>`;
+        }).join('')}
+      </div>
+    </div>
+
+    <div class="info-banner">
+      <span>
+        <strong>Interactive XML Sitemap:</strong> Click any link below to explore that page. Search engines (Googlebot, Bingbot) automatically receive pure XML.
+      </span>
+      <span style="font-size: 12px; color: #b45309;">
+        Format: W3C Valid
+      </span>
+    </div>
+
+    ${isIndex ? `
+      <div class="table-card">
+        <div class="index-grid">
+          ${childCards.map(card => `
+            <div class="sitemap-card">
+              <div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                  <span class="card-tag">${escapeHtml(card.title)}</span>
+                  <span class="badge-count" style="color:${card.color}; background:${card.bg};">${escapeHtml(card.badge)}</span>
+                </div>
+                <h3 style="font-size:18px; margin-bottom:6px;">
+                  <a href="${card.url}" style="color:inherit; text-decoration:none;">${escapeHtml(card.name)}</a>
+                </h3>
+                <p>${escapeHtml(card.desc)}</p>
+              </div>
+              <div class="card-footer">
+                <a href="${card.url}" class="btn btn-primary" style="font-size:12px; padding:6px 14px;">Browse &rarr;</a>
+                <a href="${card.url}?format=xml" class="btn btn-xml" style="font-size:11px; padding:5px 10px;" target="_blank">&lt;/&gt; XML</a>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    ` : `
+      <div class="filter-card">
+        <input 
+          type="text" 
+          id="sitemapSearch" 
+          class="search-input" 
+          placeholder="Filter ${rows.length} URLs in real-time (type name, route, or category)..." 
+          autofocus
+        />
+        <span class="stats-badge" id="visibleCount">Showing ${rows.length} of ${rows.length} URLs</span>
+      </div>
+
+      <div class="table-card">
+        <div class="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 50px;">#</th>
+                ${type === 'products' ? '<th style="width: 60px;">Image</th>' : ''}
+                <th>Title &amp; Page</th>
+                <th>Canonical URL</th>
+                <th style="width: 120px;">Last Modified</th>
+                <th style="width: 90px; text-align: center;">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows.map(r => `
+                <tr class="sitemap-row" data-search="${escapeHtml((r.title + ' ' + r.url).toLowerCase())}">
+                  <td style="color: var(--text-muted); font-size: 12px; font-weight: 600;">${r.idx}</td>
+                  ${type === 'products' ? `
+                    <td>
+                      ${r.image ? `<img src="${escapeHtml(r.image)}" alt="${escapeHtml(r.title)}" class="thumb-img" onerror="this.style.display='none'" />` : '<div class="thumb-img" style="display:flex;align-items:center;justify-content:center;font-size:18px;">🌸</div>'}
+                    </td>
+                  ` : ''}
+                  <td>
+                    <div class="link-title">${escapeHtml(r.title)}</div>
+                    <span class="badge-chip" style="color: ${r.badgeColor || '#be123c'}; background: ${r.badgeBg || '#fff1f2'};">${escapeHtml(r.badge || 'Link')}</span>
+                  </td>
+                  <td>
+                    <a href="${escapeHtml(r.url)}" target="_blank" class="link-url">${escapeHtml(r.url)}</a>
+                  </td>
+                  <td>
+                    <span class="date-badge">${escapeHtml(r.lastmod)}</span>
+                  </td>
+                  <td style="text-align: center;">
+                    <a href="${escapeHtml(r.url)}" target="_blank" class="action-btn" title="Open this page in a new tab">Open &nearr;</a>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `}
+
+    <div class="page-footer">
+      <p>&copy; ${new Date().getFullYear()} ${BRAND_NAME}. Handcrafted in Hyderabad &amp; Secunderabad. <a href="/">sbflorist.in</a></p>
+    </div>
+  </div>
+
+  <script>
+    const searchInput = document.getElementById('sitemapSearch');
+    const countDisplay = document.getElementById('visibleCount');
+    const rows = document.querySelectorAll('.sitemap-row');
+    
+    if (searchInput && rows.length > 0) {
+      searchInput.addEventListener('input', function() {
+        const q = this.value.toLowerCase().trim();
+        let matchCount = 0;
+        
+        rows.forEach(row => {
+          const text = row.getAttribute('data-search') || row.innerText.toLowerCase();
+          if (!q || text.includes(q)) {
+            row.style.display = '';
+            matchCount++;
+          } else {
+            row.style.display = 'none';
+          }
+        });
+        
+        if (countDisplay) {
+          countDisplay.textContent = 'Showing ' + matchCount + ' of ' + rows.length + ' URLs';
+        }
+      });
+    }
+  </script>
+</body>
+</html>`;
+};
 
 // Generate standard robots.txt
 const generateRobotsTxt = () => {
@@ -1156,6 +1884,7 @@ module.exports = {
   sitemapCache,
   generateRobotsTxt,
   renderCrawlerHtml,
+  renderSitemapUiHtml,
   BRAND_NAME,
   SITE_URL,
   PHONE_NUMBER,
