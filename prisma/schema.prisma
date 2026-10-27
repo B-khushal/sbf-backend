@@ -1195,3 +1195,49 @@ model MigrationCheckpoint {
   errorMessage  String?
   updatedAt     DateTime @updatedAt
 }
+
+// ==========================================
+// FREQUENTLY ASKED QUESTIONS (FAQ) SYSTEM
+// ==========================================
+
+model FaqCategory {
+  id           String   @id @default(cuid())
+  name         String
+  slug         String   @unique
+  description  String?
+  icon         String?
+  displayOrder Int      @default(0)
+  isActive     Boolean  @default(true)
+  faqs         Faq[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([slug])
+  @@index([displayOrder])
+  @@index([isActive])
+}
+
+model Faq {
+  id               String       @id @default(cuid())
+  question         String
+  answer           String
+  slug             String       @unique
+  categoryId       String
+  category         FaqCategory  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  keywords         String[]     @default([])
+  isPublished      Boolean      @default(true)
+  isFeatured       Boolean      @default(false)
+  displayLocations String[]     @default(["faq_page"])
+  displayOrder     Int          @default(0)
+  seoTitle         String?
+  seoDescription   String?
+  helpfulCount     Int          @default(0)
+  notHelpfulCount  Int          @default(0)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@index([categoryId])
+  @@index([isPublished])
+  @@index([isFeatured])
+  @@index([displayOrder])
+}

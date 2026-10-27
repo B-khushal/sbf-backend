@@ -693,6 +693,7 @@ const startServer = async () => {
     app.use('/api/newsletter', newsletterRoutes);
     app.use('/api/mappls', require('./routes/mapplsRoutes'));
     app.use('/api/marketing', require('./routes/marketingRoutes'));
+    app.use('/api/faqs', require('./routes/faqRoutes'));
     app.use('/api/seo', require('./routes/seoRoutes'));
     app.use('/', require('./routes/seoRoutes'));
 

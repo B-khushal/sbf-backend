@@ -105,7 +105,8 @@ const STATIC_PAGE_DEFS = [
   { path: '/refund-policy', lastmod: '2026-10-14' },
   { path: '/cancellation-policy', lastmod: '2026-10-14' },
   { path: '/vendors-consent', lastmod: '2026-10-14' },
-  { path: '/vendor/register', lastmod: '2026-10-27' }
+  { path: '/vendor/register', lastmod: '2026-10-27' },
+  { path: '/faq', lastmod: '2026-10-27' }
 ];
 
 // Reserved static paths to prevent duplicate category inclusion
@@ -535,7 +536,8 @@ const renderSitemapUiHtml = async (type = 'index') => {
     '/terms': 'Terms of Service',
     '/refund-policy': 'Refund & Return Policy',
     '/cancellation-policy': 'Order Cancellation Policy',
-    '/vendors-consent': 'Vendor Consent & Terms'
+    '/vendors-consent': 'Vendor Consent & Terms',
+    '/faq': 'Frequently Asked Questions (FAQ) — Spring Blossoms Florist'
   };
 
   let pagesCount = STATIC_PAGE_DEFS.length;
@@ -1511,6 +1513,78 @@ const renderCrawlerHtml = async (reqPath) => {
           <p class="text-slate-600 leading-relaxed">
             Every arrangement is prepared by our master florists and transported with temperature-conscious handling to preserve peak freshness and vibrant colors.
           </p>
+        </section>
+      </div>
+    `;
+  }
+
+  // ── 3.5. DEDICATED FAQ PAGE ────────────────────────────────────────
+  else if (cleanPath === '/faq') {
+    pageTitle = 'FAQs | Flower, Cake & Gift Delivery in Hyderabad | SB Florist';
+    metaDescription = 'Find answers about flower delivery in Hyderabad and Secunderabad, bouquets, cakes, gift combos, order tracking, payments, cancellations and refunds at Spring Blossoms Florist.';
+    canonicalUrl = `${SITE_URL}/faq`;
+
+    const prisma = require('../config/prisma');
+    let faqsList = [];
+    try {
+      faqsList = await prisma.faq.findMany({
+        where: { isPublished: true },
+        include: { category: true },
+        orderBy: [{ displayOrder: 'asc' }, { createdAt: 'asc' }],
+        take: 50
+      });
+    } catch (e) {
+      console.warn('FAQ crawler fetch fallback:', e.message);
+    }
+
+    const faqSchema = {
+      '@context': 'https://schema.org',
+      '@type': 'FAQPage',
+      mainEntity: faqsList.slice(0, 30).map(f => ({
+        '@type': 'Question',
+        name: f.question,
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: f.answer.replace(/<[^>]+>/g, ' ')
+        }
+      }))
+    };
+
+    const breadcrumbSchema = {
+      '@context': 'https://schema.org',
+      '@type': 'BreadcrumbList',
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, name: 'Home', item: SITE_URL },
+        { '@type': 'ListItem', position: 2, name: 'Frequently Asked Questions', item: canonicalUrl }
+      ]
+    };
+
+    structuredData.push(faqSchema, breadcrumbSchema);
+
+    bodyContent = `
+      <div class="sbf-crawler-shell p-6 max-w-5xl mx-auto">
+        <nav aria-label="Breadcrumb" class="text-sm mb-4">
+          <a href="/">Home</a> &gt; <span>Frequently Asked Questions</span>
+        </nav>
+        <header class="mb-8">
+          <h1 class="text-3xl font-extrabold text-slate-900 mb-3">Frequently Asked Questions — Spring Blossoms Florist</h1>
+          <p class="text-lg text-slate-700 leading-relaxed">
+            Everything you need to know about ordering flowers, cakes, and gifts with Spring Blossoms Florist in Hyderabad &amp; Secunderabad.
+          </p>
+        </header>
+        <section class="faqs-list space-y-6">
+          ${faqsList.map(f => `
+            <article class="faq-item border-b border-slate-200 pb-4">
+              <h2 class="text-xl font-bold text-slate-900 mb-2">${escapeHtml(f.question)}</h2>
+              <div class="text-slate-700 leading-relaxed">${f.answer}</div>
+            </article>
+          `).join('')}
+        </section>
+        <section class="support-contact mt-10 p-6 bg-slate-50 rounded-2xl border border-slate-200">
+          <h2 class="text-xl font-bold text-slate-900 mb-2">Need Immediate Support?</h2>
+          <p class="text-slate-700 mb-1">WhatsApp &amp; Phone: <a href="tel:${PHONE_NUMBER}">${PHONE_NUMBER}</a></p>
+          <p class="text-slate-700 mb-1">Email: <a href="mailto:contact@sbflorist.in">contact@sbflorist.in</a></p>
+          <p class="text-slate-700">Studio: ${STUDIO_ADDRESS.streetAddress}, ${STUDIO_ADDRESS.addressLocality}, ${STUDIO_ADDRESS.addressRegion} 500028</p>
         </section>
       </div>
     `;
