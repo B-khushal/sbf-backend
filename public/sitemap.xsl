@@ -341,7 +341,7 @@
           </div>
 
           <div class="footer-note">
-            Spring Blossoms Florist &copy; 2026. All rights reserved. | <a href="/sitemap">HTML Sitemap</a> | <a href="/shop">Shop Flowers</a> | <a href="/flower-delivery-hyderabad">Hyderabad Flower Delivery</a>
+            Spring Blossoms Florist &#169; 2026. All rights reserved. | <a href="/sitemap">HTML Sitemap</a> | <a href="/shop">Shop Flowers</a> | <a href="/flower-delivery-hyderabad">Hyderabad Flower Delivery</a>
           </div>
         </div>
       </body>
