@@ -116,6 +116,7 @@ const generatePagesSitemapXml = async (forceRefresh = false) => {
   }
 
   let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+  xml += '<?xml-stylesheet type="text/xsl" href="/sitemap.xsl"?>\n';
   xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
 
   for (const page of STATIC_PAGE_DEFS) {
@@ -165,6 +166,7 @@ const generateCategoriesSitemapXml = async (forceRefresh = false) => {
   }
 
   let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+  xml += '<?xml-stylesheet type="text/xsl" href="/sitemap.xsl"?>\n';
   xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
 
   const seenUrls = new Set();
@@ -245,6 +247,7 @@ const generateProductsSitemapXml = async (forceRefresh = false) => {
   }
 
   let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+  xml += '<?xml-stylesheet type="text/xsl" href="/sitemap.xsl"?>\n';
   xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n';
 
   const seenUrls = new Set();
@@ -323,6 +326,7 @@ const generateOccasionsSitemapXml = async (forceRefresh = false) => {
   }
 
   let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+  xml += '<?xml-stylesheet type="text/xsl" href="/sitemap.xsl"?>\n';
   xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
 
   const seenUrls = new Set();
@@ -404,6 +408,7 @@ const generateSitemapIndexXml = async (forceRefresh = false) => {
   }
 
   let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+  xml += '<?xml-stylesheet type="text/xsl" href="/sitemap.xsl"?>\n';
   xml += '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
 
   // Child Sitemaps
@@ -450,6 +455,7 @@ const generateFullSitemapXml = async (forceRefresh = false) => {
   ]);
 
   let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+  xml += '<?xml-stylesheet type="text/xsl" href="/sitemap.xsl"?>\n';
   xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n';
 
   const extractUrls = (subXml) => {
