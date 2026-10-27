@@ -517,8 +517,8 @@ const generateSitemapXml = async (type = 'index', forceRefresh = false) => {
   }
 };
 
-// Render Human-Friendly Interactive UI for Browser Visitors browsing .xml sitemaps
-const renderSitemapUiHtml = async (type = 'index') => {
+// Structured data provider for interactive Sitemap UI & JSON API
+const getSitemapData = async (type = 'index') => {
   const prisma = require('../config/prisma');
 
   const PAGE_LABELS = {
@@ -760,6 +760,39 @@ const renderSitemapUiHtml = async (type = 'index') => {
       bg: '#f5f3ff'
     }
   ];
+
+  return {
+    type,
+    currentTitle,
+    currentSubtitle,
+    currentFile,
+    isIndex,
+    pagesCount,
+    catCount,
+    prodCount,
+    occCount,
+    sitemapsMeta,
+    rows,
+    childCards
+  };
+};
+
+// Render Human-Friendly Interactive UI for Browser Visitors browsing .xml sitemaps
+const renderSitemapUiHtml = async (type = 'index') => {
+  const data = await getSitemapData(type);
+  const {
+    currentTitle,
+    currentSubtitle,
+    currentFile,
+    isIndex,
+    pagesCount,
+    catCount,
+    prodCount,
+    occCount,
+    sitemapsMeta,
+    rows,
+    childCards
+  } = data;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -1959,6 +1992,7 @@ module.exports = {
   generateRobotsTxt,
   renderCrawlerHtml,
   renderSitemapUiHtml,
+  getSitemapData,
   BRAND_NAME,
   SITE_URL,
   PHONE_NUMBER,

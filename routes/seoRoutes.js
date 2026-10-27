@@ -11,7 +11,8 @@ const {
   invalidateSitemapCache,
   generateRobotsTxt,
   renderCrawlerHtml,
-  renderSitemapUiHtml
+  renderSitemapUiHtml,
+  getSitemapData
 } = require('../services/seoService');
 
 // Helper to send XML responses
@@ -65,6 +66,21 @@ const isBotOrXmlRequest = (req) => {
 
   return true;
 };
+
+// @desc    Sitemap Data JSON API for Frontend UI & Mobile Clients
+// @route   GET /api/seo/sitemap-data or /sitemap-data
+// @access  Public
+router.get(['/sitemap-data', '/api/seo/sitemap-data'], async (req, res) => {
+  try {
+    const type = req.query.type || 'index';
+    const data = await getSitemapData(type);
+    res.setHeader('Cache-Control', 'public, max-age=1800, s-maxage=3600');
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    console.error('Error fetching sitemap JSON data:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
 
 // @desc    Primary Sitemap Index (or full sitemap if ?format=full)
 // @route   GET /api/seo/sitemap.xml or /sitemap.xml
