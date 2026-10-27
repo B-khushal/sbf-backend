@@ -4,7 +4,7 @@ providers = ["node"]
 nixPkgs = ["nodejs_20", "openssl"]
 
 [phases.install]
-cmds = ["npm install", "npx prisma generate"]
+cmds = ["npm ci --omit=dev", "npx prisma generate"]
 
 [start]
 cmd = "npm start"

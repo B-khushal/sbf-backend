@@ -1,76 +1,53 @@
 # ============================================
 # SBF Florist Backend — Production Dockerfile
 # ============================================
-# Multi-stage build for optimized image size
-# Node.js 20 Alpine | Express + MongoDB
+# Node.js 20 Debian Slim with Native Prisma, Sharp & PhantomJS support
 # ============================================
 
-# ── Stage 1: Dependencies ────────────────────
-FROM node:20-alpine AS deps
+FROM node:20-slim
 
 WORKDIR /app
 
-# Install openssl and libc6-compat for Prisma binary generation on Alpine
-RUN apk add --no-cache openssl libc6-compat
-
-# Copy package files and prisma schema
-COPY package.json package-lock.json ./
-COPY prisma/ ./prisma/
-
-# Install production dependencies and generate Prisma client
-RUN npm ci --omit=dev && npx prisma generate
-
-# ── Stage 2: Production ─────────────────────
-FROM node:20-alpine AS production
-
-# Add labels for image metadata
-LABEL maintainer="B-khushal"
-LABEL description="SBF Florist Backend API"
-LABEL version="1.0.2"
-
-# Install curl for healthcheck, dumb-init, openssl for prisma, fontconfig, gcompat, libc6-compat and libstdc++ for phantomjs PDF rendering on Alpine
-RUN apk add --no-cache curl dumb-init openssl fontconfig gcompat libc6-compat libstdc++
+# Install system dependencies
+# - dumb-init: PID 1 signal handler & zombie reaper
+# - openssl: Prisma query engine
+# - libfontconfig1 & libfreetype6: PDF generation
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    dumb-init \
+    openssl \
+    libfontconfig1 \
+    libfreetype6 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Set production environment
 ENV NODE_ENV=production
 ENV PORT=5000
 
-WORKDIR /app
+# Copy package definitions and prisma schema first for Docker layer caching
+COPY package.json package-lock.json ./
+COPY prisma/ ./prisma/
 
-# Copy production dependencies from deps stage (includes generated @prisma/client)
-COPY --from=deps /app/node_modules ./node_modules
+# Install dependencies and generate Prisma client
+RUN npm ci --omit=dev && npx prisma generate
 
 # Copy application source code
-COPY package.json ./
-COPY server.js ./
-COPY healthcheck.js ./
-COPY config/ ./config/
-COPY controllers/ ./controllers/
-COPY middleware/ ./middleware/
-COPY models/ ./models/
-COPY modules/ ./modules/
-COPY prisma/ ./prisma/
-COPY routes/ ./routes/
-COPY scripts/ ./scripts/
-COPY services/ ./services/
-COPY utils/ ./utils/
-COPY assets/ ./assets/
+COPY . .
 
-# Create uploads and scratch directory with correct permissions
+# Ensure upload/scratch directories exist with proper node permissions
 RUN mkdir -p uploads scratch && chown -R node:node /app
 
-# Switch to non-root user for security
+# Switch to non-root user
 USER node
 
-# Expose the API port
+# Expose backend port
 EXPOSE 5000
 
-# Healthcheck — hits the /health endpoint every 30s
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD node healthcheck.js
 
-# Use dumb-init to handle PID 1 and signal forwarding properly
+# Entrypoint with dumb-init
 ENTRYPOINT ["dumb-init", "--"]
 
-# Start the application
+# Start application
 CMD ["node", "server.js"]
