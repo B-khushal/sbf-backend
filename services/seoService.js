@@ -95,17 +95,21 @@ const STATIC_PAGE_DEFS = [
   { path: '/shop', lastmod: '2026-10-27' },
   { path: '/flower-delivery-hyderabad', lastmod: '2026-10-27' },
   { path: '/flower-delivery-secunderabad', lastmod: '2026-10-27' },
+  { path: '/valentine-special', lastmod: '2026-10-27' },
+  { path: '/valentine-shop', lastmod: '2026-10-27' },
   { path: '/about', lastmod: '2026-10-14' },
   { path: '/contact', lastmod: '2026-10-14' },
   { path: '/shipping', lastmod: '2026-10-14' },
   { path: '/privacy', lastmod: '2026-10-14' },
   { path: '/terms', lastmod: '2026-10-14' },
   { path: '/refund-policy', lastmod: '2026-10-14' },
-  { path: '/cancellation-policy', lastmod: '2026-10-14' }
+  { path: '/cancellation-policy', lastmod: '2026-10-14' },
+  { path: '/vendors-consent', lastmod: '2026-10-14' },
+  { path: '/vendor/register', lastmod: '2026-10-27' }
 ];
 
 // Reserved static paths to prevent duplicate category inclusion
-const RESERVED_STATIC_PATHS = new Set(STATIC_PAGE_DEFS.map(p => p.path));
+const RESERVED_STATIC_PATHS = new Set([...STATIC_PAGE_DEFS.map(p => p.path), '/occasions']);
 
 // 1. Generate Static & Location Pages Sitemap
 const generatePagesSitemapXml = async (forceRefresh = false) => {
@@ -326,6 +330,15 @@ const generateOccasionsSitemapXml = async (forceRefresh = false) => {
 
   const seenUrls = new Set();
   let count = 0;
+
+  // Primary Occasions Hub
+  const baseOccUrl = `${SITE_URL}/occasions`;
+  seenUrls.add(baseOccUrl);
+  xml += '  <url>\n';
+  xml += `    <loc>${escapeXml(baseOccUrl)}</loc>\n`;
+  xml += `    <lastmod>${formatW3cDate(new Date())}</lastmod>\n`;
+  xml += '  </url>\n';
+  count++;
 
   for (const occ of occasions) {
     if (!occ.slug) continue;
