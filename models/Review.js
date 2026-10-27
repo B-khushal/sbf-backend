@@ -155,7 +155,16 @@ class QueryChain {
 const cleanReviewWhere = (where = {}) => {
   const filter = {};
   if (where.id || where._id) filter.id = String(where.id || where._id);
-  if (where.productId || where.product) filter.productId = String(where.productId || where.product);
+  if (where.productId || where.product) {
+    const pVal = where.productId || where.product;
+    if (typeof pVal === 'object' && pVal !== null && pVal.$in && Array.isArray(pVal.$in)) {
+      filter.productId = { in: pVal.$in.map(String) };
+    } else if (typeof pVal === 'object' && pVal !== null && pVal.in && Array.isArray(pVal.in)) {
+      filter.productId = { in: pVal.in.map(String) };
+    } else {
+      filter.productId = String(pVal);
+    }
+  }
   if (where.userId || where.user) filter.userId = String(where.userId || where.user);
   if (where.status) filter.status = where.status;
   if (where.orderId) {

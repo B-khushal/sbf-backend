@@ -1,5 +1,16 @@
 const Settings = require('../models/settings');
 
+// In-memory cache for public settings (TTL: 60 seconds)
+let settingsCache = null;
+let settingsCacheTime = 0;
+const SETTINGS_CACHE_TTL_MS = 60 * 1000;
+
+const invalidateSettingsCache = () => {
+  settingsCache = null;
+  settingsCacheTime = 0;
+};
+exports.invalidateSettingsCache = invalidateSettingsCache;
+
 const ensureOccasionsSection = async (settings) => {
   if (!settings) return;
   const hasOccasions = (settings.homeSections || []).some(s => s.type === 'occasions');
@@ -186,9 +197,19 @@ exports.updateHomeSections = async (req, res) => {
   }
 };
 
-// Get all settings at once
+// Get all settings at once (optimized with in-memory caching and lightweight public payload)
 exports.getAllSettings = async (req, res) => {
   try {
+    const includeHistory = req.query.includeHistory === 'true';
+    const includeDraft = req.query.includeDraft === 'true';
+    const now = Date.now();
+
+    // Fast-path: serve cached public settings immediately
+    if (!includeHistory && !includeDraft && settingsCache && (now - settingsCacheTime < SETTINGS_CACHE_TTL_MS)) {
+      res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=120');
+      return res.json(settingsCache);
+    }
+
     let settings = await Settings.findOne();
     
     if (!settings) {
@@ -244,7 +265,7 @@ exports.getAllSettings = async (req, res) => {
     // Filter parents for homepage categories section
     const parentCategories = formattedCategories.filter(cat => !cat.parentId);
 
-    res.json({
+    const responsePayload = {
       heroSlides: settings.heroSlides || [],
       mobileBanners: settings.mobileBanners || [],
       promoBanners: settings.promoBanners || [],
@@ -267,9 +288,17 @@ exports.getAllSettings = async (req, res) => {
         watermarkRotation: -45,
         repeatingPattern: false
       },
-      draftSettings: settings.draftSettings || null,
-      history: settings.history || []
-    });
+      draftSettings: includeDraft ? (settings.draftSettings || null) : null,
+      history: includeHistory ? (settings.history || []) : []
+    };
+
+    if (!includeHistory && !includeDraft) {
+      settingsCache = responsePayload;
+      settingsCacheTime = now;
+      res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=120');
+    }
+
+    res.json(responsePayload);
   } catch (error) {
     console.error('Error fetching all settings:', error);
     res.status(500).json({ message: 'Error fetching all settings' });
@@ -424,6 +453,7 @@ exports.updateAllSettings = async (req, res) => {
 
     settings.updatedAt = Date.now();
     await settings.save();
+    invalidateSettingsCache();
 
     res.json({
       success: true,

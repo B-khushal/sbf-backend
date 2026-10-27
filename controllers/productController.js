@@ -79,29 +79,61 @@ const cleanProductData = (product) => {
   return product;
 };
 
-// Helper function to add real review statistics to products
+// Helper function to add real review statistics to products (ultra-fast batched query)
 const addReviewStats = async (products) => {
-  const productArray = Array.isArray(products) ? products : [products];
-  
-  for (let product of productArray) {
-    // Get reviews for this product
-    const reviews = await Review.find({ 
-      product: product._id, 
-      status: 'approved' 
-    }).select('rating');
-    
-    // Calculate real statistics
-    if (reviews.length > 0) {
-      const totalRating = reviews.reduce((sum, review) => sum + review.rating, 0);
-      product.rating = totalRating / reviews.length;
-      product.numReviews = reviews.length;
-    } else {
-      product.rating = 0;
-      product.numReviews = 0;
+  const isArray = Array.isArray(products);
+  const productArray = isArray ? products : [products];
+  if (productArray.length === 0) return products;
+
+  const productIds = productArray.map(p => String(p._id || p.id)).filter(Boolean);
+  if (productIds.length === 0) return products;
+
+  try {
+    const reviews = await prisma.review.findMany({
+      where: {
+        productId: { in: productIds },
+        status: 'approved'
+      },
+      select: {
+        productId: true,
+        rating: true
+      }
+    });
+
+    const statsMap = new Map();
+    for (let i = 0; i < reviews.length; i++) {
+      const r = reviews[i];
+      const pid = r.productId;
+      if (!statsMap.has(pid)) {
+        statsMap.set(pid, { total: 0, count: 0 });
+      }
+      const item = statsMap.get(pid);
+      item.total += Number(r.rating || 0);
+      item.count += 1;
+    }
+
+    for (let i = 0; i < productArray.length; i++) {
+      const product = productArray[i];
+      const pid = String(product._id || product.id);
+      const stats = statsMap.get(pid);
+      if (stats && stats.count > 0) {
+        product.rating = Math.round((stats.total / stats.count) * 10) / 10;
+        product.numReviews = stats.count;
+      } else {
+        product.rating = typeof product.rating === 'number' ? product.rating : 0;
+        product.numReviews = typeof product.numReviews === 'number' ? product.numReviews : (typeof product.reviewCount === 'number' ? product.reviewCount : 0);
+      }
+    }
+  } catch (err) {
+    console.error("Error batching review stats:", err.message);
+    for (let i = 0; i < productArray.length; i++) {
+      const product = productArray[i];
+      if (product.rating === undefined) product.rating = 0;
+      if (product.numReviews === undefined) product.numReviews = 0;
     }
   }
-  
-  return Array.isArray(products) ? productArray : productArray[0];
+
+  return isArray ? productArray : productArray[0];
 };
 
 // Helper function to calculate final selling price (considering discounts)
@@ -860,22 +892,54 @@ const getTopProducts = async (req, res) => {
   }
 };
 
+// In-memory cache for homepage featured & new products (TTL: 60s)
+let featuredProductsCache = null;
+let featuredProductsCacheTime = 0;
+let newProductsCache = null;
+let newProductsCacheTime = 0;
+const SECTION_CACHE_TTL = 60 * 1000;
+
+const invalidateProductSectionCaches = () => {
+  featuredProductsCache = null;
+  featuredProductsCacheTime = 0;
+  newProductsCache = null;
+  newProductsCacheTime = 0;
+};
+
 // @desc    Get featured products
 // @route   GET /api/products/featured
 // @access  Public
 const getFeaturedProducts = async (req, res) => {
   try {
-    let products = await Product.find({ hidden: false });
-    const featProds = products.filter(p => p.isFeatured);
-    const targetProducts = featProds.length > 0 ? featProds : products;
+    const now = Date.now();
+    const limit = parseInt(req.query.limit) || 0;
+
+    if (!limit && featuredProductsCache && (now - featuredProductsCacheTime < SECTION_CACHE_TTL)) {
+      res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=120');
+      return res.json(featuredProductsCache);
+    }
+
+    let products = await Product.find({ hidden: false, isFeatured: true });
+    if (!products || products.length === 0) {
+      const allProds = await Product.find({ hidden: false });
+      const featProds = allProds.filter(p => p.isFeatured);
+      products = featProds.length > 0 ? featProds : allProds;
+    }
     
     // Apply saved sorting
-    const sortedProducts = await applySavedSortingToProducts(targetProducts, 'featured');
+    const sortedProducts = await applySavedSortingToProducts(products, 'featured');
     
     // Add real review statistics
     const productsWithReviews = await addReviewStats(sortedProducts);
     
-    res.json(productsWithReviews);
+    if (!limit) {
+      featuredProductsCache = productsWithReviews;
+      featuredProductsCacheTime = now;
+      res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=120');
+      return res.json(productsWithReviews);
+    }
+
+    return res.json(productsWithReviews.slice(0, limit));
   } catch (error) {
     console.error("Error fetching featured products:", error);
     res.status(500).json({ message: "Error fetching featured products" });
@@ -887,17 +951,35 @@ const getFeaturedProducts = async (req, res) => {
 // @access  Public
 const getNewProducts = async (req, res) => {
   try {
-    const products = await Product.find({ hidden: false });
-    const newProds = products.filter(p => p.isNew || p.isNewArrival);
-    const targetProducts = newProds.length > 0 ? newProds : products;
+    const now = Date.now();
+    const limit = parseInt(req.query.limit) || 0;
+
+    if (!limit && newProductsCache && (now - newProductsCacheTime < SECTION_CACHE_TTL)) {
+      res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=120');
+      return res.json(newProductsCache);
+    }
+
+    let products = await Product.find({ hidden: false, isNewArrival: true });
+    if (!products || products.length === 0) {
+      const allProds = await Product.find({ hidden: false });
+      const newProds = allProds.filter(p => p.isNew || p.isNewArrival);
+      products = newProds.length > 0 ? newProds : allProds;
+    }
 
     // Apply saved sorting
-    const sortedProducts = await applySavedSortingToProducts(targetProducts, 'newArrivals');
+    const sortedProducts = await applySavedSortingToProducts(products, 'newArrivals');
     
     // Add real review statistics
     const productsWithReviews = await addReviewStats(sortedProducts);
     
-    res.json(productsWithReviews);
+    if (!limit) {
+      newProductsCache = productsWithReviews;
+      newProductsCacheTime = now;
+      res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=120');
+      return res.json(productsWithReviews);
+    }
+
+    return res.json(productsWithReviews.slice(0, limit));
   } catch (error) {
     console.error("Error fetching new products:", error);
     res.status(500).json({ message: 'Error fetching new products' });
@@ -2612,6 +2694,36 @@ const getSharePreview = async (req, res) => {
   <meta name="twitter:image" content="${metaData.image}" />`;
 
     cleanedHtml = cleanedHtml.replace(/<head>/i, `<head>${newTags}`);
+
+    const bodyPreviewContent = `
+      <div class="sbf-crawler-shell p-6 max-w-4xl mx-auto" style="max-width: 900px; margin: 0 auto; padding: 2rem 1rem; font-family: sans-serif;">
+        <nav aria-label="Breadcrumb" style="font-size: 0.875rem; margin-bottom: 1.5rem;">
+          <a href="/" style="color: #64748b; text-decoration: none;">Home</a> &gt; 
+          <a href="/shop" style="color: #64748b; text-decoration: none;">Shop</a> &gt; 
+          <span style="color: #0f172a; font-weight: 600;">${product ? product.title : metaData.title}</span>
+        </nav>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2rem; align-items: start;">
+          <div>
+            <img src="${metaData.image}" alt="${product ? product.title : metaData.title} - Spring Blossoms Florist Hyderabad" style="width: 100%; border-radius: 1rem; object-fit: cover;" width="500" height="500" />
+          </div>
+          <div>
+            <h1 style="font-size: 2rem; font-weight: 800; color: #0f172a; margin-bottom: 0.75rem; line-height: 1.2;">${product ? product.title : metaData.title}</h1>
+            <p style="font-size: 1.5rem; font-weight: 700; color: #e11d48; margin-bottom: 1rem;">₹${metaData.price}</p>
+            <div style="font-size: 1rem; color: #475569; line-height: 1.6; margin-bottom: 1.5rem;">
+              <p>${metaData.description}</p>
+            </div>
+            <div style="background: #fff1f2; border: 1px solid #fecdd3; border-radius: 0.75rem; padding: 1rem; font-size: 0.875rem; color: #881337; margin-bottom: 1.5rem;">
+              <p style="margin: 0 0 0.5rem 0;"><strong>⚡ Same-Day Delivery in Hyderabad:</strong> Order before 6:00 PM for doorstep hand-delivery today.</p>
+              <p style="margin: 0 0 0.5rem 0;"><strong>🌙 Midnight Surprise:</strong> 11:00 PM - 11:59 PM slot available.</p>
+              <p style="margin: 0;"><strong>🚚 Free Delivery:</strong> On your 1st order and orders ₹999+.</p>
+            </div>
+            <p style="font-size: 0.875rem; color: #64748b;">Studio: Door No. 12-2-786/A &amp; B, Najam Centre, Pillar No. 32, Rethi Bowli, Mehdipatnam, Hyderabad 500028 | Phone: <a href="tel:+919949683222">+91 9949683222</a></p>
+          </div>
+        </div>
+      </div>
+    `;
+
+    cleanedHtml = cleanedHtml.replace(/<div id=["']root["']><\/div>/i, `<div id="root">${bodyPreviewContent}</div>`);
 
     res.setHeader('Content-Type', 'text/html');
     return res.status(200).send(cleanedHtml);

@@ -17,6 +17,7 @@
     "bcryptjs": "^2.4.3",
     "bl": "^6.0.12",
     "cloudinary": "^2.7.0",
+    "compression": "^1.8.2",
     "cors": "^2.8.5",
     "debug": "^4.3.4",
     "dotenv": "^16.4.7",

@@ -553,6 +553,16 @@ const startServer = async () => {
     const app = express();
     app.set('trust proxy', 1);
 
+    // High-performance gzip/brotli response compression for APIs and SSR
+    const compression = require('compression');
+    app.use(compression({
+      threshold: 1024,
+      filter: (req, res) => {
+        if (req.headers['x-no-compression']) return false;
+        return compression.filter(req, res);
+      }
+    }));
+
     const corsOptions = {
       origin(origin, callback) {
         if (!origin) return callback(null, true);
@@ -683,8 +693,48 @@ const startServer = async () => {
     app.use('/api/newsletter', newsletterRoutes);
     app.use('/api/mappls', require('./routes/mapplsRoutes'));
     app.use('/api/marketing', require('./routes/marketingRoutes'));
+    app.use('/api/seo', require('./routes/seoRoutes'));
 
-    app.get('/', (req, res) => {
+    const { generateSitemapXml, generateRobotsTxt, renderCrawlerHtml } = require('./services/seoService');
+
+    app.get('/sitemap.xml', async (req, res) => {
+      try {
+        const xml = await generateSitemapXml();
+        res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+        res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400');
+        return res.status(200).send(xml);
+      } catch (error) {
+        console.error('Error generating sitemap in server.js:', error);
+        return res.status(500).send('<?xml version="1.0" encoding="UTF-8"?><error>Failed to generate sitemap</error>');
+      }
+    });
+
+    app.get('/robots.txt', (req, res) => {
+      try {
+        const robots = generateRobotsTxt();
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        return res.status(200).send(robots);
+      } catch (error) {
+        return res.status(500).send('User-agent: *\nAllow: /\n');
+      }
+    });
+
+    app.get('/', async (req, res) => {
+      const userAgent = req.headers['user-agent'] || '';
+      const isCrawler = /googlebot|bingbot|yandex|baiduspider|duckduckbot|slurp|screaming frog|ahrefsbot|semrushbot|dotbot|facebookexternalhit|twitterbot|linkedinbot|whatsapp|telegrambot|discordbot|slackbot|applebot|petalbot/i.test(userAgent);
+
+      if (isCrawler) {
+        try {
+          const crawlerHtml = await renderCrawlerHtml('/');
+          res.setHeader('Content-Type', 'text/html; charset=utf-8');
+          res.setHeader('Cache-Control', 'public, max-age=1800, s-maxage=3600');
+          return res.status(200).send(crawlerHtml);
+        } catch (err) {
+          console.error('Crawler prerender error on /:', err.message);
+        }
+      }
+
       const origin = req.get('Origin');
       const acceptsHtml = (req.headers.accept || '').includes('text/html');
 
@@ -774,6 +824,21 @@ const startServer = async () => {
     app.get('*', async (req, res) => {
       if (req.path.startsWith('/api/')) {
         return res.status(404).json({ message: 'API endpoint not found' });
+      }
+
+      // Intercept search engine crawlers and social preview bots
+      const userAgent = req.headers['user-agent'] || '';
+      const isCrawler = /googlebot|bingbot|yandex|baiduspider|duckduckbot|slurp|screaming frog|ahrefsbot|semrushbot|dotbot|facebookexternalhit|twitterbot|linkedinbot|whatsapp|telegrambot|discordbot|slackbot|applebot|petalbot/i.test(userAgent);
+
+      if (isCrawler) {
+        try {
+          const crawlerHtml = await renderCrawlerHtml(req.path);
+          res.setHeader('Content-Type', 'text/html; charset=utf-8');
+          res.setHeader('Cache-Control', 'public, max-age=1800, s-maxage=3600');
+          return res.status(200).send(crawlerHtml);
+        } catch (err) {
+          console.error('Error rendering crawler HTML in wildcard route:', err.message);
+        }
       }
 
       // Intercept product routes to inject dynamic preview metadata
