@@ -589,6 +589,11 @@ const startServer = async () => {
 
     // Security headers via helmet
     app.use(helmet({
+      hsts: {
+        maxAge: 31536000,
+        includeSubDomains: false,
+        preload: false
+      },
       contentSecurityPolicy: {
         directives: {
           defaultSrc: ["'self'", "https:", "http:"],

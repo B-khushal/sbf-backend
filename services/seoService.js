@@ -1337,10 +1337,10 @@ const renderCrawlerHtml = async (reqPath) => {
   const cleanPath = (reqPath || '/').split('?')[0].replace(/\/+$/, '') || '/';
 
   // Default Homepage Metadata
-  let pageTitle = 'Flower Delivery in Hyderabad | Spring Blossoms Florist';
-  let metaDescription = 'Send fresh flower bouquets, roses and thoughtful gifts with Spring Blossoms Florist in Hyderabad. Explore flowers for birthdays, anniversaries and special occasions.';
+  let pageTitle = 'Flowers & Cakes Delivery in Hyderabad | SB Florist';
+  let metaDescription = 'Order fresh flowers, cakes and gifts in Hyderabad & Secunderabad. Free delivery on your first order and ₹999+ orders, with same-day and midnight delivery.';
   let canonicalUrl = `${SITE_URL}${cleanPath === '/' ? '' : cleanPath}`;
-  let ogImage = 'https://res.cloudinary.com/djtrhfqan/image/upload/v1791793252/logo_final_tp7ymk.png';
+  let ogImage = `${SITE_URL}/images/og-preview.jpg`;
   let ogType = 'website';
   let structuredData = [];
   let bodyContent = '';
@@ -1511,7 +1511,7 @@ const renderCrawlerHtml = async (reqPath) => {
           </p>
           <ul class="list-disc pl-5 space-y-2 text-slate-700">
             <li><strong>Free Delivery:</strong> First order free for new customers, plus free delivery on all orders ₹999+.</li>
-            <li><strong>Midnight Surprise Delivery:</strong> Guaranteed delivery between 11:00 PM and 11:59 PM.</li>
+            <li><strong>Midnight Surprise Delivery:</strong> Scheduled delivery between 11:00 PM and 11:59 PM.</li>
             <li><strong>Same-Day Dispatch:</strong> Order by daytime for fresh delivery in 2-4 hours.</li>
           </ul>
         </section>
@@ -1542,7 +1542,7 @@ const renderCrawlerHtml = async (reqPath) => {
           </p>
         </header>
         <section class="mb-8">
-          <h2 class="text-2xl font-bold text-slate-800 mb-3">Guaranteed Fresh Floral Bouquets &amp; Cakes</h2>
+          <h2 class="text-2xl font-bold text-slate-800 mb-3">Fresh Floral Bouquets &amp; Cakes</h2>
           <p class="text-slate-600 leading-relaxed">
             Every arrangement is prepared by our master florists and transported with temperature-conscious handling to preserve peak freshness and vibrant colors.
           </p>
@@ -1722,8 +1722,8 @@ const renderCrawlerHtml = async (reqPath) => {
 
   // ── 5. DEFAULT HOMEPAGE ──────────────────────────────────────────
   if (!bodyContent) {
-    pageTitle = 'Flower Delivery in Hyderabad | Spring Blossoms Florist';
-    metaDescription = 'Shop fresh bouquets, roses and flower gifts in Hyderabad with Spring Blossoms Florist. Explore flowers for special occasions, cakes and gift combos.';
+    pageTitle = 'Flowers & Cakes Delivery in Hyderabad | SB Florist';
+    metaDescription = 'Order fresh flowers, cakes and gifts in Hyderabad & Secunderabad. Free delivery on your first order and ₹999+ orders, with same-day and midnight delivery.';
     canonicalUrl = `${SITE_URL}/`;
 
     // Fetch sample featured products for crawlable homepage links
@@ -1743,9 +1743,9 @@ const renderCrawlerHtml = async (reqPath) => {
       url: `${SITE_URL}/`,
       telephone: PHONE_NUMBER,
       email: '2006sbf@gmail.com',
-      logo: `${SITE_URL}/images/logosbf.png`,
+      logo: `${SITE_URL}/images/logo_final.png`,
       image: [
-        `${SITE_URL}/images/logosbf.png`,
+        `${SITE_URL}/images/logo_final.png`,
         `${SITE_URL}/images/hero-flower-shop.jpg`
       ],
       description: 'Spring Blossoms Florist offers flower bouquets, floral arrangements and gifts for birthdays, anniversaries, celebrations and other special occasions.',
@@ -1794,7 +1794,7 @@ const renderCrawlerHtml = async (reqPath) => {
       publisher: { '@id': `${SITE_URL}/#business` },
       potentialAction: {
         '@type': 'SearchAction',
-        target: `${SITE_URL}/shop?search={search_term_string}`,
+        target: `${SITE_URL}/shop?q={search_term_string}`,
         'query-input': 'required name=search_term_string'
       }
     };
@@ -1822,10 +1822,10 @@ const renderCrawlerHtml = async (reqPath) => {
         <!-- Primary Hero Header -->
         <header class="hero-section mb-12 text-center max-w-4xl mx-auto">
           <h1 class="text-3xl sm:text-4xl md:text-5xl font-black text-slate-900 tracking-tight leading-tight mb-4">
-            Flower Delivery in Hyderabad for Every Special Occasion
+            Flowers, Cakes &amp; Gifts Delivery in Hyderabad
           </h1>
           <p class="text-lg text-slate-700 leading-relaxed mb-6">
-            Send fresh bouquets, roses and flower gifts in Hyderabad with Spring Blossoms Florist. Explore flowers for special occasions, cakes and gift combos with guaranteed same-day delivery and signature midnight slots.
+            Send fresh bouquets, roses and flower gifts in Hyderabad and Secunderabad with Spring Blossoms Florist. Explore flowers for special occasions, cakes and gift combos with same-day delivery and midnight slots.
           </p>
           <div class="flex flex-wrap justify-center gap-4 text-sm font-semibold">
             <a href="/bouquets" class="px-6 py-3 bg-rose-600 text-white rounded-xl shadow-md hover:bg-rose-700">Shop Bouquets</a>
@@ -1957,6 +1957,7 @@ const renderCrawlerHtml = async (reqPath) => {
   finalHtml = finalHtml.replace(/<link\s+rel=["']canonical["'][^>]*>/gi, '');
   finalHtml = finalHtml.replace(/<meta\s+(property|name)=["']og:[^>]*>/gi, '');
   finalHtml = finalHtml.replace(/<meta\s+(property|name)=["']twitter:[^>]*>/gi, '');
+  finalHtml = finalHtml.replace(/<script\s+type=["']application\/ld\+json["']\s+data-prerendered-seo=["']home["']>[\s\S]*?<\/script>/gi, '');
 
   const newHeadTags = `
     <title>${escapeHtml(pageTitle)}</title>
