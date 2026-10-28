@@ -302,7 +302,8 @@ const updateProductReviewStats = async (productId) => {
 };
 
 const getProductGalleryImages = async (productId, limit = 18) => {
-  const images = await ReviewImage.find({ product: productId })
+  if (!productId) return [];
+  const images = await ReviewImage.find({ product: String(productId), status: "approved" })
     .sort({ createdAt: -1 })
     .limit(limit)
     .lean();
@@ -310,7 +311,7 @@ const getProductGalleryImages = async (productId, limit = 18) => {
   return images.map((image) => ({
     _id: image._id,
     url: image.url,
-    alt: image.alt,
+    alt: image.alt || "",
   }));
 };
 

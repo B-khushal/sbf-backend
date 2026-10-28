@@ -33,18 +33,60 @@ class ReviewImageDocument {
   toObject() { return { ...this }; }
 }
 
+const VALID_IMAGE_SORT_FIELDS = new Set(['id', 'reviewId', 'url', 'publicId', 'createdAt']);
+
 class QueryChain {
-  constructor(prismaQuery) { this.prismaQuery = prismaQuery; }
-  sort() { return this; }
-  skip() { return this; }
-  limit() { return this; }
+  constructor(where = {}, options = {}) {
+    this.where = where;
+    this.options = { ...options };
+  }
+  sort(s) {
+    this.options.sort = s;
+    return this;
+  }
+  skip(sk) {
+    this.options.skip = sk;
+    return this;
+  }
+  limit(l) {
+    this.options.limit = l;
+    return this;
+  }
   lean() { return this; }
   select() { return this; }
   populate() { return this; }
   exec() { return this.then(r => r); }
+
   async then(resolve, reject) {
     try {
-      const res = await this.prismaQuery;
+      const queryArgs = { where: this.where };
+
+      if (this.options.sort) {
+        if (typeof this.options.sort === 'object') {
+          const orderList = [];
+          for (const [key, val] of Object.entries(this.options.sort)) {
+            if (VALID_IMAGE_SORT_FIELDS.has(key)) {
+              orderList.push({ [key]: (val === -1 || val === 'desc') ? 'desc' : 'asc' });
+            }
+          }
+          if (orderList.length > 0) {
+            queryArgs.orderBy = orderList.length === 1 ? orderList[0] : orderList;
+          } else {
+            queryArgs.orderBy = { createdAt: 'desc' };
+          }
+        }
+      } else {
+        queryArgs.orderBy = { createdAt: 'desc' };
+      }
+
+      if (this.options.limit !== undefined && this.options.limit !== null) {
+        queryArgs.take = Number(this.options.limit);
+      }
+      if (this.options.skip !== undefined && this.options.skip !== null) {
+        queryArgs.skip = Number(this.options.skip);
+      }
+
+      const res = await prisma.reviewImage.findMany(queryArgs);
       if (Array.isArray(res)) resolve(res.map(d => new ReviewImageDocument(d)));
       else if (res) resolve(new ReviewImageDocument(res));
       else resolve(null);
@@ -53,8 +95,11 @@ class QueryChain {
 }
 
 class ReviewImageModel {
-  static find(where = {}) {
+  static cleanWhere(where = {}) {
     const filter = {};
+    if (where.id || where._id) {
+      filter.id = String(where.id || where._id);
+    }
     if (where.reviewId || where.review) {
       const r = where.reviewId || where.review;
       if (typeof r === 'object' && r !== null && r.$in && Array.isArray(r.$in)) {
@@ -63,21 +108,72 @@ class ReviewImageModel {
         filter.reviewId = String(r);
       }
     }
-    const query = prisma.reviewImage.findMany({ where: filter });
-    return new QueryChain(query);
+    if (where.productId || where.product) {
+      const prodId = String(where.productId || where.product);
+      filter.review = {
+        productId: prodId,
+        ...(where.status ? { status: String(where.status) } : { status: 'approved' })
+      };
+    }
+    return filter;
+  }
+
+  static find(where = {}) {
+    const filter = ReviewImageModel.cleanWhere(where);
+    return new QueryChain(filter);
   }
 
   static findOne(where = {}) {
-    const filter = {};
-    if (where.id || where._id) filter.id = String(where.id || where._id);
+    const filter = ReviewImageModel.cleanWhere(where);
     const query = prisma.reviewImage.findFirst({ where: filter });
-    return new QueryChain(query);
+    return {
+      sort() { return this; },
+      skip() { return this; },
+      limit() { return this; },
+      lean() { return this; },
+      select() { return this; },
+      populate() { return this; },
+      exec() { return this.then(r => r); },
+      async then(resolve, reject) {
+        try {
+          const res = await query;
+          if (res) resolve(new ReviewImageDocument(res));
+          else resolve(null);
+        } catch (err) { reject(err); }
+      }
+    };
   }
 
   static findById(id) {
-    if (!id) return new QueryChain(Promise.resolve(null));
+    if (!id) {
+      return {
+        sort() { return this; },
+        skip() { return this; },
+        limit() { return this; },
+        lean() { return this; },
+        select() { return this; },
+        populate() { return this; },
+        exec() { return Promise.resolve(null); },
+        then(resolve) { resolve(null); }
+      };
+    }
     const query = prisma.reviewImage.findUnique({ where: { id: String(id) } });
-    return new QueryChain(query);
+    return {
+      sort() { return this; },
+      skip() { return this; },
+      limit() { return this; },
+      lean() { return this; },
+      select() { return this; },
+      populate() { return this; },
+      exec() { return this.then(r => r); },
+      async then(resolve, reject) {
+        try {
+          const res = await query;
+          if (res) resolve(new ReviewImageDocument(res));
+          else resolve(null);
+        } catch (err) { reject(err); }
+      }
+    };
   }
 
   static async create(data) {
@@ -87,15 +183,7 @@ class ReviewImageModel {
   }
 
   static async deleteMany(where = {}) {
-    const filter = {};
-    if (where.reviewId || where.review) {
-      const r = where.reviewId || where.review;
-      if (typeof r === 'object' && r !== null && r.$in && Array.isArray(r.$in)) {
-        filter.reviewId = { in: r.$in.map(String) };
-      } else {
-        filter.reviewId = String(r);
-      }
-    }
+    const filter = ReviewImageModel.cleanWhere(where);
     return await prisma.reviewImage.deleteMany({ where: filter });
   }
 
@@ -119,8 +207,7 @@ class ReviewImageModel {
   }
 
   static async countDocuments(where = {}) {
-    const filter = {};
-    if (where.reviewId || where.review) filter.reviewId = String(where.reviewId || where.review);
+    const filter = ReviewImageModel.cleanWhere(where);
     return await prisma.reviewImage.count({ where: filter });
   }
 }

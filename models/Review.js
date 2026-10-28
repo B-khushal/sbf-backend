@@ -5,8 +5,10 @@ class ReviewDocument {
     Object.assign(this, data);
     this._id = data.id || data._id;
     this.id = this._id;
-    this.product = data.productId || (data.product ? data.product.id || data.product : null);
-    this.user = data.userId || (data.user ? data.user.id || data.user : null);
+    this.productId = data.productId || (data.product ? (data.product.id || data.product._id || data.product) : null);
+    this.product = data.product ? (typeof data.product === 'object' ? data.product : data.productId) : data.productId;
+    this.userId = data.userId || (data.user ? (data.user.id || data.user._id || data.user) : null);
+    this.user = data.user || data.userId;
     this.qualityRating = data.qualityRating || null;
     this.valueRating = data.valueRating || null;
     this.deliveryRating = data.deliveryRating || null;
@@ -33,13 +35,17 @@ class ReviewDocument {
   }
 
   toObject() {
+    const rawImages = Array.isArray(this.images)
+      ? this.images.map(img => (typeof img === 'string' ? img : (img.url || ''))).filter(Boolean)
+      : [];
+
     return {
       _id: this._id,
       id: this.id,
       product: this.product,
-      productId: this.productId || this.product,
+      productId: this.productId || (this.product ? (this.product.id || this.product._id) : null),
       user: this.user,
-      userId: this.userId || this.user,
+      userId: this.userId || (this.user ? (this.user.id || this.user._id) : null),
       name: this.name,
       email: this.email,
       rating: this.rating,
@@ -47,8 +53,8 @@ class ReviewDocument {
       comment: this.comment,
       status: this.status || 'approved',
       orderId: this.orderId,
-      images: this.images || [],
-      imageCount: this.imageCount || (this.images ? this.images.length : 0),
+      images: rawImages,
+      imageCount: this.imageCount !== undefined ? this.imageCount : rawImages.length,
       helpfulVotes: this.helpfulVotes || this.likeCount || 0,
       totalVotes: this.totalVotes || 0,
       isVerifiedPurchase: !!this.isVerifiedPurchase,
@@ -130,21 +136,68 @@ class ReviewDocument {
   }
 }
 
+const VALID_REVIEW_SORT_FIELDS = new Set([
+  'id', 'userId', 'productId', 'orderId', 'name', 'email', 'rating',
+  'status', 'isVerifiedPurchase', 'likeCount', 'featured', 'pinned',
+  'qualityRating', 'valueRating', 'deliveryRating', 'createdAt', 'updatedAt'
+]);
+
 class QueryChain {
-  constructor(prismaQuery) {
-    this.prismaQuery = prismaQuery;
+  constructor(where = {}, options = {}) {
+    this.where = where;
+    this.options = { ...options };
   }
   populate() { return this; }
-  sort() { return this; }
-  skip() { return this; }
-  limit() { return this; }
+  sort(s) {
+    this.options.sort = s;
+    return this;
+  }
+  skip(sk) {
+    this.options.skip = sk;
+    return this;
+  }
+  limit(l) {
+    this.options.limit = l;
+    return this;
+  }
   select() { return this; }
   lean() { return this; }
   exec() { return this.then(res => res); }
 
   async then(resolve, reject) {
     try {
-      const res = await this.prismaQuery;
+      const queryArgs = {
+        where: this.where,
+        include: { user: true, product: true, images: true, replies: true },
+      };
+
+      if (this.options.sort) {
+        if (typeof this.options.sort === 'object') {
+          const orderList = [];
+          for (const [key, val] of Object.entries(this.options.sort)) {
+            const field = key === 'helpfulVotes' ? 'likeCount' : key;
+            if (VALID_REVIEW_SORT_FIELDS.has(field)) {
+              orderList.push({ [field]: (val === -1 || val === 'desc') ? 'desc' : 'asc' });
+            }
+          }
+          if (orderList.length > 0) {
+            queryArgs.orderBy = orderList.length === 1 ? orderList[0] : orderList;
+          } else {
+            queryArgs.orderBy = { createdAt: 'desc' };
+          }
+        }
+      } else {
+        queryArgs.orderBy = { createdAt: 'desc' };
+      }
+
+      if (this.options.skip !== undefined && this.options.skip !== null) {
+        queryArgs.skip = Number(this.options.skip);
+      }
+      if (this.options.limit !== undefined && this.options.limit !== null) {
+        queryArgs.take = Number(this.options.limit);
+      }
+
+      const res = await prisma.review.findMany(queryArgs);
       if (Array.isArray(res)) resolve(res.map(r => new ReviewDocument(r)));
       else if (res) resolve(new ReviewDocument(res));
       else resolve(null);
@@ -174,32 +227,77 @@ const cleanReviewWhere = (where = {}) => {
       filter.orderId = String(where.orderId);
     }
   }
+  if (where.rating !== undefined && where.rating !== null) {
+    filter.rating = parseInt(where.rating);
+  }
+  if (where.isVerifiedPurchase !== undefined && where.isVerifiedPurchase !== null) {
+    filter.isVerifiedPurchase = Boolean(where.isVerifiedPurchase);
+  }
+  if (where.imageCount || where.withImages) {
+    filter.images = { some: {} };
+  }
+  if (where.featured !== undefined) filter.featured = Boolean(where.featured);
+  if (where.pinned !== undefined) filter.pinned = Boolean(where.pinned);
+  if (Array.isArray(where.$or) && where.$or.length > 0) {
+    filter.OR = where.$or.map(cond => cleanReviewWhere(cond));
+  }
   return filter;
 };
 
 class ReviewModel {
   static find(where = {}) {
     const filter = cleanReviewWhere(where);
-
-    const query = prisma.review.findMany({
-      where: filter,
-      orderBy: { createdAt: 'desc' },
-      include: { user: true, images: true, replies: true }
-    });
-    return new QueryChain(query);
+    return new QueryChain(filter);
   }
 
   static findOne(where = {}) {
     const filter = cleanReviewWhere(where);
-
-    const query = prisma.review.findFirst({ where: filter });
-    return new QueryChain(query);
+    const query = prisma.review.findFirst({
+      where: filter,
+      include: { user: true, product: true, images: true, replies: true }
+    });
+    return {
+      select() { return this; },
+      populate() { return this; },
+      lean() { return this; },
+      exec() { return this.then(res => res); },
+      async then(resolve, reject) {
+        try {
+          const res = await query;
+          if (res) resolve(new ReviewDocument(res));
+          else resolve(null);
+        } catch (err) { reject(err); }
+      }
+    };
   }
 
   static findById(id) {
-    if (!id) return new QueryChain(Promise.resolve(null));
-    const query = prisma.review.findUnique({ where: { id: String(id) } });
-    return new QueryChain(query);
+    if (!id) {
+      return {
+        populate() { return this; },
+        select() { return this; },
+        lean() { return this; },
+        exec() { return Promise.resolve(null); },
+        then(resolve) { resolve(null); }
+      };
+    }
+    const query = prisma.review.findUnique({
+      where: { id: String(id) },
+      include: { user: true, product: true, images: true, replies: true }
+    });
+    return {
+      populate() { return this; },
+      select() { return this; },
+      lean() { return this; },
+      exec() { return this.then(res => res); },
+      async then(resolve, reject) {
+        try {
+          const res = await query;
+          if (res) resolve(new ReviewDocument(res));
+          else resolve(null);
+        } catch (err) { reject(err); }
+      }
+    };
   }
 
   static async aggregate(pipeline) {
@@ -212,6 +310,9 @@ class ReviewModel {
       where: {
         productId: String(productId),
         status: 'approved'
+      },
+      include: {
+        images: true
       }
     });
 
@@ -233,6 +334,8 @@ class ReviewModel {
     const totalReviews = reviews.length;
     const sumRating = reviews.reduce((sum, r) => sum + r.rating, 0);
     const verifiedPurchases = reviews.filter(r => r.isVerifiedPurchase).length;
+    const imagesCount = reviews.reduce((sum, r) => sum + (r.images?.length || 0), 0);
+    const helpfulVotes = reviews.reduce((sum, r) => sum + (r.likeCount || 0), 0);
 
     const ratingDist = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
     reviews.forEach(r => {
@@ -244,6 +347,8 @@ class ReviewModel {
       averageRating: Math.round((sumRating / totalReviews) * 10) / 10,
       verifiedPurchases,
       verifiedPurchasePercentage: Math.round((verifiedPurchases / totalReviews) * 100 * 10) / 10,
+      imagesCount,
+      helpfulVotes,
       ratingDistribution: ratingDist
     };
   }
