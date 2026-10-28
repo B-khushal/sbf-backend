@@ -1,5 +1,14 @@
 const prisma = require('../config/prisma');
 
+const triggerSitemapRefresh = () => {
+  try {
+    const { invalidateSitemapCache } = require('../services/seoService');
+    if (typeof invalidateSitemapCache === 'function') {
+      invalidateSitemapCache();
+    }
+  } catch (e) {}
+};
+
 function cleanCategoryWhere(where = {}) {
   const clean = {};
   if (!where || typeof where !== 'object') return clean;
@@ -258,6 +267,7 @@ class CategoryDocument {
     this.parentId = updated.parent
       ? { _id: updated.parent.id, id: updated.parent.id, name: updated.parent.name, slug: updated.parent.slug }
       : (updated.parentId || null);
+    triggerSitemapRefresh();
     return this;
   }
 
@@ -265,6 +275,7 @@ class CategoryDocument {
     const catId = this.id || this._id;
     if (catId) {
       await prisma.category.delete({ where: { id: String(catId) } });
+      triggerSitemapRefresh();
     }
     return this;
   }
@@ -356,6 +367,7 @@ class CategoryModel extends CategoryDocument {
         data: dataToUpdate,
         include: { parent: true, subCategories: true }
       });
+      triggerSitemapRefresh();
       return new CategoryDocument(updated);
     } catch (e) {
       console.error('Category findByIdAndUpdate error:', e);
@@ -369,6 +381,7 @@ class CategoryModel extends CategoryDocument {
         where: { id: String(id) },
         include: { parent: true, subCategories: true }
       });
+      triggerSitemapRefresh();
       return new CategoryDocument(deleted);
     } catch (e) {
       return null;
@@ -377,9 +390,11 @@ class CategoryModel extends CategoryDocument {
 
   static async deleteMany(where = {}) {
     const prismaWhere = cleanCategoryWhere(where);
-    return await prisma.category.deleteMany({
+    const res = await prisma.category.deleteMany({
       where: prismaWhere
     });
+    triggerSitemapRefresh();
+    return res;
   }
 
   static async updateMany(where = {}, update = {}) {
@@ -398,10 +413,12 @@ class CategoryModel extends CategoryDocument {
     if (set.isFeatured !== undefined) {
       data.isFeatured = Boolean(set.isFeatured);
     }
-    return await prisma.category.updateMany({
+    const res = await prisma.category.updateMany({
       where: prismaWhere,
       data
     });
+    triggerSitemapRefresh();
+    return res;
   }
 
   static async countDocuments(where = {}) {

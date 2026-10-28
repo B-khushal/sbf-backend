@@ -19,7 +19,6 @@ const {
 const sendXmlResponse = (res, xml) => {
   res.setHeader('Content-Type', 'application/xml; charset=utf-8');
   res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400');
-  res.setHeader('Vary', 'Accept, User-Agent');
   return res.status(200).send(xml);
 };
 
@@ -27,45 +26,39 @@ const sendXmlResponse = (res, xml) => {
 const sendHtmlResponse = (res, html) => {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'public, max-age=1800, s-maxage=3600');
-  res.setHeader('Vary', 'Accept, User-Agent');
   return res.status(200).send(html);
 };
 
-// Detect if request is from a search crawler or explicit XML request
-const isBotOrXmlRequest = (req) => {
-  if (req.query.format === 'xml' || req.query.raw === '1' || req.query.raw === 'true') {
-    return true;
-  }
-  if (req.query.format === 'html') {
-    return false;
-  }
-
-  const userAgent = (req.headers['user-agent'] || '').toLowerCase();
-  const acceptHeader = (req.headers['accept'] || '').toLowerCase();
-
-  const botSignatures = [
-    'googlebot', 'bingbot', 'yandex', 'duckduckbot', 'baiduspider',
-    'semrushbot', 'ahrefsbot', 'screaming frog', 'crawler', 'spider',
-    'bot', 'facebookexternalhit', 'twitterbot', 'linkedinbot', 'whatsapp',
-    'curl', 'wget', 'postmanruntime', 'python-requests', 'axios', 'node-fetch'
-  ];
-
-  if (botSignatures.some(sig => userAgent.includes(sig))) {
-    return true;
-  }
-
-  // If client explicitly requests XML and does NOT accept HTML
-  if (acceptHeader.includes('application/xml') && !acceptHeader.includes('text/html')) {
-    return true;
-  }
-
-  // If client is a standard web browser requesting an HTML page
-  if (acceptHeader.includes('text/html')) {
-    return false;
-  }
-
-  return true;
+// Check if an explicit HTML UI view was requested via query param (?format=html)
+// XML endpoints must ALWAYS return XML regardless of User-Agent or Accept header (no cloaking)
+const isExplicitHtmlRequest = (req) => {
+  return req.query.format === 'html';
 };
+
+// @desc    Human-readable Interactive Sitemap UI Routes
+// @route   GET /sitemap, /site-map, /sitemap/:section
+// @access  Public
+router.get(['/sitemap', '/site-map', '/sitemap/:section'], async (req, res) => {
+  try {
+    const section = (req.params.section || '').toLowerCase();
+    let type = 'index';
+    if (section === 'pages' || section === 'static') type = 'pages';
+    else if (section === 'categories') type = 'categories';
+    else if (section === 'products') type = 'products';
+    else if (section === 'occasions') type = 'occasions';
+
+    if (req.query.format === 'xml') {
+      const xml = await generateSitemapXml(type);
+      return sendXmlResponse(res, xml);
+    }
+
+    const html = await renderSitemapUiHtml(type);
+    return sendHtmlResponse(res, html);
+  } catch (error) {
+    console.error('Error rendering human sitemap UI:', error);
+    return res.status(500).send('Internal Server Error rendering sitemap UI');
+  }
+});
 
 // @desc    Sitemap Data JSON API for Frontend UI & Mobile Clients
 // @route   GET /api/seo/sitemap-data or /sitemap-data
@@ -87,7 +80,7 @@ router.get(['/sitemap-data', '/api/seo/sitemap-data'], async (req, res) => {
 // @access  Public
 router.get(['/sitemap.xml', '/sitemap-index.xml'], async (req, res) => {
   try {
-    if (!isBotOrXmlRequest(req)) {
+    if (isExplicitHtmlRequest(req)) {
       const html = await renderSitemapUiHtml('index');
       return sendHtmlResponse(res, html);
     }
@@ -109,7 +102,7 @@ router.get(['/sitemap.xml', '/sitemap-index.xml'], async (req, res) => {
 // @access  Public
 router.get(['/sitemap-pages.xml', '/sitemap-static.xml'], async (req, res) => {
   try {
-    if (!isBotOrXmlRequest(req)) {
+    if (isExplicitHtmlRequest(req)) {
       const html = await renderSitemapUiHtml('pages');
       return sendHtmlResponse(res, html);
     }
@@ -128,7 +121,7 @@ router.get(['/sitemap-pages.xml', '/sitemap-static.xml'], async (req, res) => {
 // @access  Public
 router.get('/sitemap-categories.xml', async (req, res) => {
   try {
-    if (!isBotOrXmlRequest(req)) {
+    if (isExplicitHtmlRequest(req)) {
       const html = await renderSitemapUiHtml('categories');
       return sendHtmlResponse(res, html);
     }
@@ -147,7 +140,7 @@ router.get('/sitemap-categories.xml', async (req, res) => {
 // @access  Public
 router.get('/sitemap-products.xml', async (req, res) => {
   try {
-    if (!isBotOrXmlRequest(req)) {
+    if (isExplicitHtmlRequest(req)) {
       const html = await renderSitemapUiHtml('products');
       return sendHtmlResponse(res, html);
     }
@@ -166,7 +159,7 @@ router.get('/sitemap-products.xml', async (req, res) => {
 // @access  Public
 router.get('/sitemap-occasions.xml', async (req, res) => {
   try {
-    if (!isBotOrXmlRequest(req)) {
+    if (isExplicitHtmlRequest(req)) {
       const html = await renderSitemapUiHtml('occasions');
       return sendHtmlResponse(res, html);
     }
@@ -185,7 +178,7 @@ router.get('/sitemap-occasions.xml', async (req, res) => {
 // @access  Public
 router.get('/sitemap-full.xml', async (req, res) => {
   try {
-    if (!isBotOrXmlRequest(req)) {
+    if (isExplicitHtmlRequest(req)) {
       const html = await renderSitemapUiHtml('index');
       return sendHtmlResponse(res, html);
     }

@@ -7,12 +7,12 @@ const mongoose = require('mongoose');
 
 const SITE_URL = 'https://sbflorist.in';
 const BRAND_NAME = 'Spring Blossoms Florist';
-const PHONE_NUMBER = '+91 9949683222';
+const PHONE_NUMBER = '+919949683222';
 const STUDIO_ADDRESS = {
-  streetAddress: 'Door No. 12-2-786/A & B, Najam Centre, Pillar No. 32, Rethi Bowli, Mehdipatnam',
+  streetAddress: 'Pillar Number 32, Najam Centre, A/B, Door No. 12-2, 786, Rethi Bowli Road, Mehdipatnam',
   addressLocality: 'Hyderabad',
   addressRegion: 'Telangana',
-  postalCode: '500028',
+  postalCode: '500006',
   addressCountry: 'IN'
 };
 
@@ -89,28 +89,153 @@ const formatW3cDate = (date) => {
   }
 };
 
-// Authoritative list of static & location pages
+// Authoritative list of canonical public static & location pages
+// Excludes auth-protected (/vendors-consent) and robots-disallowed (/vendor/register) routes
 const STATIC_PAGE_DEFS = [
-  { path: '/', lastmod: '2026-10-27' },
-  { path: '/shop', lastmod: '2026-10-27' },
-  { path: '/flower-delivery-hyderabad', lastmod: '2026-10-27' },
-  { path: '/flower-delivery-secunderabad', lastmod: '2026-10-27' },
+  { path: '/', lastmod: '2026-10-28' },
+  { path: '/shop', lastmod: '2026-10-28' },
+  { path: '/flower-delivery-hyderabad', lastmod: '2026-10-28' },
+  { path: '/flower-delivery-secunderabad', lastmod: '2026-10-28' },
   { path: '/valentine-special', lastmod: '2026-10-27' },
   { path: '/valentine-shop', lastmod: '2026-10-27' },
-  { path: '/about', lastmod: '2026-10-14' },
-  { path: '/contact', lastmod: '2026-10-14' },
-  { path: '/shipping', lastmod: '2026-10-14' },
+  { path: '/about', lastmod: '2026-10-28' },
+  { path: '/contact', lastmod: '2026-10-28' },
+  { path: '/shipping', lastmod: '2026-10-28' },
   { path: '/privacy', lastmod: '2026-10-14' },
   { path: '/terms', lastmod: '2026-10-14' },
-  { path: '/refund-policy', lastmod: '2026-10-14' },
-  { path: '/cancellation-policy', lastmod: '2026-10-14' },
-  { path: '/vendors-consent', lastmod: '2026-10-14' },
-  { path: '/vendor/register', lastmod: '2026-10-27' },
+  { path: '/refund-policy', lastmod: '2026-10-28' },
+  { path: '/cancellation-policy', lastmod: '2026-10-28' },
   { path: '/faq', lastmod: '2026-10-27' }
 ];
 
 // Reserved static paths to prevent duplicate category inclusion
 const RESERVED_STATIC_PATHS = new Set([...STATIC_PAGE_DEFS.map(p => p.path), '/occasions']);
+
+// Normalize category path to its canonical non-redirecting route
+const normalizeCanonicalCategoryPath = (cat) => {
+  if (!cat) return null;
+  if (!cat.slug && !cat.categoryUrl) return null;
+
+  // Budget Friendly redirects from /budget-friendly to /shop/budget-friendly in App.tsx
+  if (cat.slug === 'budget-friendly' || cat.categoryUrl === '/budget-friendly') {
+    return '/shop/budget-friendly';
+  }
+
+  let cleanPath = cat.categoryUrl;
+  if (!cleanPath || cleanPath === '/') {
+    cleanPath = `/${cat.slug}`;
+  }
+  if (!cleanPath.startsWith('/')) {
+    cleanPath = `/${cleanPath}`;
+  }
+  cleanPath = cleanPath.replace(/\/+$/, '') || '/';
+
+  // Multi-segment category paths like /cakes/birthday-cakes redirect to /:slug in CategoryResolver.tsx
+  const segments = cleanPath.split('/').filter(Boolean);
+  if (segments.length >= 2 && segments[0] !== 'shop' && segments[0] !== 'occasions' && cat.slug) {
+    cleanPath = `/${cat.slug}`;
+  }
+
+  return cleanPath;
+};
+
+// Build deduplicated canonical category list from database records
+const buildCanonicalCategoryItems = async () => {
+  const prisma = require('../config/prisma');
+  let categories = [];
+  try {
+    categories = await prisma.category.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        categoryUrl: true,
+        updatedAt: true
+      },
+      orderBy: { displayOrder: 'asc' }
+    });
+  } catch (err) {
+    console.error('Error fetching categories for sitemap:', err.message);
+  }
+
+  const seenUrls = new Set();
+  const items = [];
+
+  for (const cat of categories) {
+    const cleanPath = normalizeCanonicalCategoryPath(cat);
+    if (!cleanPath || RESERVED_STATIC_PATHS.has(cleanPath)) continue;
+
+    const fullUrl = `${SITE_URL}${cleanPath}`;
+    if (seenUrls.has(fullUrl)) continue;
+    seenUrls.add(fullUrl);
+
+    items.push({
+      id: cat.id,
+      name: cat.name || cat.slug,
+      slug: cat.slug,
+      cleanPath,
+      url: fullUrl,
+      lastmod: formatW3cDate(cat.updatedAt) || '2026-10-27'
+    });
+  }
+
+  return items;
+};
+
+// Build deduplicated canonical occasion list from database records
+const buildCanonicalOccasionItems = async () => {
+  const prisma = require('../config/prisma');
+  let occasions = [];
+  try {
+    occasions = await prisma.occasion.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        updatedAt: true
+      },
+      orderBy: { displayOrder: 'asc' }
+    });
+  } catch (err) {
+    console.error('Error fetching occasions for sitemap:', err.message);
+  }
+
+  const seenUrls = new Set();
+  const items = [];
+
+  // Primary Occasions Hub
+  const baseOccUrl = `${SITE_URL}/occasions`;
+  seenUrls.add(baseOccUrl);
+  items.push({
+    id: 'hub',
+    name: 'All Occasions Directory Hub',
+    slug: 'occasions',
+    url: baseOccUrl,
+    lastmod: '2026-10-28',
+    isHub: true
+  });
+
+  for (const occ of occasions) {
+    if (!occ.slug) continue;
+    const occUrl = `${SITE_URL}/occasions/${occ.slug}`;
+    if (seenUrls.has(occUrl)) continue;
+    seenUrls.add(occUrl);
+
+    items.push({
+      id: occ.id,
+      name: `${occ.name} Gifts & Flowers`,
+      rawName: occ.name,
+      slug: occ.slug,
+      url: occUrl,
+      lastmod: formatW3cDate(occ.updatedAt) || '2026-07-31',
+      isHub: false
+    });
+  }
+
+  return items;
+};
 
 // 1. Generate Static & Location Pages Sitemap
 const generatePagesSitemapXml = async (forceRefresh = false) => {
@@ -150,58 +275,18 @@ const generateCategoriesSitemapXml = async (forceRefresh = false) => {
     return sitemapCache.categories.xml;
   }
 
-  const prisma = require('../config/prisma');
-  let categories = [];
-  try {
-    categories = await prisma.category.findMany({
-      where: { isActive: true },
-      select: {
-        id: true,
-        name: true,
-        slug: true,
-        categoryUrl: true,
-        updatedAt: true
-      },
-      orderBy: { displayOrder: 'asc' }
-    });
-  } catch (err) {
-    console.error('Error fetching categories for sitemap:', err.message);
-  }
+  const categoryItems = await buildCanonicalCategoryItems();
 
   let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
   xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
 
-  const seenUrls = new Set();
-  let count = 0;
-
-  for (const cat of categories) {
-    if (!cat.slug && !cat.categoryUrl) continue;
-
-    let cleanPath = cat.categoryUrl;
-    if (!cleanPath || cleanPath === '/') {
-      cleanPath = `/${cat.slug}`;
-    }
-    if (!cleanPath.startsWith('/')) {
-      cleanPath = `/${cleanPath}`;
-    }
-    cleanPath = cleanPath.replace(/\/+$/, '') || '/';
-
-    // Avoid duplicate static routes like /shop
-    if (RESERVED_STATIC_PATHS.has(cleanPath)) continue;
-
-    const fullUrl = `${SITE_URL}${cleanPath}`;
-    if (seenUrls.has(fullUrl)) continue;
-    seenUrls.add(fullUrl);
-
-    const lastmod = formatW3cDate(cat.updatedAt);
-
+  for (const item of categoryItems) {
     xml += '  <url>\n';
-    xml += `    <loc>${escapeXml(fullUrl)}</loc>\n`;
-    if (lastmod) {
-      xml += `    <lastmod>${escapeXml(lastmod)}</lastmod>\n`;
+    xml += `    <loc>${escapeXml(item.url)}</loc>\n`;
+    if (item.lastmod) {
+      xml += `    <lastmod>${escapeXml(item.lastmod)}</lastmod>\n`;
     }
     xml += '  </url>\n';
-    count++;
   }
 
   xml += '</urlset>\n';
@@ -209,7 +294,7 @@ const generateCategoriesSitemapXml = async (forceRefresh = false) => {
   sitemapCache.categories = {
     xml,
     expiresAt: now + SITEMAP_CACHE_TTL,
-    count
+    count: categoryItems.length
   };
 
   return xml;
@@ -309,54 +394,18 @@ const generateOccasionsSitemapXml = async (forceRefresh = false) => {
     return sitemapCache.occasions.xml;
   }
 
-  const prisma = require('../config/prisma');
-  let occasions = [];
-  try {
-    occasions = await prisma.occasion.findMany({
-      where: { isActive: true },
-      select: {
-        id: true,
-        name: true,
-        slug: true,
-        updatedAt: true
-      },
-      orderBy: { displayOrder: 'asc' }
-    });
-  } catch (err) {
-    console.error('Error fetching occasions for sitemap:', err.message);
-  }
+  const occasionItems = await buildCanonicalOccasionItems();
 
   let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
   xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
 
-  const seenUrls = new Set();
-  let count = 0;
-
-  // Primary Occasions Hub
-  const baseOccUrl = `${SITE_URL}/occasions`;
-  seenUrls.add(baseOccUrl);
-  xml += '  <url>\n';
-  xml += `    <loc>${escapeXml(baseOccUrl)}</loc>\n`;
-  xml += `    <lastmod>${formatW3cDate(new Date())}</lastmod>\n`;
-  xml += '  </url>\n';
-  count++;
-
-  for (const occ of occasions) {
-    if (!occ.slug) continue;
-
-    const occUrl = `${SITE_URL}/occasions/${occ.slug}`;
-    if (seenUrls.has(occUrl)) continue;
-    seenUrls.add(occUrl);
-
-    const lastmod = formatW3cDate(occ.updatedAt);
-
+  for (const item of occasionItems) {
     xml += '  <url>\n';
-    xml += `    <loc>${escapeXml(occUrl)}</loc>\n`;
-    if (lastmod) {
-      xml += `    <lastmod>${escapeXml(lastmod)}</lastmod>\n`;
+    xml += `    <loc>${escapeXml(item.url)}</loc>\n`;
+    if (item.lastmod) {
+      xml += `    <lastmod>${escapeXml(item.lastmod)}</lastmod>\n`;
     }
     xml += '  </url>\n';
-    count++;
   }
 
   xml += '</urlset>\n';
@@ -364,7 +413,7 @@ const generateOccasionsSitemapXml = async (forceRefresh = false) => {
   sitemapCache.occasions = {
     xml,
     expiresAt: now + SITEMAP_CACHE_TTL,
-    count
+    count: occasionItems.length
   };
 
   return xml;
@@ -380,10 +429,10 @@ const generateSitemapIndexXml = async (forceRefresh = false) => {
   const prisma = require('../config/prisma');
 
   // Discover latest modification dates for each child sitemap
-  let latestPagesDate = '2026-10-27';
+  let latestPagesDate = '2026-10-28';
   let latestCatDate = '2026-10-27';
   let latestProdDate = '2026-10-27';
-  let latestOccDate = '2026-10-27';
+  let latestOccDate = '2026-10-28';
 
   try {
     const latestProd = await prisma.product.findFirst({
@@ -410,7 +459,10 @@ const generateSitemapIndexXml = async (forceRefresh = false) => {
       orderBy: { updatedAt: 'desc' }
     });
     if (latestOcc && latestOcc.updatedAt) {
-      latestOccDate = formatW3cDate(latestOcc.updatedAt) || latestOccDate;
+      const occMod = formatW3cDate(latestOcc.updatedAt);
+      if (occMod && occMod > latestOccDate) {
+        latestOccDate = occMod;
+      }
     }
   } catch (err) {
     console.error('Error fetching latest timestamps for sitemap index:', err.message);
@@ -528,7 +580,6 @@ const getSitemapData = async (type = 'index') => {
     '/flower-delivery-secunderabad': 'Flower Delivery in Secunderabad (Local Hub)',
     '/valentine-special': 'Valentine\'s Special Gifts Experience',
     '/valentine-shop': 'Valentine\'s Day Shop',
-    '/vendor/register': 'Vendor Registration & Onboarding',
     '/about': 'About Spring Blossoms Florist',
     '/contact': 'Contact Us & Store Location',
     '/shipping': 'Shipping & Delivery Policy',
@@ -536,34 +587,26 @@ const getSitemapData = async (type = 'index') => {
     '/terms': 'Terms of Service',
     '/refund-policy': 'Refund & Return Policy',
     '/cancellation-policy': 'Order Cancellation Policy',
-    '/vendors-consent': 'Vendor Consent & Terms',
     '/faq': 'Frequently Asked Questions (FAQ) — Spring Blossoms Florist'
   };
 
-  let pagesCount = STATIC_PAGE_DEFS.length;
-  let catCount = 44;
-  let prodCount = 180;
-  let occCount = 20;
+  const [categoryItems, occasionItems, pCount] = await Promise.all([
+    buildCanonicalCategoryItems(),
+    buildCanonicalOccasionItems(),
+    prisma.product.count({ where: { isVisible: true, approvalStatus: 'approved' } }).catch(() => 180)
+  ]);
 
-  try {
-    const [cCount, pCount, oCount] = await Promise.all([
-      prisma.category.count({ where: { isActive: true } }),
-      prisma.product.count({ where: { isVisible: true, approvalStatus: 'approved' } }),
-      prisma.occasion.count({ where: { isActive: true } })
-    ]);
-    if (cCount) catCount = cCount;
-    if (pCount) prodCount = pCount;
-    if (oCount) occCount = oCount + 1;
-  } catch (err) {
-    // fallback to defaults
-  }
+  const pagesCount = STATIC_PAGE_DEFS.length;
+  const catCount = categoryItems.length;
+  const prodCount = pCount || 180;
+  const occCount = occasionItems.length;
 
   const sitemapsMeta = [
-    { id: 'index', name: 'sitemap.xml', url: `${SITE_URL}/sitemap.xml`, label: 'All Sitemaps (Index)', count: 4 },
-    { id: 'pages', name: 'sitemap-pages.xml', url: `${SITE_URL}/sitemap-pages.xml`, label: 'Pages', count: pagesCount },
-    { id: 'categories', name: 'sitemap-categories.xml', url: `${SITE_URL}/sitemap-categories.xml`, label: 'Categories', count: catCount },
-    { id: 'products', name: 'sitemap-products.xml', url: `${SITE_URL}/sitemap-products.xml`, label: 'Products', count: prodCount },
-    { id: 'occasions', name: 'sitemap-occasions.xml', url: `${SITE_URL}/sitemap-occasions.xml`, label: 'Occasions', count: occCount }
+    { id: 'index', name: 'sitemap.xml', url: `${SITE_URL}/sitemap.xml`, uiPath: '/sitemap', label: 'All Sitemaps (Index)', count: 4 },
+    { id: 'pages', name: 'sitemap-pages.xml', url: `${SITE_URL}/sitemap-pages.xml`, uiPath: '/sitemap/pages', label: 'Pages', count: pagesCount },
+    { id: 'categories', name: 'sitemap-categories.xml', url: `${SITE_URL}/sitemap-categories.xml`, uiPath: '/sitemap/categories', label: 'Categories', count: catCount },
+    { id: 'products', name: 'sitemap-products.xml', url: `${SITE_URL}/sitemap-products.xml`, uiPath: '/sitemap/products', label: 'Products', count: prodCount },
+    { id: 'occasions', name: 'sitemap-occasions.xml', url: `${SITE_URL}/sitemap-occasions.xml`, uiPath: '/sitemap/occasions', label: 'Occasions', count: occCount }
   ];
 
   let currentTitle = 'XML Sitemap Index';
@@ -578,7 +621,7 @@ const getSitemapData = async (type = 'index') => {
     currentFile = 'sitemap.xml';
   } else if (type === 'pages' || type === 'static') {
     currentTitle = 'Static & Location Pages Sitemap';
-    currentSubtitle = 'Canonical public pages, local delivery hubs, policy pages, and vendor registration.';
+    currentSubtitle = 'Canonical public pages, local delivery hubs, policy pages, and customer FAQs.';
     currentFile = 'sitemap-pages.xml';
 
     rows = STATIC_PAGE_DEFS.map((p, idx) => {
@@ -589,7 +632,7 @@ const getSitemapData = async (type = 'index') => {
         idx: idx + 1,
         title: PAGE_LABELS[p.path] || p.path,
         url: fullUrl,
-        lastmod: p.lastmod || '2026-10-27',
+        lastmod: p.lastmod || '2026-10-28',
         badge: isHub ? 'Location Hub' : (isPolicy ? 'Legal / Policy' : 'Main Page'),
         badgeColor: isHub ? '#0284c7' : (isPolicy ? '#64748b' : '#be123c'),
         badgeBg: isHub ? '#e0f2fe' : (isPolicy ? '#f1f5f9' : '#ffe4e6')
@@ -600,41 +643,15 @@ const getSitemapData = async (type = 'index') => {
     currentSubtitle = 'Active category collections covering bouquets, roses, lilies, cakes, and gift combos.';
     currentFile = 'sitemap-categories.xml';
 
-    let categories = [];
-    try {
-      categories = await prisma.category.findMany({
-        where: { isActive: true },
-        select: { id: true, name: true, slug: true, categoryUrl: true, updatedAt: true },
-        orderBy: { displayOrder: 'asc' }
-      });
-    } catch (e) {
-      console.error('Error fetching categories for UI:', e.message);
-    }
-
-    const seenUrls = new Set();
-    let idx = 1;
-    for (const cat of categories) {
-      if (!cat.slug && !cat.categoryUrl) continue;
-      let cleanPath = cat.categoryUrl;
-      if (!cleanPath || cleanPath === '/') cleanPath = `/${cat.slug}`;
-      if (!cleanPath.startsWith('/')) cleanPath = `/${cleanPath}`;
-      cleanPath = cleanPath.replace(/\/+$/, '') || '/';
-      if (RESERVED_STATIC_PATHS.has(cleanPath)) continue;
-
-      const fullUrl = `${SITE_URL}${cleanPath}`;
-      if (seenUrls.has(fullUrl)) continue;
-      seenUrls.add(fullUrl);
-
-      rows.push({
-        idx: idx++,
-        title: cat.name || cat.slug,
-        url: fullUrl,
-        lastmod: formatW3cDate(cat.updatedAt) || '2026-10-27',
-        badge: cleanPath.startsWith('/cakes') ? 'Cakes' : (cleanPath.startsWith('/combos') ? 'Combos' : 'Flowers'),
-        badgeColor: '#059669',
-        badgeBg: '#ecfdf5'
-      });
-    }
+    rows = categoryItems.map((cat, index) => ({
+      idx: index + 1,
+      title: cat.name,
+      url: cat.url,
+      lastmod: cat.lastmod,
+      badge: cat.cleanPath.includes('cake') ? 'Cakes' : (cat.cleanPath.includes('combo') ? 'Combos' : 'Flowers'),
+      badgeColor: '#059669',
+      badgeBg: '#ecfdf5'
+    }));
   } else if (type === 'products') {
     currentTitle = 'Products Catalog Sitemap';
     currentSubtitle = 'Approved and visible handcrafted flower bouquets, cakes, and celebration gifts.';
@@ -682,56 +699,35 @@ const getSitemapData = async (type = 'index') => {
     currentSubtitle = 'Curated celebration gift collections for Birthday, Anniversary, Festivals, and Holidays.';
     currentFile = 'sitemap-occasions.xml';
 
-    let occasions = [];
-    try {
-      occasions = await prisma.occasion.findMany({
-        where: { isActive: true },
-        select: { id: true, name: true, slug: true, updatedAt: true },
-        orderBy: { displayOrder: 'asc' }
-      });
-    } catch (e) {
-      console.error('Error fetching occasions for UI:', e.message);
-    }
-
-    rows.push({
-      idx: 1,
-      title: 'All Occasions Directory Hub',
-      url: `${SITE_URL}/occasions`,
-      lastmod: formatW3cDate(new Date()),
-      badge: 'Hub',
-      badgeColor: '#7c3aed',
-      badgeBg: '#f5f3ff'
-    });
-
-    let idx = 2;
-    for (const occ of occasions) {
-      if (!occ.slug) continue;
-      rows.push({
-        idx: idx++,
-        title: `${occ.name} Gifts & Flowers`,
-        url: `${SITE_URL}/occasions/${occ.slug}`,
-        lastmod: formatW3cDate(occ.updatedAt) || '2026-07-31',
-        badge: 'Celebration',
-        badgeColor: '#db2777',
-        badgeBg: '#fdf2f8'
-      });
-    }
+    rows = occasionItems.map((occ, index) => ({
+      idx: index + 1,
+      title: occ.name,
+      url: occ.url,
+      lastmod: occ.lastmod,
+      badge: occ.isHub ? 'Hub' : 'Celebration',
+      badgeColor: occ.isHub ? '#7c3aed' : '#db2777',
+      badgeBg: occ.isHub ? '#f5f3ff' : '#fdf2f8'
+    }));
   }
 
   const childCards = [
     {
+      id: 'pages',
       name: 'sitemap-pages.xml',
       url: `${SITE_URL}/sitemap-pages.xml`,
+      uiPath: '/sitemap/pages',
       title: 'Static & Location Pages',
-      desc: 'Core shop pages, Hyderabad & Secunderabad local delivery hubs, policy pages, and vendor registration.',
+      desc: 'Core shop pages, Hyderabad & Secunderabad local delivery hubs, policy pages, and customer FAQs.',
       count: pagesCount,
-      badge: '15 Pages',
+      badge: `${pagesCount} Pages`,
       color: '#be123c',
       bg: '#fff1f2'
     },
     {
+      id: 'categories',
       name: 'sitemap-categories.xml',
       url: `${SITE_URL}/sitemap-categories.xml`,
+      uiPath: '/sitemap/categories',
       title: 'Product Categories',
       desc: 'All active catalog categories covering fresh bouquets, roses, lilies, celebration cakes, and hampers.',
       count: catCount,
@@ -740,8 +736,10 @@ const getSitemapData = async (type = 'index') => {
       bg: '#ecfdf5'
     },
     {
+      id: 'products',
       name: 'sitemap-products.xml',
       url: `${SITE_URL}/sitemap-products.xml`,
+      uiPath: '/sitemap/products',
       title: 'Products Catalog',
       desc: 'All active and approved handcrafted flower arrangements, cakes, and gifts with Google Images.',
       count: prodCount,
@@ -750,8 +748,10 @@ const getSitemapData = async (type = 'index') => {
       bg: '#fef3c7'
     },
     {
+      id: 'occasions',
       name: 'sitemap-occasions.xml',
       url: `${SITE_URL}/sitemap-occasions.xml`,
+      uiPath: '/sitemap/occasions',
       title: 'Occasions & Celebrations',
       desc: 'Curated celebration hubs for Birthday, Anniversary, Romance, Congratulations, and festive holidays.',
       count: occCount,
@@ -1142,7 +1142,7 @@ const renderSitemapUiHtml = async (type = 'index') => {
           <p>${escapeHtml(currentSubtitle)}</p>
         </div>
         <div class="header-actions">
-          <a href="/${escapeHtml(currentFile)}?format=xml" class="btn btn-xml" target="_blank" title="View underlying raw XML format">
+          <a href="/${escapeHtml(currentFile)}" class="btn btn-xml" target="_blank" title="View underlying raw XML format">
             &lt;/&gt; Raw XML
           </a>
           <a href="/" class="btn btn-outline" target="_blank">
@@ -1153,14 +1153,14 @@ const renderSitemapUiHtml = async (type = 'index') => {
       <div class="tabs-nav">
         ${sitemapsMeta.map(tab => {
           const isActive = (type === tab.id) || (type === 'static' && tab.id === 'pages');
-          return `<a href="${tab.url}" class="tab-link ${isActive ? 'active' : ''}">${escapeHtml(tab.label)} (${tab.count})</a>`;
+          return `<a href="${tab.uiPath || `/sitemap/${tab.id}`}" class="tab-link ${isActive ? 'active' : ''}">${escapeHtml(tab.label)} (${tab.count})</a>`;
         }).join('')}
       </div>
     </div>
 
     <div class="info-banner">
       <span>
-        <strong>Interactive XML Sitemap:</strong> Click any link below to explore that page. Search engines (Googlebot, Bingbot) automatically receive pure XML.
+        <strong>Interactive Sitemap Directory:</strong> Click any section or URL below to explore. Search engines access valid XML directly at <code>/${escapeHtml(currentFile)}</code>.
       </span>
       <span style="font-size: 12px; color: #b45309;">
         Format: W3C Valid
@@ -1178,13 +1178,13 @@ const renderSitemapUiHtml = async (type = 'index') => {
                   <span class="badge-count" style="color:${card.color}; background:${card.bg};">${escapeHtml(card.badge)}</span>
                 </div>
                 <h3 style="font-size:18px; margin-bottom:6px;">
-                  <a href="${card.url}" style="color:inherit; text-decoration:none;">${escapeHtml(card.name)}</a>
+                  <a href="${card.uiPath || `/sitemap/${card.id}`}" style="color:inherit; text-decoration:none;">${escapeHtml(card.name)}</a>
                 </h3>
                 <p>${escapeHtml(card.desc)}</p>
               </div>
               <div class="card-footer">
-                <a href="${card.url}" class="btn btn-primary" style="font-size:12px; padding:6px 14px;">Browse &rarr;</a>
-                <a href="${card.url}?format=xml" class="btn btn-xml" style="font-size:11px; padding:5px 10px;" target="_blank">&lt;/&gt; XML</a>
+                <a href="${card.uiPath || `/sitemap/${card.id}`}" class="btn btn-primary" style="font-size:12px; padding:6px 14px;">Browse &rarr;</a>
+                <a href="${card.url}" class="btn btn-xml" style="font-size:11px; padding:5px 10px;" target="_blank">&lt;/&gt; XML</a>
               </div>
             </div>
           `).join('')}
@@ -1737,54 +1737,68 @@ const renderCrawlerHtml = async (reqPath) => {
 
     const floristSchema = {
       '@context': 'https://schema.org',
-      '@graph': [
+      '@type': 'Florist',
+      '@id': `${SITE_URL}/#business`,
+      name: BRAND_NAME,
+      url: `${SITE_URL}/`,
+      telephone: PHONE_NUMBER,
+      email: '2006sbf@gmail.com',
+      logo: `${SITE_URL}/images/logosbf.png`,
+      image: [
+        `${SITE_URL}/images/logosbf.png`,
+        `${SITE_URL}/images/hero-flower-shop.jpg`
+      ],
+      description: 'Spring Blossoms Florist offers flower bouquets, floral arrangements and gifts for birthdays, anniversaries, celebrations and other special occasions.',
+      priceRange: '₹₹',
+      address: {
+        '@type': 'PostalAddress',
+        ...STUDIO_ADDRESS
+      },
+      geo: {
+        '@type': 'GeoCoordinates',
+        latitude: 17.395077,
+        longitude: 78.433996
+      },
+      hasMap: 'https://www.google.com/maps?cid=8660521669298042697',
+      sameAs: [
+        'https://www.google.com/maps?cid=8660521669298042697',
+        'https://www.instagram.com/sbf_india/'
+      ],
+      openingHoursSpecification: [
         {
-          '@type': 'Florist',
-          '@id': `${SITE_URL}/#florist`,
-          name: BRAND_NAME,
-          alternateName: 'SB Florist',
-          url: SITE_URL,
-          logo: `${SITE_URL}/logo.png`,
-          image: `${SITE_URL}/logo.png`,
-          description: 'Premium local florist offering handcrafted floral bouquets, celebration cakes, and gift delivery across Hyderabad and Secunderabad.',
-          telephone: PHONE_NUMBER,
-          priceRange: '₹₹',
-          address: {
-            '@type': 'PostalAddress',
-            ...STUDIO_ADDRESS
-          },
-          geo: {
-            '@type': 'GeoCoordinates',
-            latitude: 17.3912,
-            longitude: 78.4326
-          },
-          openingHoursSpecification: [
-            {
-              '@type': 'OpeningHoursSpecification',
-              dayOfWeek: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
-              opens: '09:00',
-              closes: '21:00'
-            }
+          '@type': 'OpeningHoursSpecification',
+          dayOfWeek: [
+            'https://schema.org/Monday',
+            'https://schema.org/Tuesday',
+            'https://schema.org/Wednesday',
+            'https://schema.org/Thursday',
+            'https://schema.org/Friday',
+            'https://schema.org/Saturday',
+            'https://schema.org/Sunday'
           ],
-          areaServed: [
-            { '@type': 'City', name: 'Hyderabad' },
-            { '@type': 'City', name: 'Secunderabad' }
-          ]
-        },
-        {
-          '@type': 'WebSite',
-          '@id': `${SITE_URL}/#website`,
-          url: SITE_URL,
-          name: BRAND_NAME,
-          potentialAction: {
-            '@type': 'SearchAction',
-            target: `${SITE_URL}/shop?q={search_term_string}`,
-            'query-input': 'required name=search_term_string'
-          }
+          opens: '08:00',
+          closes: '23:00'
         }
+      ],
+      areaServed: [
+        { '@type': 'City', name: 'Hyderabad' },
+        { '@type': 'City', name: 'Secunderabad' }
       ]
     };
-    structuredData.push(floristSchema);
+    const websiteSchema = {
+      '@context': 'https://schema.org',
+      '@type': 'WebSite',
+      '@id': `${SITE_URL}/#website`,
+      url: `${SITE_URL}/`,
+      name: BRAND_NAME,
+      publisher: { '@id': `${SITE_URL}/#business` },
+      potentialAction: {
+        '@type': 'SearchAction',
+        target: `${SITE_URL}/shop?search={search_term_string}`,
+        'query-input': 'required name=search_term_string'
+      }
+    };
+    structuredData.push(floristSchema, websiteSchema);
 
     bodyContent = `
       <div class="sbf-crawler-shell max-w-7xl mx-auto px-4 py-8">

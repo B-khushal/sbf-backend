@@ -1,5 +1,14 @@
 const prisma = require('../config/prisma');
 
+const triggerSitemapRefresh = () => {
+  try {
+    const { invalidateSitemapCache } = require('../services/seoService');
+    if (typeof invalidateSitemapCache === 'function') {
+      invalidateSitemapCache();
+    }
+  } catch (e) {}
+};
+
 function cleanProductWhere(where = {}) {
   const clean = {};
   if (!where || typeof where !== 'object') return clean;
@@ -820,6 +829,7 @@ class ProductDocument {
     this.id = doc.id;
     this.hidden = !doc.isVisible;
     this.isNew = doc.isNewArrival;
+    triggerSitemapRefresh();
     return this;
   }
 }
@@ -998,6 +1008,7 @@ class ProductModel extends ProductDocument {
       }
     });
 
+    triggerSitemapRefresh();
     return new ProductDocument(fullProduct || created);
   }
 
@@ -1036,6 +1047,7 @@ class ProductModel extends ProductDocument {
         }
       });
 
+      triggerSitemapRefresh();
       return new ProductDocument(fullProduct);
     } catch (e) {
       console.error('Product findByIdAndUpdate error:', e);
@@ -1048,6 +1060,7 @@ class ProductModel extends ProductDocument {
       const deleted = await prisma.product.delete({
         where: { id: String(id) }
       });
+      triggerSitemapRefresh();
       return new ProductDocument(deleted);
     } catch (e) {
       console.error('Product findByIdAndDelete error:', e);
@@ -1083,9 +1096,11 @@ class ProductModel extends ProductDocument {
       const deleted = await prisma.product.deleteMany({
         where: { id: { in: ids } }
       });
+      triggerSitemapRefresh();
       return { deletedCount: deleted.count };
     } else {
       const deleted = await prisma.product.deleteMany({});
+      triggerSitemapRefresh();
       return { deletedCount: deleted.count };
     }
   }
@@ -1102,11 +1117,13 @@ class ProductModel extends ProductDocument {
         where: { id: { in: ids } },
         data: cleanData
       });
+      triggerSitemapRefresh();
       return { modifiedCount: updated.count };
     } else {
       const updated = await prisma.product.updateMany({
         data: cleanData
       });
+      triggerSitemapRefresh();
       return { modifiedCount: updated.count };
     }
   }

@@ -1,5 +1,14 @@
 const prisma = require('../config/prisma');
 
+const triggerSitemapRefresh = () => {
+  try {
+    const { invalidateSitemapCache } = require('../services/seoService');
+    if (typeof invalidateSitemapCache === 'function') {
+      invalidateSitemapCache();
+    }
+  } catch (e) {}
+};
+
 class OccasionDocument {
   constructor(data) {
     Object.assign(this, data);
@@ -87,6 +96,7 @@ class OccasionDocument {
 
     Object.assign(this, updated);
     this._id = updated.id;
+    triggerSitemapRefresh();
     return this;
   }
 }
@@ -210,6 +220,7 @@ class OccasionModel {
         visibleOnHomepage: data.visibleOnHomepage !== false
       }
     });
+    triggerSitemapRefresh();
     return new OccasionDocument(created);
   }
 
@@ -220,6 +231,7 @@ class OccasionModel {
         where: { id: String(id) },
         data: dataToUpdate
       });
+      triggerSitemapRefresh();
       return new OccasionDocument(updated);
     } catch (e) {
       return null;
@@ -228,7 +240,9 @@ class OccasionModel {
 
   static async deleteMany(where = {}) {
     try {
-      return await prisma.occasion.deleteMany({ where });
+      const res = await prisma.occasion.deleteMany({ where });
+      triggerSitemapRefresh();
+      return res;
     } catch (e) {
       return { count: 0 };
     }
