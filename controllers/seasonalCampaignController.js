@@ -27,7 +27,17 @@ const getActiveCampaignsStatus = async (req, res) => {
       return doc;
     }));
 
-    res.json({ success: true, campaigns: campaignsWithCounts });
+    res.json({ 
+      success: true, 
+      campaigns: campaignsWithCounts,
+      allSlugs: allCampaigns.map(c => c.slug.toLowerCase()),
+      allCampaignSlugs: allCampaigns.map(c => ({
+        id: c._id || c.id,
+        name: c.name,
+        slug: c.slug,
+        enabled: Boolean(c.enabled && c.isActive)
+      }))
+    });
   } catch (error) {
     console.error('Error getting campaigns status:', error);
     res.status(500).json({ success: false, message: 'Server error' });
