@@ -341,9 +341,12 @@ function sanitizeProductDataForPrisma(data = {}) {
 
   // Infer catalogType if still absent
   if (!detailsObj.catalogType) {
-    const isCake = Boolean(
-      data.cakeAttributes ||
-      detailsObj.cakeAttributes ||
+    const cat = String(data.category || '').toLowerCase();
+    const isExplicitBouquet = cat.includes('bouquet') || cat.includes('flower') || String(data.catalogType).toLowerCase() === 'bouquet';
+
+    const isCake = !isExplicitBouquet && Boolean(
+      (data.cakeAttributes && Object.keys(data.cakeAttributes).length > 0 && (data.cakeAttributes.flavor || data.cakeAttributes.shape || data.cakeAttributes.eggless !== undefined)) ||
+      (detailsObj.cakeAttributes && Object.keys(detailsObj.cakeAttributes).length > 0 && (detailsObj.cakeAttributes.flavor || detailsObj.cakeAttributes.shape || detailsObj.cakeAttributes.eggless !== undefined)) ||
       (typeof data.category === 'string' && data.category.toLowerCase().includes('cake')) ||
       (Array.isArray(data.categories) && data.categories.some(c => String(c).toLowerCase().includes('cake')))
     );
@@ -362,7 +365,8 @@ function sanitizeProductDataForPrisma(data = {}) {
       detailsObj.chocolateAttributes ||
       (typeof data.category === 'string' && data.category.toLowerCase().includes('chocolate'))
     );
-    if (isCake) detailsObj.catalogType = 'cake';
+    if (isExplicitBouquet) detailsObj.catalogType = 'bouquet';
+    else if (isCake) detailsObj.catalogType = 'cake';
     else if (isPlant) detailsObj.catalogType = 'plant';
     else if (isCombo) detailsObj.catalogType = 'combo';
     else if (isChocolate) detailsObj.catalogType = 'chocolate';
@@ -707,9 +711,12 @@ class ProductDocument {
       ? Boolean(data.hasPriceVariants) 
       : (this.priceVariants.length > 0);
 
-    const isCake = Boolean(
-      data.cakeAttributes ||
-      detailsObj.cakeAttributes ||
+    const cat = String(this.category || data.category || '').toLowerCase();
+    const isExplicitBouquet = cat.includes('bouquet') || cat.includes('flower') || String(data.catalogType || this.catalogType).toLowerCase() === 'bouquet';
+
+    const isCake = !isExplicitBouquet && Boolean(
+      (data.cakeAttributes && Object.keys(data.cakeAttributes).length > 0 && (data.cakeAttributes.flavor || data.cakeAttributes.shape || data.cakeAttributes.eggless !== undefined)) ||
+      (detailsObj.cakeAttributes && Object.keys(detailsObj.cakeAttributes).length > 0 && (detailsObj.cakeAttributes.flavor || detailsObj.cakeAttributes.shape || detailsObj.cakeAttributes.eggless !== undefined)) ||
       (typeof this.category === 'string' && this.category.toLowerCase().includes('cake')) ||
       (Array.isArray(this.categories) && this.categories.some(c => String(c).toLowerCase().includes('cake')))
     );
@@ -730,10 +737,10 @@ class ProductDocument {
     );
 
     this.catalogType = data.catalogType || detailsObj.catalogType || (
-      isCake ? 'cake' : (isPlant ? 'plant' : (isCombo ? 'combo' : (isChocolate ? 'chocolate' : 'bouquet')))
+      isExplicitBouquet ? 'bouquet' : (isCake ? 'cake' : (isPlant ? 'plant' : (isCombo ? 'combo' : (isChocolate ? 'chocolate' : 'bouquet'))))
     );
 
-    this.cakeAttributes = data.cakeAttributes !== undefined ? data.cakeAttributes : (detailsObj.cakeAttributes || null);
+    this.cakeAttributes = isExplicitBouquet ? null : (data.cakeAttributes !== undefined ? data.cakeAttributes : (detailsObj.cakeAttributes || null));
     this.plantAttributes = data.plantAttributes !== undefined ? data.plantAttributes : (detailsObj.plantAttributes || null);
     this.chocolateAttributes = data.chocolateAttributes !== undefined ? data.chocolateAttributes : (detailsObj.chocolateAttributes || null);
     this.hamperAttributes = data.hamperAttributes !== undefined ? data.hamperAttributes : (detailsObj.hamperAttributes || null);
