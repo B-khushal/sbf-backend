@@ -21,6 +21,39 @@ function cleanProductWhere(where = {}) {
   }
 
   if (where.slug) clean.slug = where.slug;
+
+  if (where.title || where.name) {
+    const rawTitle = where.title || where.name;
+    let titleVal = '';
+    if (typeof rawTitle === 'string') {
+      titleVal = rawTitle;
+    } else if (rawTitle instanceof RegExp) {
+      titleVal = rawTitle.source;
+    } else if (typeof rawTitle === 'object' && rawTitle !== null) {
+      titleVal = rawTitle.$regex instanceof RegExp ? rawTitle.$regex.source : String(rawTitle.$regex || rawTitle.contains || '');
+    }
+    const cleanTitle = String(titleVal || '').replace(/^\^|\$$/g, '').trim();
+    if (cleanTitle) {
+      clean.name = { contains: cleanTitle, mode: 'insensitive' };
+    }
+  }
+
+  if (where.description) {
+    const rawDesc = where.description;
+    let descVal = '';
+    if (typeof rawDesc === 'string') {
+      descVal = rawDesc;
+    } else if (rawDesc instanceof RegExp) {
+      descVal = rawDesc.source;
+    } else if (typeof rawDesc === 'object' && rawDesc !== null) {
+      descVal = rawDesc.$regex instanceof RegExp ? rawDesc.$regex.source : String(rawDesc.$regex || rawDesc.contains || '');
+    }
+    const cleanDesc = String(descVal || '').replace(/^\^|\$$/g, '').trim();
+    if (cleanDesc) {
+      clean.description = { contains: cleanDesc, mode: 'insensitive' };
+    }
+  }
+
   if (where.isAvailable !== undefined) clean.isAvailable = Boolean(where.isAvailable);
   
   if (where.hidden !== undefined) {
@@ -300,6 +333,42 @@ function sanitizeProductDataForPrisma(data = {}) {
   if (data.priceVariants !== undefined) {
     detailsObj.priceVariants = Array.isArray(data.priceVariants) ? data.priceVariants : [];
   }
+  if (data.catalogType !== undefined && data.catalogType) {
+    detailsObj.catalogType = String(data.catalogType).toLowerCase();
+  } else if (data.details && data.details.catalogType) {
+    detailsObj.catalogType = String(data.details.catalogType).toLowerCase();
+  }
+
+  // Infer catalogType if still absent
+  if (!detailsObj.catalogType) {
+    const isCake = Boolean(
+      data.cakeAttributes ||
+      detailsObj.cakeAttributes ||
+      (typeof data.category === 'string' && data.category.toLowerCase().includes('cake')) ||
+      (Array.isArray(data.categories) && data.categories.some(c => String(c).toLowerCase().includes('cake')))
+    );
+    const isPlant = Boolean(
+      data.plantAttributes ||
+      detailsObj.plantAttributes ||
+      (typeof data.category === 'string' && data.category.toLowerCase().includes('plant'))
+    );
+    const isCombo = Boolean(
+      data.comboAttributes ||
+      detailsObj.comboAttributes ||
+      (typeof data.category === 'string' && data.category.toLowerCase().includes('combo'))
+    );
+    const isChocolate = Boolean(
+      data.chocolateAttributes ||
+      detailsObj.chocolateAttributes ||
+      (typeof data.category === 'string' && data.category.toLowerCase().includes('chocolate'))
+    );
+    if (isCake) detailsObj.catalogType = 'cake';
+    else if (isPlant) detailsObj.catalogType = 'plant';
+    else if (isCombo) detailsObj.catalogType = 'combo';
+    else if (isChocolate) detailsObj.catalogType = 'chocolate';
+    else if (data.category) detailsObj.catalogType = 'bouquet';
+  }
+
   if (Object.keys(detailsObj).length > 0) {
     cleanData.details = detailsObj;
   }
@@ -879,7 +948,7 @@ class QueryChain {
           }
 
           if (Array.isArray(this.filterOptions.$or)) {
-            const isCatalogQuery = this.filterOptions.$or.some(c => c.catalogType || (c.category && (c.category instanceof RegExp || c.category.$regex)));
+            const isCatalogQuery = this.filterOptions.$or.some(c => c.catalogType || (c.category && (c.category instanceof RegExp || c.category.$regex)) || c.title || c.name);
             if (isCatalogQuery) {
               docs = docs.filter(doc => {
                 return this.filterOptions.$or.some(cond => {
@@ -890,6 +959,19 @@ class QueryChain {
                       if (doc.category && reg.test(doc.category)) return true;
                       if (Array.isArray(doc.categories) && doc.categories.some(c => reg.test(c))) return true;
                     }
+                  }
+                  if (cond.title || cond.name) {
+                    const rawCondTitle = cond.title || cond.name;
+                    const reg = rawCondTitle instanceof RegExp ? rawCondTitle : (rawCondTitle.$regex ? new RegExp(rawCondTitle.$regex, 'i') : (typeof rawCondTitle === 'string' ? new RegExp(rawCondTitle, 'i') : null));
+                    if (reg) {
+                      if (doc.title && reg.test(doc.title)) return true;
+                      if (doc.name && reg.test(doc.name)) return true;
+                    }
+                  }
+                  if (cond.description) {
+                    const rawCondDesc = cond.description;
+                    const reg = rawCondDesc instanceof RegExp ? rawCondDesc : (rawCondDesc.$regex ? new RegExp(rawCondDesc.$regex, 'i') : (typeof rawCondDesc === 'string' ? new RegExp(rawCondDesc, 'i') : null));
+                    if (reg && doc.description && reg.test(doc.description)) return true;
                   }
                   return false;
                 });
@@ -1014,7 +1096,33 @@ class ProductModel extends ProductDocument {
 
   static async findByIdAndUpdate(id, update, options = {}) {
     const dataToUpdate = update.$set ? update.$set : update;
+
+    // Fetch existing product to preserve details JSON and relations
+    let existing = null;
+    try {
+      existing = await prisma.product.findUnique({
+        where: { id: String(id) },
+        select: { details: true, isVisible: true, stock: true }
+      });
+    } catch (fetchErr) {
+      console.warn('Could not fetch existing product before update:', fetchErr.message);
+    }
+
+    const existingDetails = (existing && existing.details && typeof existing.details === 'object' && !Array.isArray(existing.details))
+      ? existing.details
+      : {};
+
     const cleanData = sanitizeProductDataForPrisma(dataToUpdate);
+
+    // Merge existing details with newly sanitized details so existing fields (catalogType, displayOrders, originalImages, etc.) are never wiped out
+    cleanData.details = {
+      ...existingDetails,
+      ...(cleanData.details || {})
+    };
+
+    if (!cleanData.details.catalogType && existingDetails.catalogType) {
+      cleanData.details.catalogType = existingDetails.catalogType;
+    }
 
     if (cleanData.vendorId) {
       try {

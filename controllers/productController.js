@@ -545,6 +545,7 @@ const updateProduct = asyncHandler(async (req, res) => {
     title,
     description,
     price,
+    catalogType,
     discount,
     discountType,
     discountPrice,
@@ -658,6 +659,7 @@ const updateProduct = asyncHandler(async (req, res) => {
 
     const updateData = {
       title,
+      catalogType: catalogType || product.catalogType,
       description,
       price,
       discount: discount || 0,
