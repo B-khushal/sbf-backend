@@ -335,7 +335,8 @@ exports.createOrderNotification = async (orderData) => {
         const cakeSpecs = [];
         const weight = cust.cakeWeight || cust.weight;
         if (weight) cakeSpecs.push(weight);
-        if (cust.eggless !== undefined) cakeSpecs.push(cust.eggless ? 'Eggless' : 'Egg');
+        const eggVal = cust.eggless ?? cust.isEggless;
+        if (eggVal !== undefined) cakeSpecs.push(eggVal ? 'Eggless' : 'Egg');
         if (cakeSpecs.length > 0) cakeDesc += ` (${cakeSpecs.join(', ')})`;
         if (cust.cakeMessage) cakeDesc += ` - "${cust.cakeMessage}"`;
         highlights.push(cakeDesc);

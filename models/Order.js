@@ -421,7 +421,8 @@ class OrderDocument {
           if (item.customizations?.cakeFlavor) cakeDetails.push(item.customizations.cakeFlavor);
           if (item.customizations?.cakeWeight || item.customizations?.weight) cakeDetails.push(item.customizations.cakeWeight || item.customizations.weight);
           if (item.customizations?.cakeShape) cakeDetails.push(item.customizations.cakeShape);
-          if (item.customizations?.eggless !== undefined) cakeDetails.push(item.customizations.eggless ? 'Eggless' : 'Contains Egg');
+          const eggVal = item.customizations?.eggless ?? item.customizations?.isEggless;
+          if (eggVal !== undefined) cakeDetails.push(eggVal ? 'Eggless' : 'Contains Egg');
 
           const vName = item.variantName || item.selectedVariant?.label || item.selectedVariant?.name || (cakeDetails.length > 0 ? cakeDetails.join(' • ') : null);
           await prisma.orderItem.create({

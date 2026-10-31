@@ -241,8 +241,9 @@ const formatItemCustomizationHTML = (item, options = { isCompact: false }) => {
     cakeSpecs.push(sh.charAt(0).toUpperCase() + sh.slice(1));
   }
   if (cust?.cakeServes) cakeSpecs.push(cust.cakeServes);
-  if (cust?.eggless !== undefined && cust.eggless !== null) {
-    cakeSpecs.push(cust.eggless ? '100% Eggless (Veg)' : 'Contains Egg');
+  const eggVal = cust?.eggless ?? cust?.isEggless;
+  if (eggVal !== undefined && eggVal !== null) {
+    cakeSpecs.push(eggVal ? '100% Eggless (Veg)' : 'Contains Egg');
   }
 
   if (cakeSpecs.length > 0) {
