@@ -247,6 +247,9 @@ function sanitizeProductDataForPrisma(data = {}) {
   }
 
   if (data.rating !== undefined) cleanData.rating = parseFloat(data.rating || 0);
+  if (data.reviewCount !== undefined || data.numReviews !== undefined) {
+    cleanData.reviewCount = parseInt(data.reviewCount !== undefined ? data.reviewCount : data.numReviews || 0);
+  }
   if (data.vendorId !== undefined) {
     cleanData.vendorId = (data.vendorId && String(data.vendorId).trim() !== '' && String(data.vendorId) !== 'null' && String(data.vendorId) !== 'undefined')
       ? String(data.vendorId)
@@ -332,6 +335,13 @@ function sanitizeProductDataForPrisma(data = {}) {
   if (data.discountPrice !== undefined) detailsObj.discountPrice = (data.discountPrice !== null && data.discountPrice !== '') ? parseFloat(data.discountPrice) : null;
   if (data.priceVariants !== undefined) {
     detailsObj.priceVariants = Array.isArray(data.priceVariants) ? data.priceVariants : [];
+  }
+  if (data.numReviews !== undefined || data.reviewCount !== undefined) {
+    detailsObj.numReviews = parseInt(data.numReviews !== undefined ? data.numReviews : data.reviewCount || 0);
+    detailsObj.reviewCount = detailsObj.numReviews;
+  }
+  if (data.rating !== undefined) {
+    detailsObj.rating = parseFloat(data.rating || 0);
   }
   if (data.catalogType !== undefined && data.catalogType) {
     detailsObj.catalogType = String(data.catalogType).toLowerCase();
@@ -748,6 +758,14 @@ class ProductDocument {
     this.chocolateAttributes = data.chocolateAttributes !== undefined ? data.chocolateAttributes : (detailsObj.chocolateAttributes || null);
     this.hamperAttributes = data.hamperAttributes !== undefined ? data.hamperAttributes : (detailsObj.hamperAttributes || null);
     this.comboAttributes = data.comboAttributes !== undefined ? data.comboAttributes : (detailsObj.comboAttributes || null);
+
+    this.rating = data.rating !== undefined ? parseFloat(data.rating || 0) : (detailsObj.rating !== undefined ? parseFloat(detailsObj.rating || 0) : 0);
+    this.reviewCount = (data.reviewCount !== undefined && data.reviewCount !== null)
+      ? parseInt(data.reviewCount)
+      : ((data.numReviews !== undefined && data.numReviews !== null)
+          ? parseInt(data.numReviews)
+          : (detailsObj.reviewCount !== undefined ? parseInt(detailsObj.reviewCount) : (detailsObj.numReviews ? parseInt(detailsObj.numReviews) : 0)));
+    this.numReviews = this.reviewCount;
   }
 
   toObject() {
@@ -778,7 +796,8 @@ class ProductDocument {
       priceVariants: this.priceVariants,
       hasPriceVariants: Boolean(this.hasPriceVariants),
       rating: parseFloat(this.rating || 0),
-      reviewCount: parseInt(this.reviewCount || 0),
+      reviewCount: parseInt(this.reviewCount || this.numReviews || 0),
+      numReviews: parseInt(this.reviewCount || this.numReviews || 0),
       isAvailable: this.isAvailable !== false,
       isOutOfStock: this.isOutOfStock,
       isVisible: this.isVisible,

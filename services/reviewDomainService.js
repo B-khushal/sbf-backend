@@ -295,8 +295,22 @@ const updateProductReviewStats = async (productId) => {
 
   await Product.findByIdAndUpdate(productId, {
     rating: stats.averageRating || 0,
+    reviewCount: stats.totalReviews || 0,
     numReviews: stats.totalReviews || 0,
   });
+
+  try {
+    const prisma = require('../config/prisma');
+    await prisma.product.update({
+      where: { id: String(productId) },
+      data: {
+        rating: stats.averageRating || 0,
+        reviewCount: stats.totalReviews || 0,
+      }
+    });
+  } catch (err) {
+    // Non-fatal if prisma direct update fails or already updated
+  }
 
   return stats;
 };
