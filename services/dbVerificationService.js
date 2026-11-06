@@ -142,10 +142,8 @@ class DbVerificationService {
 
             const seqName = seqRes.rows[0]?.seq_name;
             if (seqName) {
-              const [seqValRes, maxValRes] = await Promise.all([
-                destClient.query(`SELECT last_value, is_called FROM ${seqName}`),
-                destClient.query(`SELECT COALESCE(MAX("${sPkCols[0] || 'id'}"), 0)::bigint as max_val FROM "${schema}"."${table}"`)
-              ]);
+              const seqValRes = await destClient.query(`SELECT last_value, is_called FROM ${seqName}`);
+              const maxValRes = await destClient.query(`SELECT COALESCE(MAX("${sPkCols[0] || 'id'}"), 0)::bigint as max_val FROM "${schema}"."${table}"`);
               const lastVal = parseInt(seqValRes.rows[0]?.last_value || '0', 10);
               const maxVal = parseInt(maxValRes.rows[0]?.max_val || '0', 10);
               if (maxVal > 0 && lastVal < maxVal) {

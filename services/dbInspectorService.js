@@ -187,8 +187,8 @@ class DbInspectorService {
         }
       }
 
-      // Optionally compute exact row counts if requested
-      if (options.exactCounts) {
+      // Compute exact row counts if requested or when table count is <= 100
+      if (options.exactCounts || tableMap.size <= 100) {
         for (const [fullKey, table] of tableMap.entries()) {
           try {
             const countRes = await client.query(`SELECT count(*)::bigint as cnt FROM "${table.schema}"."${table.name}"`);
