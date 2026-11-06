@@ -1159,20 +1159,18 @@ const getOrders = async (req, res) => {
     const pageNumber = Math.max(1, parseInt(page));
     const pageSize = Math.min(100, Math.max(5, parseInt(limit)));
 
-    // Helper for local day bounds (Indian Standard Time offset aware)
+    // Helper for local day bounds in Indian Standard Time (IST, UTC+05:30)
     const getBoundsForDate = (baseDate) => {
-      const start = new Date(baseDate);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(baseDate);
-      end.setHours(23, 59, 59, 999);
+      const m = moment(baseDate).utcOffset('+05:30');
+      const start = m.clone().startOf('day').toDate();
+      const end = m.clone().endOf('day').toDate();
       return { start, end };
     };
 
-    const now = new Date();
+    const now = moment().utcOffset('+05:30').toDate();
     const todayBounds = getBoundsForDate(now);
 
-    const tomorrow = new Date(now);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrow = moment().utcOffset('+05:30').add(1, 'day').toDate();
     const tomorrowBounds = getBoundsForDate(tomorrow);
 
     // Build base period query
@@ -1181,7 +1179,17 @@ const getOrders = async (req, res) => {
     if (period === 'today') {
       basePeriodQuery.$or = [
         { deliveryDate: { $gte: todayBounds.start, $lte: todayBounds.end } },
-        { createdAt: { $gte: todayBounds.start, $lte: todayBounds.end } }
+        {
+          $and: [
+            { createdAt: { $gte: todayBounds.start, $lte: todayBounds.end } },
+            {
+              $or: [
+                { deliveryDate: null },
+                { deliveryDate: { $lte: todayBounds.end } }
+              ]
+            }
+          ]
+        }
       ];
     } else if (period === 'tomorrow') {
       basePeriodQuery.deliveryDate = { $gte: tomorrowBounds.start, $lte: tomorrowBounds.end };
@@ -1190,20 +1198,16 @@ const getOrders = async (req, res) => {
       let endDelivery = null;
 
       if (upcomingScope === 'beyond_tomorrow') {
-        const dayAfterTomorrow = new Date(tomorrow);
-        dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 1);
+        const dayAfterTomorrow = moment().utcOffset('+05:30').add(2, 'days').toDate();
         startDelivery = getBoundsForDate(dayAfterTomorrow).start;
       } else if (upcomingScope === '7d') {
-        const next7 = new Date(now);
-        next7.setDate(next7.getDate() + 7);
+        const next7 = moment().utcOffset('+05:30').add(7, 'days').toDate();
         endDelivery = getBoundsForDate(next7).end;
       } else if (upcomingScope === '14d') {
-        const next14 = new Date(now);
-        next14.setDate(next14.getDate() + 14);
+        const next14 = moment().utcOffset('+05:30').add(14, 'days').toDate();
         endDelivery = getBoundsForDate(next14).end;
       } else if (upcomingScope === '30d') {
-        const next30 = new Date(now);
-        next30.setDate(next30.getDate() + 30);
+        const next30 = moment().utcOffset('+05:30').add(30, 'days').toDate();
         endDelivery = getBoundsForDate(next30).end;
       }
 
@@ -1212,9 +1216,24 @@ const getOrders = async (req, res) => {
         basePeriodQuery.deliveryDate.$lte = endDelivery;
       }
     } else if (period === 'past') {
-      basePeriodQuery.$or = [
-        { deliveryDate: { $lt: todayBounds.start } },
-        { createdAt: { $lt: todayBounds.start } }
+      basePeriodQuery.$and = [
+        {
+          $or: [
+            { deliveryDate: { $lt: todayBounds.start } },
+            {
+              $and: [
+                { deliveryDate: null },
+                { createdAt: { $lt: todayBounds.start } }
+              ]
+            }
+          ]
+        },
+        {
+          $or: [
+            { deliveryDate: null },
+            { deliveryDate: { $lt: todayBounds.start } }
+          ]
+        }
       ];
     } else if (period === 'custom') {
       if (dateFrom || dateTo) {
@@ -1421,17 +1440,25 @@ const getTodayOrders = async (req, res) => {
   try {
     const { status = 'all' } = req.query;
 
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
-
-    const endOfToday = new Date();
-    endOfToday.setHours(23, 59, 59, 999);
+    const m = moment().utcOffset('+05:30');
+    const startOfToday = m.clone().startOf('day').toDate();
+    const endOfToday = m.clone().endOf('day').toDate();
 
     const query = {
-      createdAt: {
-        $gte: startOfToday,
-        $lte: endOfToday
-      }
+      $or: [
+        { deliveryDate: { $gte: startOfToday, $lte: endOfToday } },
+        {
+          $and: [
+            { createdAt: { $gte: startOfToday, $lte: endOfToday } },
+            {
+              $or: [
+                { deliveryDate: null },
+                { deliveryDate: { $lte: endOfToday } }
+              ]
+            }
+          ]
+        }
+      ]
     };
 
     // Worker-friendly grouping for quick filtering in UI
@@ -1441,6 +1468,8 @@ const getTodayOrders = async (req, res) => {
       query.status = 'delivered';
     } else if (status !== 'all') {
       query.status = status;
+    } else {
+      query.status = { $nin: ['cancelled', 'failed'] };
     }
 
     const orders = await Order.find(query)
@@ -1458,7 +1487,7 @@ const getTodayOrders = async (req, res) => {
           }
         }
       ])
-      .sort({ createdAt: 1 });
+      .sort({ deliveryDate: 1, createdAt: 1 });
 
     res.json({
       success: true,

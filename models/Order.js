@@ -108,22 +108,32 @@ function cleanOrderWhere(where = {}) {
   }
 
   // Handle createdAt date filter
-  if (where.createdAt && typeof where.createdAt === 'object') {
+  if (where.createdAt === null) {
+    clean.createdAt = null;
+  } else if (where.createdAt && typeof where.createdAt === 'object') {
     clean.createdAt = {};
     if (where.createdAt.$gte || where.createdAt.gte) clean.createdAt.gte = new Date(where.createdAt.$gte || where.createdAt.gte);
     if (where.createdAt.$lte || where.createdAt.lte) clean.createdAt.lte = new Date(where.createdAt.$lte || where.createdAt.lte);
     if (where.createdAt.$gt || where.createdAt.gt) clean.createdAt.gt = new Date(where.createdAt.$gt || where.createdAt.gt);
     if (where.createdAt.$lt || where.createdAt.lt) clean.createdAt.lt = new Date(where.createdAt.$lt || where.createdAt.lt);
+    if (where.createdAt.$ne !== undefined) {
+      clean.createdAt = { not: where.createdAt.$ne };
+    }
   }
 
   // Handle deliveryDate date filter
-  const deliveryDateFilter = where.deliveryDate || where['shippingDetails.deliveryDate'];
-  if (deliveryDateFilter && typeof deliveryDateFilter === 'object') {
+  const deliveryDateFilter = where.deliveryDate !== undefined ? where.deliveryDate : where['shippingDetails.deliveryDate'];
+  if (deliveryDateFilter === null) {
+    clean.deliveryDate = null;
+  } else if (deliveryDateFilter && typeof deliveryDateFilter === 'object') {
     clean.deliveryDate = {};
     if (deliveryDateFilter.$gte || deliveryDateFilter.gte) clean.deliveryDate.gte = new Date(deliveryDateFilter.$gte || deliveryDateFilter.gte);
     if (deliveryDateFilter.$lte || deliveryDateFilter.lte) clean.deliveryDate.lte = new Date(deliveryDateFilter.$lte || deliveryDateFilter.lte);
     if (deliveryDateFilter.$gt || deliveryDateFilter.gt) clean.deliveryDate.gt = new Date(deliveryDateFilter.$gt || deliveryDateFilter.gt);
     if (deliveryDateFilter.$lt || deliveryDateFilter.lt) clean.deliveryDate.lt = new Date(deliveryDateFilter.$lt || deliveryDateFilter.lt);
+    if (deliveryDateFilter.$ne !== undefined) {
+      clean.deliveryDate = { not: deliveryDateFilter.$ne };
+    }
   }
 
   if (where.giftDetails !== undefined) {
