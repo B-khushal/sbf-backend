@@ -12,11 +12,13 @@ WORKDIR /app
 # - dumb-init: PID 1 signal handler & zombie reaper
 # - openssl: Prisma query engine
 # - libfontconfig1 & libfreetype6: PDF generation
+# - postgresql-client: pg_dump & pg_restore utilities for database migrations
 RUN apt-get update && apt-get install -y --no-install-recommends \
     dumb-init \
     openssl \
     libfontconfig1 \
     libfreetype6 \
+    postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Set production environment
