@@ -688,6 +688,7 @@ const startServer = async () => {
     app.use('/api/seasonal-campaigns', require('./routes/seasonalCampaignRoutes'));
     app.use('/api/admin', require('./routes/adminRoutes'));
     app.use('/api/admin/db-migration', require('./routes/dbMigrationRoutes'));
+    app.use('/api/api/admin/db-migration', require('./routes/dbMigrationRoutes'));
     app.use('/api/delivery', require('./routes/deliveryRoutes'));
     if (process.env.NODE_ENV !== 'production') {
       app.use('/api/testing', require('./routes/testingRoutes'));
