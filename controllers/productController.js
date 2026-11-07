@@ -329,6 +329,7 @@ const createProduct = asyncHandler(async (req, res) => {
   
   const {
     title,
+    catalogType,
     description,
     price,
     discount,
@@ -443,6 +444,7 @@ const createProduct = asyncHandler(async (req, res) => {
     vendor: vendorId,
     approvalStatus,
     title,
+    catalogType: catalogType || undefined,
     description,
     price,
     discount: discount || 0,
@@ -1913,15 +1915,37 @@ const getSectionProductsForSorting = asyncHandler(async (req, res) => {
       products = await Product.find(query);
     }
   } else if (section === 'combos' || section === 'category:combos') {
-    const query = getProductsForSectionQuery('combos');
-    const allCandidates = await Product.find(query);
+    const allCandidates = await Product.find({ hidden: false });
     products = allCandidates.filter(p => {
       const cat = String(p.category || '').toLowerCase();
+      const subcat = String(p.subcategory || '').toLowerCase();
+      const comboSubcat = String(p.comboSubcategory || '').toLowerCase();
       const catalogType = String(p.catalogType || '').toLowerCase();
       const title = String(p.title || p.name || '').toLowerCase();
-      if (cat === 'baskets' || cat === 'basket' || catalogType === 'basket') return false;
-      if (title.includes('basket') && !title.includes('combo') && catalogType !== 'combo') return false;
-      return true;
+      const cats = Array.isArray(p.categories) ? p.categories.map(c => String(c).toLowerCase()) : [];
+
+      const hasComboAttrs =
+        (Array.isArray(p.comboAttributes?.comboProducts) && p.comboAttributes.comboProducts.length > 0) ||
+        (Array.isArray(p.hamperAttributes?.hamperItems) && p.hamperAttributes.hamperItems.length > 0) ||
+        (Array.isArray(p.comboItems) && p.comboItems.length > 0);
+
+      const isComboSlug =
+        cat.includes('combo') ||
+        cat.includes('hamper') ||
+        subcat.includes('combo') ||
+        subcat === 'gift-hampers' ||
+        subcat === 'hampers' ||
+        comboSubcat.includes('combo') ||
+        cats.some(c => c.includes('combo') || c === 'gift-hampers' || c === 'hampers');
+
+      if ((cat === 'baskets' || cat === 'basket' || catalogType === 'basket') && !isComboSlug && !hasComboAttrs && catalogType !== 'combo') {
+        return false;
+      }
+      if (title.includes('basket') && !title.includes('combo') && !title.includes('hamper') && catalogType !== 'combo' && !isComboSlug && !hasComboAttrs) {
+        return false;
+      }
+
+      return catalogType === 'combo' || catalogType === 'hamper' || isComboSlug || hasComboAttrs;
     });
   } else if (section === 'budget_friendly' || section === 'budget-friendly' || section === 'category:budget-friendly' || section === 'category:budget_friendly') {
     const allCandidates = await Product.find({ hidden: false });
@@ -2481,15 +2505,37 @@ const resetSectionProductsOrder = asyncHandler(async (req, res) => {
       products = await Product.find(query);
     }
   } else if (section === 'combos' || section === 'category:combos') {
-    const query = getProductsForSectionQuery('combos');
-    const allCandidates = await Product.find(query);
+    const allCandidates = await Product.find({ hidden: false });
     products = allCandidates.filter(p => {
       const cat = String(p.category || '').toLowerCase();
+      const subcat = String(p.subcategory || '').toLowerCase();
+      const comboSubcat = String(p.comboSubcategory || '').toLowerCase();
       const catalogType = String(p.catalogType || '').toLowerCase();
       const title = String(p.title || p.name || '').toLowerCase();
-      if (cat === 'baskets' || cat === 'basket' || catalogType === 'basket') return false;
-      if (title.includes('basket') && !title.includes('combo') && catalogType !== 'combo') return false;
-      return true;
+      const cats = Array.isArray(p.categories) ? p.categories.map(c => String(c).toLowerCase()) : [];
+
+      const hasComboAttrs =
+        (Array.isArray(p.comboAttributes?.comboProducts) && p.comboAttributes.comboProducts.length > 0) ||
+        (Array.isArray(p.hamperAttributes?.hamperItems) && p.hamperAttributes.hamperItems.length > 0) ||
+        (Array.isArray(p.comboItems) && p.comboItems.length > 0);
+
+      const isComboSlug =
+        cat.includes('combo') ||
+        cat.includes('hamper') ||
+        subcat.includes('combo') ||
+        subcat === 'gift-hampers' ||
+        subcat === 'hampers' ||
+        comboSubcat.includes('combo') ||
+        cats.some(c => c.includes('combo') || c === 'gift-hampers' || c === 'hampers');
+
+      if ((cat === 'baskets' || cat === 'basket' || catalogType === 'basket') && !isComboSlug && !hasComboAttrs && catalogType !== 'combo') {
+        return false;
+      }
+      if (title.includes('basket') && !title.includes('combo') && !title.includes('hamper') && catalogType !== 'combo' && !isComboSlug && !hasComboAttrs) {
+        return false;
+      }
+
+      return catalogType === 'combo' || catalogType === 'hamper' || isComboSlug || hasComboAttrs;
     });
   } else if (section === 'budget_friendly' || section === 'budget-friendly' || section === 'category:budget-friendly' || section === 'category:budget_friendly') {
     const allCandidates = await Product.find({ hidden: false });
@@ -2929,80 +2975,78 @@ const getOverviewStats = asyncHandler(async (req, res) => {
 
 const getProductsByCatalogType = asyncHandler(async (req, res) => {
   const { type } = req.params;
-  
-  let query = {};
-  if (type === 'cake') {
-    query = {
-      $or: [
-        { catalogType: 'cake' },
-        { category: { $regex: /cake/i } }
-      ]
-    };
-  } else if (type === 'plant') {
-    query = {
-      $or: [
-        { catalogType: 'plant' },
-        { category: { $regex: /plant/i } }
-      ]
-    };
-  } else if (type === 'chocolate') {
-    query = {
-      $and: [
-        {
-          $or: [
-            { catalogType: 'chocolate' },
-            { category: { $regex: /chocolate|confectionery|sweets/i } }
-          ]
-        },
-        { catalogType: { $ne: 'bouquet' } },
-        { title: { $not: { $regex: /bouquet/i } } },
-        { subcategory: { $not: { $regex: /bouquet/i } } },
-        { category: { $not: { $regex: /bouquet/i } } }
-      ]
-    };
-  } else if (type === 'hamper') {
-    query = {
-      $or: [
-        { catalogType: 'hamper' },
-        { category: { $regex: /hamper|basket|gift/i } }
-      ]
-    };
-  } else if (type === 'combo') {
-    query = {
-      $or: [
-        { catalogType: 'combo' },
-        { category: { $regex: /combo/i } }
-      ]
-    };
-  } else if (type === 'addon') {
-    query = {
-      $or: [
-        { catalogType: 'addon' },
-        { category: { $regex: /addon|add-on|greeting|card|teddy|balloon/i } }
-      ]
-    };
-  } else if (type === 'bouquet') {
-    query = {
-      $and: [
-        {
-          $or: [
-            { catalogType: 'bouquet' },
-            { catalogType: { $exists: false } },
-            { catalogType: null },
-            { catalogType: '' },
-            { title: { $regex: /bouquet/i } },
-            { subcategory: { $regex: /bouquet/i } },
-            { category: { $regex: /bouquet/i } }
-          ]
-        },
-        { category: { $not: { $regex: /cake|plant|hamper|combo|addon|greeting|card|teddy|balloon/i } } }
-      ]
-    };
-  } else {
-    query = { catalogType: type };
-  }
+  const allProducts = await Product.find({}).sort({ createdAt: -1 });
 
-  const products = await Product.find(query).sort({ createdAt: -1 });
+  const isComboDoc = (p) => {
+    const cat = String(p.category || '').toLowerCase();
+    const subcat = String(p.subcategory || '').toLowerCase();
+    const comboSubcat = String(p.comboSubcategory || '').toLowerCase();
+    const cType = String(p.catalogType || '').toLowerCase();
+    const title = String(p.title || p.name || '').toLowerCase();
+    const cats = Array.isArray(p.categories) ? p.categories.map(c => String(c).toLowerCase()) : [];
+
+    const hasComboAttrs =
+      (Array.isArray(p.comboAttributes?.comboProducts) && p.comboAttributes.comboProducts.length > 0) ||
+      (Array.isArray(p.hamperAttributes?.hamperItems) && p.hamperAttributes.hamperItems.length > 0) ||
+      (Array.isArray(p.comboItems) && p.comboItems.length > 0);
+
+    const isComboSlug =
+      cat.includes('combo') ||
+      cat.includes('hamper') ||
+      subcat.includes('combo') ||
+      subcat === 'gift-hampers' ||
+      subcat === 'hampers' ||
+      comboSubcat.includes('combo') ||
+      cats.some(c => c.includes('combo') || c === 'gift-hampers' || c === 'hampers');
+
+    if ((cat === 'baskets' || cat === 'basket' || cType === 'basket') && !isComboSlug && !hasComboAttrs && cType !== 'combo') {
+      return false;
+    }
+    if (title.includes('basket') && !title.includes('combo') && !title.includes('hamper') && cType !== 'combo' && !isComboSlug && !hasComboAttrs) {
+      return false;
+    }
+
+    return cType === 'combo' || cType === 'hamper' || isComboSlug || hasComboAttrs;
+  };
+
+  const products = allProducts.filter((p) => {
+    const cat = String(p.category || '').toLowerCase();
+    const subcat = String(p.subcategory || '').toLowerCase();
+    const cType = String(p.catalogType || '').toLowerCase();
+    const title = String(p.title || p.name || '').toLowerCase();
+    const cats = Array.isArray(p.categories) ? p.categories.map(c => String(c).toLowerCase()) : [];
+
+    if (type === 'combo') {
+      return isComboDoc(p);
+    }
+    if (type === 'cake') {
+      if (isComboDoc(p)) return false;
+      return cType === 'cake' || cat.includes('cake') || subcat.includes('cake') || cats.some(c => c.includes('cake'));
+    }
+    if (type === 'plant') {
+      return cType === 'plant' || cat.includes('plant') || subcat.includes('plant') || cats.some(c => c.includes('plant'));
+    }
+    if (type === 'chocolate') {
+      if (isComboDoc(p)) return false;
+      if (cType === 'bouquet' || cat.includes('bouquet') || subcat.includes('bouquet') || title.includes('bouquet')) return false;
+      return cType === 'chocolate' || cat.includes('chocolate') || cat.includes('confectionery') || cat.includes('sweets');
+    }
+    if (type === 'hamper') {
+      return cType === 'hamper' || cat.includes('hamper') || subcat.includes('hamper') || cats.some(c => c.includes('hamper'));
+    }
+    if (type === 'addon') {
+      return cType === 'addon' || cat.includes('addon') || cat.includes('add-on') || subcat.includes('addon');
+    }
+    if (type === 'bouquet') {
+      if (isComboDoc(p)) return false;
+      if (cType === 'cake' || cat.includes('cake')) return false;
+      if (cType === 'plant' || cat.includes('plant')) return false;
+      if (cType === 'addon' || cat.includes('addon') || cat.includes('add-on')) return false;
+      return true;
+    }
+    return cType === type;
+  });
+
   const productsWithReviews = await addReviewStats(products);
   res.json({ products: productsWithReviews, total: products.length });
 });
