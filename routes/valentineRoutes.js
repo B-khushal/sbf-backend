@@ -9,6 +9,8 @@ const valentineController = require('../controllers/valentineController');
 router.get('/status', valentineController.getValentineStatus);
 router.get('/settings', valentineController.getValentineSettings);
 router.get('/timeline', valentineController.getTimeline);
+router.get('/sections', valentineController.getValentineSections);
+router.get('/gift-finder', valentineController.getGiftFinderProducts);
 router.get('/products', valentineController.getAllValentineProducts);
 router.get('/products/:dateSlug', valentineController.getProductsByDate);
 router.get('/offers', valentineController.getOffers);
@@ -18,6 +20,9 @@ router.post('/gift-builder/calculate', valentineController.calculateGiftPrice);
 // ============================================================
 //  ADMIN ROUTES (Protected)
 // ============================================================
+router.get('/catalog', protect, admin, valentineController.getValentineCatalogAdmin);
+router.post('/products/bulk-assign', protect, admin, valentineController.bulkAssignValentineProducts);
+router.put('/sections', protect, admin, valentineController.updateValentineSections);
 router.put('/toggle', protect, admin, valentineController.toggleValentine);
 router.put('/settings', protect, admin, valentineController.updateSettings);
 router.put('/timeline/:id', protect, admin, valentineController.updateTimelineCard);

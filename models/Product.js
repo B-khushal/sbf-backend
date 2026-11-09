@@ -186,6 +186,62 @@ function cleanProductWhere(where = {}) {
     }
   }
 
+  if (where.occasion || where.occasions) {
+    const rawOcc = where.occasion || where.occasions;
+    let occVal = '';
+    if (typeof rawOcc === 'string') {
+      occVal = rawOcc;
+    } else if (rawOcc instanceof RegExp) {
+      occVal = rawOcc.source;
+    } else if (rawOcc && typeof rawOcc === 'object') {
+      if (rawOcc.$regex) occVal = rawOcc.$regex instanceof RegExp ? rawOcc.$regex.source : String(rawOcc.$regex);
+      else if (rawOcc.slug) occVal = rawOcc.slug;
+      else if (rawOcc.name) occVal = rawOcc.name;
+    }
+    const cleanOcc = String(occVal || '').replace(/^\^|\$$/g, '').toLowerCase().trim();
+    if (cleanOcc) {
+      clean.occasions = {
+        some: {
+          occasion: {
+            OR: [
+              { slug: { equals: cleanOcc, mode: 'insensitive' } },
+              { name: { equals: cleanOcc, mode: 'insensitive' } },
+              { slug: { contains: cleanOcc, mode: 'insensitive' } }
+            ]
+          }
+        }
+      };
+    }
+  }
+
+  if (where.tag || where.tags) {
+    const rawTag = where.tag || where.tags;
+    let tagVal = '';
+    if (typeof rawTag === 'string') {
+      tagVal = rawTag;
+    } else if (rawTag instanceof RegExp) {
+      tagVal = rawTag.source;
+    } else if (rawTag && typeof rawTag === 'object') {
+      if (rawTag.$regex) tagVal = rawTag.$regex instanceof RegExp ? rawTag.$regex.source : String(rawTag.$regex);
+      else if (rawTag.slug) tagVal = rawTag.slug;
+      else if (rawTag.name) tagVal = rawTag.name;
+    }
+    const cleanTag = String(tagVal || '').replace(/^\^|\$$/g, '').toLowerCase().trim();
+    if (cleanTag) {
+      clean.tags = {
+        some: {
+          tag: {
+            OR: [
+              { slug: { equals: cleanTag, mode: 'insensitive' } },
+              { name: { equals: cleanTag, mode: 'insensitive' } },
+              { slug: { contains: cleanTag, mode: 'insensitive' } }
+            ]
+          }
+        }
+      };
+    }
+  }
+
   return clean;
 }
 
@@ -318,6 +374,10 @@ function sanitizeProductDataForPrisma(data = {}) {
   if (data.details && typeof data.details === 'object') {
     detailsObj = Array.isArray(data.details) ? { items: data.details } : { ...data.details };
   }
+  if (data.availableDates !== undefined) detailsObj.availableDates = Array.isArray(data.availableDates) ? data.availableDates : [];
+  if (data.valentineDate !== undefined) detailsObj.valentineDate = data.valentineDate;
+  if (data.isValentineExclusive !== undefined) detailsObj.isValentineExclusive = Boolean(data.isValentineExclusive);
+  if (data.featureInValentineHero !== undefined) detailsObj.featureInValentineHero = Boolean(data.featureInValentineHero);
   if (data.sameDay !== undefined) detailsObj.sameDay = Boolean(data.sameDay);
   if (data.category !== undefined) detailsObj.category = String(data.category);
   if (data.categories !== undefined) detailsObj.categories = Array.isArray(data.categories) ? data.categories : [data.categories];
@@ -813,6 +873,22 @@ class ProductDocument {
           ? parseInt(data.numReviews)
           : (detailsObj.reviewCount !== undefined ? parseInt(detailsObj.reviewCount) : (detailsObj.numReviews ? parseInt(detailsObj.numReviews) : 0)));
     this.numReviews = this.reviewCount;
+
+    // Valentine Properties
+    this.isValentineProduct = Boolean(data.isValentineProduct ?? detailsObj.isValentineProduct ?? false);
+    this.showInValentineShop = Boolean(data.showInValentineShop ?? detailsObj.showInValentineShop ?? false);
+    this.isValentineExclusive = Boolean(data.isValentineExclusive ?? detailsObj.isValentineExclusive ?? false);
+    this.featureInValentineHero = Boolean(data.featureInValentineHero ?? detailsObj.featureInValentineHero ?? false);
+    this.valentineCategories = data.valentineCategories ?? detailsObj.valentineCategories ?? [];
+    this.valentineSections = data.valentineSections ?? detailsObj.valentineSections ?? [];
+    this.valentineBadge = data.valentineBadge ?? detailsObj.valentineBadge ?? null;
+    this.enableValentinePricing = Boolean(data.enableValentinePricing ?? detailsObj.enableValentinePricing ?? false);
+    this.availableDates = data.availableDates ?? detailsObj.availableDates ?? [];
+    this.valentineDate = data.valentineDate ?? detailsObj.valentineDate ?? null;
+    this.dateWisePricing = data.dateWisePricing ?? detailsObj.dateWisePricing ?? {};
+    this.dateWiseStock = data.dateWiseStock ?? detailsObj.dateWiseStock ?? {};
+    this.dateWiseOffers = data.dateWiseOffers ?? detailsObj.dateWiseOffers ?? {};
+    this.dateWiseDeliveryCharges = data.dateWiseDeliveryCharges ?? detailsObj.dateWiseDeliveryCharges ?? {};
   }
 
   toObject() {
@@ -891,10 +967,14 @@ class ProductDocument {
       rejectionReason: this.rejectionReason,
       isValentineProduct: !!this.isValentineProduct,
       showInValentineShop: !!this.showInValentineShop,
-      valentineCategories: this.valentineCategories,
-      valentineSections: this.valentineSections,
-      valentineBadge: this.valentineBadge,
+      isValentineExclusive: !!this.isValentineExclusive,
+      featureInValentineHero: !!this.featureInValentineHero,
+      valentineCategories: this.valentineCategories || [],
+      valentineSections: this.valentineSections || [],
+      valentineBadge: this.valentineBadge || null,
       enableValentinePricing: !!this.enableValentinePricing,
+      availableDates: this.availableDates || [],
+      valentineDate: this.valentineDate || null,
       seasonalCampaigns: this.seasonalCampaigns,
       campaignSettings: this.campaignSettings,
       details: this.details,

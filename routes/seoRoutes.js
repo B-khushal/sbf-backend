@@ -14,6 +14,19 @@ const {
   renderSitemapUiHtml,
   getSitemapData
 } = require('../services/seoService');
+const { protect, admin } = require('../middleware/authMiddleware');
+const {
+  getSeoOverviewStats,
+  getProductsSeoList,
+  updateProductSeo,
+  generateProductSeoSingle,
+  bulkGenerateSeo,
+  getCategoriesSeoList,
+  updateCategorySeo,
+  exportSeoCsv,
+  importSeoCsv,
+  getValentineCalendarData
+} = require('../controllers/seoController');
 
 // Helper to send XML responses
 const sendXmlResponse = (res, xml) => {
@@ -230,5 +243,21 @@ router.get('/render', async (req, res) => {
     return res.status(500).send('Internal Server Error rendering page');
   }
 });
+
+// @desc    Dynamic Valentine's Calendar and Seasonal Content API
+// @route   GET /api/seo/valentine-calendar
+// @access  Public
+router.get('/valentine-calendar', getValentineCalendarData);
+
+// ── Admin SEO Management Endpoints ─────────────────────────────────
+router.get('/admin/stats', protect, admin, getSeoOverviewStats);
+router.get('/admin/products', protect, admin, getProductsSeoList);
+router.put('/admin/products/:id', protect, admin, updateProductSeo);
+router.post('/admin/products/generate/:id', protect, admin, generateProductSeoSingle);
+router.post('/admin/products/bulk-generate', protect, admin, bulkGenerateSeo);
+router.get('/admin/categories', protect, admin, getCategoriesSeoList);
+router.put('/admin/categories/:id', protect, admin, updateCategorySeo);
+router.get('/admin/export-csv', protect, admin, exportSeoCsv);
+router.post('/admin/import-csv', protect, admin, importSeoCsv);
 
 module.exports = router;

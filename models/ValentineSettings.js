@@ -1,5 +1,24 @@
 const prisma = require('../config/prisma');
 
+const defaultSections = [
+  { id: 'hero', name: 'Hero Banner & Countdown', enabled: true, order: 1 },
+  { id: 'categories', name: 'Valentine Categories Grid', enabled: true, order: 2 },
+  { id: 'gift-finder', name: 'Interactive Gift Finder', enabled: true, order: 3 },
+  { id: 'bestsellers', name: 'Valentine Bestsellers', enabled: true, order: 4 },
+  { id: 'roses', name: 'Fresh Roses Collection', enabled: true, order: 5 },
+  { id: 'bouquets', name: 'Romantic Bouquets', enabled: true, order: 6 },
+  { id: 'cakes-combos', name: 'Cakes & Romantic Treats', enabled: true, order: 7 },
+  { id: 'combos', name: 'Curated Valentine Combos', enabled: true, order: 8 },
+  { id: 'gifts-for-her', name: 'Romantic Gifts For Her', enabled: true, order: 9 },
+  { id: 'gifts-for-him', name: 'Special Gifts For Him', enabled: true, order: 10 },
+  { id: 'premium', name: 'Luxury & Midnight Specials', enabled: true, order: 11 },
+  { id: 'valentine-week', name: "Valentine's Week 7-14 Feb", enabled: true, order: 12 },
+  { id: 'budget', name: 'Budget Friendly (Under ₹999)', enabled: true, order: 13 },
+  { id: 'reviews', name: 'Real Customer Stories & Ratings', enabled: true, order: 14 },
+  { id: 'why-choose', name: 'Why Choose SBFlorist Hyderabad', enabled: true, order: 15 },
+  { id: 'faqs', name: 'Valentine FAQs & Delivery Help', enabled: true, order: 16 }
+];
+
 class ValentineSettingsDocument {
   constructor(data) {
     if (data.data && typeof data.data === 'object') {
@@ -25,6 +44,7 @@ class ValentineSettingsDocument {
     this.heroSlides = this.heroSlides || [];
     this.marketing = this.marketing || {};
     this.banners = this.banners || {};
+    this.sections = Array.isArray(this.sections) && this.sections.length > 0 ? this.sections : defaultSections;
   }
 
   markModified() { return true; }
@@ -70,7 +90,8 @@ class ValentineSettingsModel {
         enableValentineButton: true,
         valentineLabel: "LOVE",
         valentineIcon: "heart"
-      }
+      },
+      sections: defaultSections
     });
   }
 

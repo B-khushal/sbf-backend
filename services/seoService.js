@@ -4,6 +4,7 @@
 const path = require('path');
 const fs = require('fs');
 const mongoose = require('mongoose');
+const { generateProductSeo, getValentineWeekCalendar } = require('./productSeoGenerator');
 
 const SITE_URL = 'https://sbflorist.in';
 const BRAND_NAME = 'Spring Blossoms Florist';
@@ -1378,21 +1379,24 @@ const renderCrawlerHtml = async (reqPath) => {
         ? product.category
         : (product.category && product.category.name) || 'Flowers';
 
-      const giftType = product.flowerType 
-        ? `${product.flowerType} Flowers`
-        : (categoryName === 'Cakes' ? 'Celebration Cakes' : categoryName === 'Combos' ? 'Flower & Cake Combos' : `${categoryName} Bouquets`);
+      const existingSeo = product.seoSettings || {};
+      const generatedSeo = generateProductSeo({
+        ...product,
+        name: product.title,
+        category: categoryName
+      }, existingSeo);
 
-      const productFeatures = product.shortDescription
-        ? product.shortDescription.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim()
-        : (product.flowerType || (product.tags && product.tags.length > 0 ? (Array.isArray(product.tags) ? product.tags.slice(0, 3).join(', ') : product.tags) : giftType.toLowerCase()));
-
-      pageTitle = `${product.title} | ${giftType} in Hyderabad`;
-      metaDescription = `Discover ${product.title}, featuring ${productFeatures}. Explore available variants, pricing from ₹${finalPrice}, and express same-day or midnight delivery in Hyderabad from Spring Blossoms Florist.`;
-      canonicalUrl = `${SITE_URL}/product/${product._id}`;
+      pageTitle = existingSeo.seoTitle || existingSeo.metaTitle || generatedSeo.seoTitle;
+      metaDescription = existingSeo.metaDescription || existingSeo.seoDescription || generatedSeo.metaDescription;
+      canonicalUrl = existingSeo.canonicalUrl || `${SITE_URL}/product/${product.slug || product._id}`;
       ogType = 'product';
 
       const primaryImg = (product.images && product.images[0]) || ogImage;
       ogImage = primaryImg.startsWith('/') ? `${SITE_URL}${primaryImg}` : primaryImg;
+      const productH1 = existingSeo.h1 || generatedSeo.h1 || product.title;
+      const imageAlt = existingSeo.imageAlt || generatedSeo.imageAlt || `${product.title} - Handcrafted flower delivery Hyderabad`;
+
+      const hasReviews = Number(product.numReviews || product.reviewCount) > 0 && Number(product.rating) > 0;
 
       const productSchema = {
         '@context': 'https://schema.org',
@@ -1403,6 +1407,15 @@ const renderCrawlerHtml = async (reqPath) => {
           ? product.images.map(img => img.startsWith('/') ? `${SITE_URL}${img}` : img)
           : [ogImage],
         sku: String(product._id),
+        ...(hasReviews ? {
+          aggregateRating: {
+            '@type': 'AggregateRating',
+            ratingValue: Number(Number(product.rating).toFixed(1)),
+            reviewCount: Number(product.numReviews || product.reviewCount),
+            bestRating: 5,
+            worstRating: 1
+          }
+        } : {}),
         offers: {
           '@type': 'Offer',
           url: canonicalUrl,
@@ -1440,10 +1453,10 @@ const renderCrawlerHtml = async (reqPath) => {
           </nav>
           <article class="product-summary grid grid-cols-1 md:grid-cols-2 gap-8">
             <div class="product-media">
-              <img src="${escapeHtml(ogImage)}" alt="${escapeHtml(product.title)} - Fresh flower delivery Hyderabad" class="rounded-xl max-w-full h-auto" width="600" height="600" />
+              <img src="${escapeHtml(ogImage)}" alt="${escapeHtml(imageAlt)}" class="rounded-xl max-w-full h-auto" width="600" height="600" />
             </div>
             <div class="product-details">
-              <h1 class="text-3xl font-extrabold text-slate-900 mb-2">${escapeHtml(product.title)}</h1>
+              <h1 class="text-3xl font-extrabold text-slate-900 mb-2">${escapeHtml(productH1)}</h1>
               <p class="text-2xl font-bold text-rose-600 mb-4">₹${finalPrice} <span class="text-sm font-normal text-slate-500">Inclusive of all taxes</span></p>
               <div class="description text-slate-700 leading-relaxed mb-6">
                 <p>${escapeHtml(metaDescription)}</p>
@@ -1623,6 +1636,210 @@ const renderCrawlerHtml = async (reqPath) => {
     `;
   }
 
+  // ── 3.7. DEDICATED VALENTINE'S DAY & VALENTINE'S WEEK LANDING PAGE ──
+  else if (cleanPath === '/valentine-special' || cleanPath === '/valentine-shop') {
+    pageTitle = 'Valentine\'s Day Gifts & Flowers Online | SBFlorist Hyderabad';
+    metaDescription = 'Celebrate love with romantic rose bouquets, beautiful flowers, cakes and Valentine\'s Day gift combos from Spring Blossoms Florist. Explore Valentine\'s gifts online.';
+    canonicalUrl = `${SITE_URL}${cleanPath}`;
+    ogType = 'website';
+    ogImage = `${SITE_URL}/images/hero-flower-shop.jpg`;
+
+    const valDays = getValentineWeekCalendar();
+
+    const breadcrumbSchema = {
+      '@context': 'https://schema.org',
+      '@type': 'BreadcrumbList',
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, name: 'Home', item: SITE_URL },
+        { '@type': 'ListItem', position: 2, name: 'Valentine\'s Day Gifts', item: canonicalUrl }
+      ]
+    };
+
+    const eventSchema = {
+      '@context': 'https://schema.org',
+      '@type': 'Event',
+      name: 'Valentine\'s Week Celebrations Hyderabad',
+      startDate: `${valDays[0]?.year}-02-07T00:00:00+05:30`,
+      endDate: `${valDays[0]?.year}-02-14T23:59:59+05:30`,
+      eventStatus: 'https://schema.org/EventScheduled',
+      eventAttendanceMode: 'https://schema.org/OnlineEventAttendanceMode',
+      location: {
+        '@type': 'VirtualLocation',
+        url: canonicalUrl
+      },
+      organizer: {
+        '@type': 'Florist',
+        name: BRAND_NAME,
+        url: SITE_URL
+      },
+      description: metaDescription
+    };
+
+    structuredData.push(breadcrumbSchema, eventSchema);
+
+    // Fetch sample Valentine's products for crawlable links
+    let valProducts = [];
+    try {
+      valProducts = await Product.find({
+        hidden: { $ne: true },
+        $or: [
+          { isValentineProduct: true },
+          { category: 'Roses' },
+          { category: 'Combos' }
+        ]
+      }).limit(8);
+    } catch (e) {}
+
+    bodyContent = `
+      <div class="sbf-crawler-shell p-6 max-w-6xl mx-auto">
+        <nav aria-label="Breadcrumb" class="text-sm mb-4">
+          <a href="/">Home</a> &gt; <span>Valentine's Day Gifts</span>
+        </nav>
+
+        <header class="mb-10 text-center max-w-4xl mx-auto">
+          <h1 class="text-3xl sm:text-4xl md:text-5xl font-extrabold text-slate-900 tracking-tight leading-tight mb-4">
+            Valentine's Day Gifts
+          </h1>
+          <p class="text-lg text-slate-700 leading-relaxed mb-6">
+            ${escapeHtml(metaDescription)} Handcrafted by expert florists in Hyderabad with midnight delivery and same-day doorstep dispatch.
+          </p>
+          <div class="flex flex-wrap justify-center gap-3">
+            <a href="/valentine-shop" class="px-5 py-2.5 bg-rose-600 text-white rounded-xl font-bold shadow-md hover:bg-rose-700 text-sm">Shop Valentine's Gifts</a>
+            <a href="/roses" class="px-5 py-2.5 bg-white text-slate-800 border border-slate-300 rounded-xl font-semibold hover:bg-slate-50 text-sm">Red Roses</a>
+            <a href="/combos" class="px-5 py-2.5 bg-white text-slate-800 border border-slate-300 rounded-xl font-semibold hover:bg-slate-50 text-sm">Flower &amp; Cake Combos</a>
+          </div>
+        </header>
+
+        <section class="mb-12">
+          <h2 class="text-2xl font-bold text-slate-900 mb-3">Explore Valentine's Day Gifts to Make Every Moment Special</h2>
+          <p class="text-slate-700 leading-relaxed">
+            From the opening whispers of Rose Day to the grand romantic crescendo on Valentine's Day, Spring Blossoms Florist brings you an exquisite selection of fresh-cut Dutch red roses, heart-shaped chocolate truffle cakes, cuddly teddy bears, and personalized keepsake greeting cards delivered across Hyderabad.
+          </p>
+        </section>
+
+        <section class="mb-12">
+          <h2 class="text-2xl font-bold text-slate-900 mb-6">Find the Perfect Valentine's Gift for Your Loved One</h2>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div class="p-5 bg-rose-50/60 rounded-2xl border border-rose-100">
+              <h3 class="text-lg font-bold text-slate-900 mb-2">Valentine's Day Gifts for Girlfriend</h3>
+              <p class="text-sm text-slate-600 leading-relaxed">Express your devotion with elegant blush pink roses, heart-shaped Red Velvet cakes, and sweet Ferrero Rocher gift boxes handcrafted with romantic flair.</p>
+            </div>
+            <div class="p-5 bg-rose-50/60 rounded-2xl border border-rose-100">
+              <h3 class="text-lg font-bold text-slate-900 mb-2">Valentine's Day Gifts for Boyfriend</h3>
+              <p class="text-sm text-slate-600 leading-relaxed">Surprise him with sleek chocolate bouquets, premium flower arrangements, and custom personalized message cards delivered directly to his office or doorstep.</p>
+            </div>
+            <div class="p-5 bg-rose-50/60 rounded-2xl border border-rose-100">
+              <h3 class="text-lg font-bold text-slate-900 mb-2">Valentine's Day Gifts for Wife</h3>
+              <p class="text-sm text-slate-600 leading-relaxed">Honor years of cherished love with magnificent 50 or 100 long-stem red roses, artisanal cakes, and luxury celebration hampers designed to sweep her off her feet.</p>
+            </div>
+            <div class="p-5 bg-rose-50/60 rounded-2xl border border-rose-100">
+              <h3 class="text-lg font-bold text-slate-900 mb-2">Valentine's Day Gifts for Husband</h3>
+              <p class="text-sm text-slate-600 leading-relaxed">Thoughtful combos featuring gourmet treats, fresh seasonal blooms, and meaningful greeting notes for midnight surprise moments.</p>
+            </div>
+            <div class="p-5 bg-rose-50/60 rounded-2xl border border-rose-100 col-span-1 md:col-span-2">
+              <h3 class="text-lg font-bold text-slate-900 mb-2">Romantic Gifts for Couples</h3>
+              <p class="text-sm text-slate-600 leading-relaxed">Celebrate shared memories with paired rose and cake hampers, luxury flower baskets, and anniversary-valentine fusion arrangements crafted for couples in Hyderabad.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="mb-12">
+          <h2 class="text-2xl font-bold text-slate-900 mb-6">Beautiful Valentine's Day Flowers and Rose Bouquets</h2>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="p-5 bg-white rounded-2xl border border-slate-200 shadow-sm">
+              <h3 class="text-lg font-bold text-slate-900 mb-2">Red Rose Bouquets</h3>
+              <p class="text-sm text-slate-600 leading-relaxed mb-3">Classic Dutch red roses wrapped in signature luxury paper with fresh gypsophila (baby's breath).</p>
+              <a href="/roses?color=red" class="text-rose-600 font-semibold text-xs hover:underline">Explore Red Roses &rarr;</a>
+            </div>
+            <div class="p-5 bg-white rounded-2xl border border-slate-200 shadow-sm">
+              <h3 class="text-lg font-bold text-slate-900 mb-2">Premium Valentine's Flower Arrangements</h3>
+              <p class="text-sm text-slate-600 leading-relaxed mb-3">Heart-shaped floral boxes, cascading oriental lilies, and exotic orchid centerpieces.</p>
+              <a href="/bouquets" class="text-rose-600 font-semibold text-xs hover:underline">Explore Premium Arrangements &rarr;</a>
+            </div>
+            <div class="p-5 bg-white rounded-2xl border border-slate-200 shadow-sm">
+              <h3 class="text-lg font-bold text-slate-900 mb-2">Romantic Flower and Cake Combos</h3>
+              <p class="text-sm text-slate-600 leading-relaxed mb-3">Pair fresh velvety roses with rich Dutch Truffle, Black Forest, or Red Velvet heart cakes.</p>
+              <a href="/combos" class="text-rose-600 font-semibold text-xs hover:underline">Explore Combos &rarr;</a>
+            </div>
+          </div>
+        </section>
+
+        <section class="mb-12">
+          <h2 class="text-2xl font-bold text-slate-900 mb-6">More Ways to Celebrate Valentine's Day</h2>
+          <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+            <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 text-center">
+              <h3 class="text-sm font-bold text-slate-900 mb-1">Valentine's Day Cakes</h3>
+              <p class="text-xs text-slate-600">Fresh artisanal bakery cakes.</p>
+            </div>
+            <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 text-center">
+              <h3 class="text-sm font-bold text-slate-900 mb-1">Chocolates &amp; Sweet Surprises</h3>
+              <p class="text-xs text-slate-600">Gourmet chocolate boxes.</p>
+            </div>
+            <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 text-center">
+              <h3 class="text-sm font-bold text-slate-900 mb-1">Valentine's Gift Hampers</h3>
+              <p class="text-xs text-slate-600">Luxury bundled hampers.</p>
+            </div>
+            <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 text-center">
+              <h3 class="text-sm font-bold text-slate-900 mb-1">Teddy Bears &amp; Romance</h3>
+              <p class="text-xs text-slate-600">Cuddly plush keepsakes.</p>
+            </div>
+            <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 text-center">
+              <h3 class="text-sm font-bold text-slate-900 mb-1">Personalised Gifts</h3>
+              <p class="text-xs text-slate-600">Custom embossed cards.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="mb-12">
+          <h2 class="text-2xl font-bold text-slate-900 mb-6">Valentine's Week Gift Ideas (${valDays[0]?.year})</h2>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            ${valDays.map(day => `
+              <article class="p-4 bg-white rounded-xl border border-slate-200 shadow-xs">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="text-xl">${day.icon}</span>
+                  <h3 class="font-bold text-slate-900 text-base">${escapeHtml(day.heading)}</h3>
+                </div>
+                <p class="text-xs font-semibold text-rose-600 mb-2">${day.formattedDate} — Target Keyword: ${escapeHtml(day.keyword)}</p>
+                <p class="text-xs text-slate-600 leading-relaxed">${escapeHtml(day.description)}</p>
+              </article>
+            `).join('')}
+          </div>
+        </section>
+
+        <section class="mb-12">
+          <h2 class="text-2xl font-bold text-slate-900 mb-4">Send Valentine's Day Flowers and Gifts in Hyderabad</h2>
+          <p class="text-slate-700 leading-relaxed mb-4">
+            Spring Blossoms Florist offers express doorstep delivery across all Hyderabad and Secunderabad pin codes, including Banjara Hills, Jubilee Hills, Gachibowli, Madhapur, Hitec City, Kondapur, Mehdipatnam, Begumpet, and Kukatpally. Choose our famous Midnight Surprise slot (11:00 PM – 11:59 PM) for romantic surprises that arrive right as Valentine's Day begins.
+          </p>
+        </section>
+
+        <section class="mb-12 p-6 bg-rose-50/50 rounded-2xl border border-rose-100">
+          <h2 class="text-2xl font-bold text-slate-900 mb-4">Why Choose Spring Blossoms Florist for Valentine's Day?</h2>
+          <ul class="list-disc pl-5 space-y-2 text-slate-700 text-sm">
+            <li><strong>Farm-Fresh Guarantee:</strong> Hand-inspected Dutch and Indian roses cut daily for maximum vase life.</li>
+            <li><strong>Punctual Midnight &amp; Same-Day Slots:</strong> Strict delivery scheduling to make your romantic gesture flawless.</li>
+            <li><strong>Local Hyderabad Florist Studio:</strong> Genuine physical studio at Mehdipatnam with master florists who assemble every bouquet by hand.</li>
+            <li><strong>Complimentary Keepsake Card:</strong> Add a personalized message printed on luxury embossed keepsake card stock.</li>
+          </ul>
+        </section>
+
+        <section class="mb-12">
+          <h2 class="text-2xl font-bold text-slate-900 mb-4">Frequently Asked Questions About Valentine's Day Gifts</h2>
+          <div class="space-y-4">
+            <div class="p-4 bg-white border border-slate-200 rounded-xl">
+              <h3 class="font-bold text-slate-900 text-sm mb-1">Can I book midnight delivery for Valentine's Day in Hyderabad?</h3>
+              <p class="text-xs text-slate-600">Yes! We offer a dedicated 11:00 PM to 11:59 PM midnight delivery slot across Hyderabad and Secunderabad. We recommend booking in advance as slots are limited during Valentine's Week.</p>
+            </div>
+            <div class="p-4 bg-white border border-slate-200 rounded-xl">
+              <h3 class="font-bold text-slate-900 text-sm mb-1">Can I send gifts for all 7 days of Valentine's Week?</h3>
+              <p class="text-xs text-slate-600">Absolutely. You can schedule daily surprises starting from Rose Day (Feb 7) all the way through Valentine's Day (Feb 14) with custom flowers, chocolates, and cakes for each day.</p>
+            </div>
+          </div>
+        </section>
+      </div>
+    `;
+  }
+
   // ── 4. CATEGORY / COLLECTION PAGE ────────────────────────────────
   else if (cleanPath.startsWith('/shop') || cleanPath.startsWith('/occasions') || cleanPath === '/cakes' || cleanPath === '/combos' || cleanPath.length > 1) {
     const segments = cleanPath.split('/').filter(Boolean);
@@ -1722,8 +1939,8 @@ const renderCrawlerHtml = async (reqPath) => {
 
   // ── 5. DEFAULT HOMEPAGE ──────────────────────────────────────────
   if (!bodyContent) {
-    pageTitle = 'Flowers & Cakes Delivery in Hyderabad | SB Florist';
-    metaDescription = 'Order fresh flowers, cakes and gifts in Hyderabad & Secunderabad. Free delivery on your first order and ₹999+ orders, with same-day and midnight delivery.';
+    pageTitle = 'Online Flower Delivery in Hyderabad | Spring Blossoms Florist';
+    metaDescription = 'Order fresh flower bouquets, premium roses, cakes and beautiful gift combos online from Spring Blossoms Florist. Make every occasion special with flower delivery in Hyderabad.';
     canonicalUrl = `${SITE_URL}/`;
 
     // Fetch sample featured products for crawlable homepage links
@@ -1822,10 +2039,10 @@ const renderCrawlerHtml = async (reqPath) => {
         <!-- Primary Hero Header -->
         <header class="hero-section mb-12 text-center max-w-4xl mx-auto">
           <h1 class="text-3xl sm:text-4xl md:text-5xl font-black text-slate-900 tracking-tight leading-tight mb-4">
-            Flowers, Cakes &amp; Gifts Delivery in Hyderabad
+            Online Flower Delivery in Hyderabad
           </h1>
           <p class="text-lg text-slate-700 leading-relaxed mb-6">
-            Send fresh bouquets, roses and flower gifts in Hyderabad and Secunderabad with Spring Blossoms Florist. Explore flowers for special occasions, cakes and gift combos with same-day delivery and midnight slots.
+            Order fresh flower bouquets, premium roses, cakes and beautiful gift combos online from Spring Blossoms Florist. Make every occasion special with flower delivery in Hyderabad.
           </p>
           <div class="flex flex-wrap justify-center gap-4 text-sm font-semibold">
             <a href="/bouquets" class="px-6 py-3 bg-rose-600 text-white rounded-xl shadow-md hover:bg-rose-700">Shop Bouquets</a>
@@ -1838,13 +2055,13 @@ const renderCrawlerHtml = async (reqPath) => {
         <!-- Category Highlights Section with Semantic H2s -->
         <section class="category-highlights mb-16 space-y-10">
           <div class="p-6 bg-slate-50 rounded-2xl border border-slate-200">
-            <h2 class="text-2xl font-bold text-slate-900 mb-2">Shop Bouquets in Hyderabad</h2>
+            <h2 class="text-2xl font-bold text-slate-900 mb-2">Discover Beautiful Flower Bouquets for Every Occasion</h2>
             <p class="text-slate-600 text-sm leading-relaxed mb-3">Discover handcrafted flower bouquets in Hyderabad designed for birthdays, anniversaries, and congratulations. From wrapped Dutch blooms to elegant floral hampers, order bouquets near me with same-day express doorstep delivery.</p>
             <a href="/bouquets" class="text-rose-600 font-semibold text-sm hover:underline">Explore All Bouquets &rarr;</a>
           </div>
 
           <div class="p-6 bg-rose-50/50 rounded-2xl border border-rose-100">
-            <h2 class="text-2xl font-bold text-slate-900 mb-2">Find Your Perfect Roses Bouquet</h2>
+            <h2 class="text-2xl font-bold text-slate-900 mb-2">Shop Fresh Flowers and Premium Bouquets Online</h2>
             <p class="text-slate-600 text-sm leading-relaxed mb-3">Fresh Dutch and Indian roses in classic red, blush pink, radiant yellow, and pristine white. Express romance, admiration, or gratitude with handcrafted rose bouquets in Hyderabad.</p>
             <div class="flex flex-wrap gap-3 text-xs font-semibold">
               <a href="/roses" class="px-3 py-1.5 bg-white border border-rose-200 rounded-lg text-rose-700">All Roses Bouquet</a>
@@ -1856,7 +2073,7 @@ const renderCrawlerHtml = async (reqPath) => {
           </div>
 
           <div class="p-6 bg-amber-50/40 rounded-2xl border border-amber-100">
-            <h2 class="text-2xl font-bold text-slate-900 mb-2">Sunflowers, Lilies and Fresh Seasonal Flowers</h2>
+            <h2 class="text-2xl font-bold text-slate-900 mb-2">Send Birthday and Anniversary Flowers in Hyderabad</h2>
             <p class="text-slate-600 text-sm leading-relaxed mb-3">Brighten any room with golden sunflower bouquets, fragrant oriental lilies, and exotic hydrangea arrangements handpicked for longevity and vibrant aesthetics.</p>
             <div class="flex flex-wrap gap-3 text-xs font-semibold">
               <a href="/sunflowers" class="px-3 py-1.5 bg-white border border-amber-200 rounded-lg text-amber-800">Sunflowers</a>
@@ -1866,7 +2083,7 @@ const renderCrawlerHtml = async (reqPath) => {
           </div>
 
           <div class="p-6 bg-purple-50/40 rounded-2xl border border-purple-100">
-            <h2 class="text-2xl font-bold text-slate-900 mb-2">Cakes and Flower Gift Combos</h2>
+            <h2 class="text-2xl font-bold text-slate-900 mb-2">Explore Cakes, Flowers and Gift Combos</h2>
             <p class="text-slate-600 text-sm leading-relaxed mb-3">Pair farm-fresh floral bouquets with delectable gourmet bakery cakes (Dutch Truffle, Red Velvet, Black Forest) and gift baskets for seamless birthday and anniversary gifting in Hyderabad.</p>
             <div class="flex flex-wrap gap-3 text-xs font-semibold">
               <a href="/cakes" class="px-3 py-1.5 bg-white border border-purple-200 rounded-lg text-purple-700">Cakes Delivery</a>
@@ -1894,7 +2111,7 @@ const renderCrawlerHtml = async (reqPath) => {
 
         <!-- Why Choose Spring Blossoms Florist -->
         <section class="why-choose-us mb-16 p-8 bg-gradient-to-br from-rose-50/50 to-pink-50/30 rounded-3xl border border-rose-100">
-          <h2 class="text-2xl font-bold text-slate-900 mb-6 text-center">Why Order From Spring Blossoms Florist Hyderabad?</h2>
+          <h2 class="text-2xl font-bold text-slate-900 mb-6 text-center">Why Choose Spring Blossoms Florist?</h2>
           <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div class="perk-card bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
               <h3 class="text-lg font-bold text-slate-900 mb-2">🌸 Farm-Fresh Flowers Daily</h3>
@@ -1913,15 +2130,15 @@ const renderCrawlerHtml = async (reqPath) => {
 
         <!-- Coverage Localities -->
         <section class="delivery-coverage mb-16">
-          <h2 class="text-2xl font-bold text-slate-900 mb-4 text-center">Flower &amp; Cake Delivery Across Hyderabad &amp; Secunderabad</h2>
+          <h2 class="text-2xl font-bold text-slate-900 mb-4 text-center">Order Flowers Online with Convenient Delivery</h2>
           <p class="text-center text-slate-600 max-w-3xl mx-auto mb-6 text-sm">
-            We deliver to over 100 pin codes across the Twin Cities. Popular delivery hubs include Banjara Hills, Jubilee Hills, Gachibowli, Madhapur, Hitec City, Kondapur, Mehdipatnam, Begumpet, Secunderabad, Sainikpuri, Marredpally, Kukatpally, Miyapur, Dilsukhnagar, and LB Nagar.
+            We deliver to over 100 pin codes across Hyderabad &amp; Secunderabad. Enjoy same-day flower delivery, midnight surprise slots, and free delivery on your 1st order and all orders ₹999+. Popular delivery hubs include Banjara Hills, Jubilee Hills, Gachibowli, Madhapur, Hitec City, Kondapur, Mehdipatnam, Begumpet, Secunderabad, Sainikpuri, Marredpally, Kukatpally, Miyapur, Dilsukhnagar, and LB Nagar.
           </p>
         </section>
 
         <!-- FAQs Section -->
         <section class="faq-section mb-16 max-w-3xl mx-auto">
-          <h2 class="text-2xl font-bold text-slate-900 mb-6 text-center">Frequently Asked Questions</h2>
+          <h2 class="text-2xl font-bold text-slate-900 mb-6 text-center">Frequently Asked Questions About Flower Delivery</h2>
           <div class="space-y-4">
             <div class="faq-item p-4 border border-slate-200 rounded-xl bg-white">
               <h3 class="font-bold text-slate-900 mb-1">Do you offer same-day flower delivery in Hyderabad?</h3>
