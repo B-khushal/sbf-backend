@@ -35,8 +35,14 @@ const detectProductIntent = (product) => {
   const isCombo = combined.includes('combo') || category === 'combos' || (isRose && isCake);
   const isLily = combined.includes('lil') || combined.includes('asiatic') || combined.includes('oriental');
   const isSunflower = combined.includes('sunflower');
-  const isOrchid = combined.includes('orchid');
+  const isOrchid = combined.includes('orchid') || combined.includes('dendrobium') || combined.includes('cymbidium');
+  const isTulip = combined.includes('tulip');
+  const isLisianthus = combined.includes('lisianthus') || combined.includes('eustoma');
+  const isHydrangea = combined.includes('hydrangea');
   const isCarnation = combined.includes('carnation');
+  const isGerbera = combined.includes('gerbera') || combined.includes('daisy');
+  const isChrysanthemum = combined.includes('chrysanthemum') || combined.includes('sevanthi');
+  const isVase = combined.includes('vase');
   const isHamper = combined.includes('hamper') || combined.includes('basket');
   const isChocolate = combined.includes('chocolate') || combined.includes('ferrero') || combined.includes('cadbury');
   const isValentine = combined.includes('valentine') || combined.includes('romantic') || combined.includes('love') || product.isValentineProduct;
@@ -46,11 +52,17 @@ const detectProductIntent = (product) => {
   let type = 'Flower Bouquet';
   if (isCombo) type = 'Flower & Cake Combo';
   else if (isCake) type = 'Celebration Cake';
-  else if (isRose) type = 'Rose Bouquet';
+  else if (isTulip) type = 'Tulip Bouquet';
+  else if (isOrchid) type = 'Exotic Orchid Bouquet';
+  else if (isLisianthus) type = 'Lisianthus Eustoma Arrangement';
+  else if (isHydrangea) type = 'Hydrangea Bouquet';
   else if (isLily) type = 'Lily Arrangement';
   else if (isSunflower) type = 'Sunflower Bouquet';
-  else if (isOrchid) type = 'Exotic Orchid Bouquet';
   else if (isCarnation) type = 'Carnation Bouquet';
+  else if (isGerbera) type = 'Gerbera Arrangement';
+  else if (isChrysanthemum) type = 'Chrysanthemum Bouquet';
+  else if (isRose) type = 'Rose Bouquet';
+  else if (isVase) type = 'Glass Vase Arrangement';
   else if (isHamper) type = 'Luxury Gift Hamper';
   else if (isChocolate) type = 'Chocolate Gift Hamper';
 
@@ -61,6 +73,14 @@ const detectProductIntent = (product) => {
     isCombo,
     isLily,
     isSunflower,
+    isOrchid,
+    isTulip,
+    isLisianthus,
+    isHydrangea,
+    isCarnation,
+    isGerbera,
+    isChrysanthemum,
+    isVase,
     isHamper,
     isValentine,
     isBirthday,
@@ -107,6 +127,16 @@ const generateProductSeo = (product, existingSeo = null) => {
     if (intent.isValentine) secondaryKeywords.push('Valentine\'s Day Gift Combos', 'Romantic Rose and Cake Combo');
   } else if (intent.isCake) {
     secondaryKeywords.push('Order Cakes Online Hyderabad', 'Fresh Bakery Cake Delivery', 'Same Day Cake Delivery', 'Midnight Cake Surprise');
+  } else if (intent.isTulip) {
+    secondaryKeywords.push('Tulip Bouquets Online', 'Fresh Tulips in Hyderabad', 'Pink and Red Tulips', 'Luxury Tulip Arrangements');
+  } else if (intent.isOrchid) {
+    secondaryKeywords.push('Exotic Orchid Bouquets', 'Purple Orchids Online', 'Orchid Flower Delivery Hyderabad', 'Luxury Orchid Arrangements');
+  } else if (intent.isLisianthus) {
+    secondaryKeywords.push('Lisianthus Eustoma Bouquets', 'Lavender Lisianthus Flowers', 'Exotic Pastel Bouquets', 'Buy Eustoma Online');
+  } else if (intent.isHydrangea) {
+    secondaryKeywords.push('Hydrangea Flower Bouquets', 'Pink and Blue Hydrangeas', 'Luxury Hydrangea Arrangements', 'Fresh Hydrangeas Hyderabad');
+  } else if (intent.isCarnation) {
+    secondaryKeywords.push('Carnation Bouquets Online', 'Pink and White Carnations', 'Fresh Carnation Flowers', 'Same Day Flower Delivery');
   } else if (intent.isLily) {
     secondaryKeywords.push('Lily Flower Bouquet Online', 'Fresh Asiatic Lilies Hyderabad', 'Fragrant Lily Arrangements', 'Best Florist in Hyderabad');
   } else if (intent.isSunflower) {
@@ -116,8 +146,14 @@ const generateProductSeo = (product, existingSeo = null) => {
   }
 
   // 3. SEO Title (Target: 45–60 characters)
-  // Format: [Product Name] Online | SBFlorist Hyderabad
-  let seoTitle = `${name} Online | ${SHORT_BRAND}`;
+  // Format: Buy [Product Name] Online | Fresh [Category] – SBFlorist
+  let seoTitle = `Buy ${name} Online | Fresh ${intent.type} – SBFlorist`;
+  if (seoTitle.length > 60) {
+    seoTitle = `Buy ${name} Online | ${SHORT_BRAND}`;
+  }
+  if (seoTitle.length > 60) {
+    seoTitle = `${name} Online | ${SHORT_BRAND}`;
+  }
   if (seoTitle.length > 60) {
     seoTitle = `${name} | ${SHORT_BRAND}`;
   }
@@ -132,13 +168,23 @@ const generateProductSeo = (product, existingSeo = null) => {
     descDetail = `handcrafted ${intent.type.toLowerCase()} featuring fresh blooms and a delectable bakery cake`;
   } else if (intent.isRose) {
     descDetail = 'farm-fresh Dutch roses carefully hand-tied by expert florists';
+  } else if (intent.isTulip) {
+    descDetail = 'elegant fresh-cut tulips arranged with luxury botanical wrapping';
+  } else if (intent.isOrchid) {
+    descDetail = 'long-lasting exotic orchid sprays styled by master floral designers';
+  } else if (intent.isHydrangea || intent.isLisianthus) {
+    descDetail = `lush pastel ${intent.type.toLowerCase()} crafted for luxury celebrations`;
   } else if (intent.isCake) {
     descDetail = 'freshly baked artisan celebration cake crafted with premium ingredients';
   } else {
     descDetail = `vibrant handcrafted ${intent.type.toLowerCase()} arranged fresh for your special moments`;
   }
 
-  let metaDescription = `Order ${name} online from Spring Blossoms Florist. Enjoy ${descDetail} with express same-day and midnight delivery in Hyderabad.`;
+  const priceSuffix = priceStr ? ` (${priceStr})` : '';
+  let metaDescription = `Order ${name}${priceSuffix} online at Spring Blossoms Florist. Enjoy ${descDetail} with same-day & midnight delivery in Hyderabad.`;
+  if (metaDescription.length > 160) {
+    metaDescription = `Order ${name} online from Spring Blossoms Florist. Enjoy ${descDetail} with express same-day and midnight delivery in Hyderabad.`;
+  }
   if (metaDescription.length > 160) {
     metaDescription = `Order ${name} online from Spring Blossoms Florist. Handcrafted ${intent.type.toLowerCase()} with same-day and midnight delivery in Hyderabad.`;
   }

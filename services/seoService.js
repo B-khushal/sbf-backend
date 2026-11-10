@@ -68,6 +68,7 @@ const sitemapCache = {
   categories: { xml: null, expiresAt: 0, count: 0 },
   products: { xml: null, expiresAt: 0, count: 0 },
   occasions: { xml: null, expiresAt: 0, count: 0 },
+  blog: { xml: null, expiresAt: 0, count: 0 },
   full: { xml: null, expiresAt: 0, count: 0 }
 };
 
@@ -93,10 +94,11 @@ const formatW3cDate = (date) => {
 // Authoritative list of canonical public static & location pages
 // Excludes auth-protected (/vendors-consent) and robots-disallowed (/vendor/register) routes
 const STATIC_PAGE_DEFS = [
-  { path: '/', lastmod: '2026-10-28' },
-  { path: '/shop', lastmod: '2026-10-28' },
-  { path: '/flower-delivery-hyderabad', lastmod: '2026-10-28' },
-  { path: '/flower-delivery-secunderabad', lastmod: '2026-10-28' },
+  { path: '/', lastmod: '2026-11-08' },
+  { path: '/shop', lastmod: '2026-11-08' },
+  { path: '/blog', lastmod: '2026-11-08' },
+  { path: '/flower-delivery-hyderabad', lastmod: '2026-11-08' },
+  { path: '/flower-delivery-secunderabad', lastmod: '2026-11-08' },
   { path: '/valentine-special', lastmod: '2026-10-27' },
   { path: '/valentine-shop', lastmod: '2026-10-27' },
   { path: '/about', lastmod: '2026-10-28' },
@@ -420,6 +422,51 @@ const generateOccasionsSitemapXml = async (forceRefresh = false) => {
   return xml;
 };
 
+// 4.5. Generate Blog Articles Sitemap (/sitemap-blog.xml)
+const generateBlogSitemapXml = async (forceRefresh = false) => {
+  const now = Date.now();
+  if (!forceRefresh && sitemapCache.blog && sitemapCache.blog.xml && sitemapCache.blog.expiresAt > now) {
+    return sitemapCache.blog.xml;
+  }
+
+  const { getAllBlogPosts } = require('./seoBlogAndSettingsService');
+  let posts = [];
+  try {
+    posts = await getAllBlogPosts(false);
+  } catch (err) {
+    console.error('Error fetching blog posts for sitemap:', err.message);
+  }
+
+  let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+  xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
+
+  // Include /blog hub first
+  xml += '  <url>\n';
+  xml += `    <loc>${escapeXml(`${SITE_URL}/blog`)}</loc>\n`;
+  xml += '    <lastmod>2026-11-08</lastmod>\n';
+  xml += '  </url>\n';
+
+  for (const post of posts) {
+    if (!post.slug || post.noindex) continue;
+    const postUrl = `${SITE_URL}/blog/${post.slug}`;
+    const lastmod = formatW3cDate(post.updatedAt || post.publishedAt) || '2026-11-08';
+    xml += '  <url>\n';
+    xml += `    <loc>${escapeXml(postUrl)}</loc>\n`;
+    xml += `    <lastmod>${escapeXml(lastmod)}</lastmod>\n`;
+    xml += '  </url>\n';
+  }
+
+  xml += '</urlset>\n';
+
+  sitemapCache.blog = {
+    xml,
+    expiresAt: now + SITEMAP_CACHE_TTL,
+    count: posts.length + 1
+  };
+
+  return xml;
+};
+
 // 5. Generate Primary Sitemap Index (/sitemap.xml)
 const generateSitemapIndexXml = async (forceRefresh = false) => {
   const now = Date.now();
@@ -430,10 +477,11 @@ const generateSitemapIndexXml = async (forceRefresh = false) => {
   const prisma = require('../config/prisma');
 
   // Discover latest modification dates for each child sitemap
-  let latestPagesDate = '2026-10-28';
+  let latestPagesDate = '2026-11-08';
   let latestCatDate = '2026-10-27';
   let latestProdDate = '2026-10-27';
   let latestOccDate = '2026-10-28';
+  let latestBlogDate = '2026-11-08';
 
   try {
     const latestProd = await prisma.product.findFirst({
@@ -477,7 +525,8 @@ const generateSitemapIndexXml = async (forceRefresh = false) => {
     { loc: `${SITE_URL}/sitemap-pages.xml`, lastmod: latestPagesDate },
     { loc: `${SITE_URL}/sitemap-categories.xml`, lastmod: latestCatDate },
     { loc: `${SITE_URL}/sitemap-products.xml`, lastmod: latestProdDate },
-    { loc: `${SITE_URL}/sitemap-occasions.xml`, lastmod: latestOccDate }
+    { loc: `${SITE_URL}/sitemap-occasions.xml`, lastmod: latestOccDate },
+    { loc: `${SITE_URL}/sitemap-blog.xml`, lastmod: latestBlogDate }
   ];
 
   for (const sitemap of childSitemaps) {
@@ -512,7 +561,8 @@ const generateFullSitemapXml = async (forceRefresh = false) => {
     generatePagesSitemapXml(forceRefresh),
     generateCategoriesSitemapXml(forceRefresh),
     generateProductsSitemapXml(forceRefresh),
-    generateOccasionsSitemapXml(forceRefresh)
+    generateOccasionsSitemapXml(forceRefresh),
+    generateBlogSitemapXml(forceRefresh)
   ]);
 
   let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
@@ -526,11 +576,13 @@ const generateFullSitemapXml = async (forceRefresh = false) => {
   const pagesBody = extractUrls(sitemapCache.pages.xml || '');
   const catBody = extractUrls(sitemapCache.categories.xml || '');
   const occBody = extractUrls(sitemapCache.occasions.xml || '');
+  const blogBody = extractUrls(sitemapCache.blog?.xml || '');
   const prodBody = extractUrls(sitemapCache.products.xml || '');
 
   if (pagesBody) xml += `${pagesBody}\n`;
   if (catBody) xml += `${catBody}\n`;
   if (occBody) xml += `${occBody}\n`;
+  if (blogBody) xml += `${blogBody}\n`;
   if (prodBody) xml += `${prodBody}\n`;
 
   xml += '</urlset>\n';
@@ -538,6 +590,7 @@ const generateFullSitemapXml = async (forceRefresh = false) => {
   const totalCount = (sitemapCache.pages.count || 0) +
     (sitemapCache.categories.count || 0) +
     (sitemapCache.occasions.count || 0) +
+    (sitemapCache.blog?.count || 0) +
     (sitemapCache.products.count || 0);
 
   sitemapCache.full = {
@@ -561,6 +614,9 @@ const generateSitemapXml = async (type = 'index', forceRefresh = false) => {
       return generateProductsSitemapXml(forceRefresh);
     case 'occasions':
       return generateOccasionsSitemapXml(forceRefresh);
+    case 'blog':
+    case 'blogs':
+      return generateBlogSitemapXml(forceRefresh);
     case 'full':
     case 'single':
       return generateFullSitemapXml(forceRefresh);
@@ -573,10 +629,12 @@ const generateSitemapXml = async (type = 'index', forceRefresh = false) => {
 // Structured data provider for interactive Sitemap UI & JSON API
 const getSitemapData = async (type = 'index') => {
   const prisma = require('../config/prisma');
+  const { getAllBlogPosts } = require('./seoBlogAndSettingsService');
 
   const PAGE_LABELS = {
     '/': 'Home — Spring Blossoms Florist',
     '/shop': 'Shop All Flowers & Gifts',
+    '/blog': 'Flower & Gifting Guides Blog — Spring Blossoms Florist',
     '/flower-delivery-hyderabad': 'Flower Delivery in Hyderabad (Local Hub)',
     '/flower-delivery-secunderabad': 'Flower Delivery in Secunderabad (Local Hub)',
     '/valentine-special': 'Valentine\'s Special Gifts Experience',
@@ -591,9 +649,10 @@ const getSitemapData = async (type = 'index') => {
     '/faq': 'Frequently Asked Questions (FAQ) — Spring Blossoms Florist'
   };
 
-  const [categoryItems, occasionItems, pCount] = await Promise.all([
+  const [categoryItems, occasionItems, blogItems, pCount] = await Promise.all([
     buildCanonicalCategoryItems(),
     buildCanonicalOccasionItems(),
+    getAllBlogPosts(false).catch(() => []),
     prisma.product.count({ where: { isVisible: true, approvalStatus: 'approved' } }).catch(() => 180)
   ]);
 
@@ -601,17 +660,19 @@ const getSitemapData = async (type = 'index') => {
   const catCount = categoryItems.length;
   const prodCount = pCount || 180;
   const occCount = occasionItems.length;
+  const blogCount = blogItems.length;
 
   const sitemapsMeta = [
-    { id: 'index', name: 'sitemap.xml', url: `${SITE_URL}/sitemap.xml`, uiPath: '/sitemap', label: 'All Sitemaps (Index)', count: 4 },
+    { id: 'index', name: 'sitemap.xml', url: `${SITE_URL}/sitemap.xml`, uiPath: '/sitemap', label: 'All Sitemaps (Index)', count: 5 },
     { id: 'pages', name: 'sitemap-pages.xml', url: `${SITE_URL}/sitemap-pages.xml`, uiPath: '/sitemap/pages', label: 'Pages', count: pagesCount },
     { id: 'categories', name: 'sitemap-categories.xml', url: `${SITE_URL}/sitemap-categories.xml`, uiPath: '/sitemap/categories', label: 'Categories', count: catCount },
     { id: 'products', name: 'sitemap-products.xml', url: `${SITE_URL}/sitemap-products.xml`, uiPath: '/sitemap/products', label: 'Products', count: prodCount },
-    { id: 'occasions', name: 'sitemap-occasions.xml', url: `${SITE_URL}/sitemap-occasions.xml`, uiPath: '/sitemap/occasions', label: 'Occasions', count: occCount }
+    { id: 'occasions', name: 'sitemap-occasions.xml', url: `${SITE_URL}/sitemap-occasions.xml`, uiPath: '/sitemap/occasions', label: 'Occasions', count: occCount },
+    { id: 'blog', name: 'sitemap-blog.xml', url: `${SITE_URL}/sitemap-blog.xml`, uiPath: '/sitemap/blog', label: 'Blog Guides', count: blogCount }
   ];
 
   let currentTitle = 'XML Sitemap Index';
-  let currentSubtitle = `Master sitemap index containing 4 sub-sitemaps with ${pagesCount + catCount + prodCount + occCount} discoverable URLs for sbflorist.in`;
+  let currentSubtitle = `Master sitemap index containing 5 sub-sitemaps with ${pagesCount + catCount + prodCount + occCount + blogCount} discoverable URLs for sbflorist.in`;
   let currentFile = 'sitemap.xml';
   let isIndex = false;
   let rows = [];
@@ -709,6 +770,20 @@ const getSitemapData = async (type = 'index') => {
       badgeColor: occ.isHub ? '#7c3aed' : '#db2777',
       badgeBg: occ.isHub ? '#f5f3ff' : '#fdf2f8'
     }));
+  } else if (type === 'blog' || type === 'blogs') {
+    currentTitle = 'Flower & Gifting Guides Blog Sitemap';
+    currentSubtitle = 'Educational flower care guides, rose color symbolism, gifting inspiration, and local Hyderabad delivery tips.';
+    currentFile = 'sitemap-blog.xml';
+
+    rows = blogItems.map((post, index) => ({
+      idx: index + 1,
+      title: post.title,
+      url: `${SITE_URL}/blog/${post.slug}`,
+      lastmod: formatW3cDate(post.updatedAt || post.publishedAt) || '2026-11-08',
+      badge: post.category || 'Guide',
+      badgeColor: '#0284c7',
+      badgeBg: '#e0f2fe'
+    }));
   }
 
   const childCards = [
@@ -759,6 +834,18 @@ const getSitemapData = async (type = 'index') => {
       badge: `${occCount} Occasions`,
       color: '#7c3aed',
       bg: '#f5f3ff'
+    },
+    {
+      id: 'blog',
+      name: 'sitemap-blog.xml',
+      url: `${SITE_URL}/sitemap-blog.xml`,
+      uiPath: '/sitemap/blog',
+      title: 'Blog & Flower Guides',
+      desc: 'People-first guides on rose color meanings, tulip & orchid care, Indian fragrant blooms, and gifting ideas.',
+      count: blogCount,
+      badge: `${blogCount} Guides`,
+      color: '#0284c7',
+      bg: '#e0f2fe'
     }
   ];
 
@@ -772,6 +859,7 @@ const getSitemapData = async (type = 'index') => {
     catCount,
     prodCount,
     occCount,
+    blogCount,
     sitemapsMeta,
     rows,
     childCards
@@ -1287,10 +1375,17 @@ const generateRobotsTxt = () => {
 User-agent: *
 Allow: /
 Allow: /shop
+Allow: /blog
 Allow: /flower-delivery-hyderabad
 Allow: /flower-delivery-secunderabad
 Allow: /bouquets
 Allow: /roses
+Allow: /premium-roses
+Allow: /tulips
+Allow: /orchids
+Allow: /lavender-lisianthus
+Allow: /carnation
+Allow: /vase
 Allow: /cakes
 Allow: /combos
 Allow: /sunflowers
@@ -1333,18 +1428,129 @@ const renderCrawlerHtml = async (reqPath) => {
   const Product = require('../models/Product');
   const Category = require('../models/Category');
   const Occasion = require('../models/Occasion');
+  const { getAllBlogPosts, getBlogPostBySlug } = require('./seoBlogAndSettingsService');
   const template = getHtmlTemplate();
 
   const cleanPath = (reqPath || '/').split('?')[0].replace(/\/+$/, '') || '/';
 
   // Default Homepage Metadata
-  let pageTitle = 'Flowers & Cakes Delivery in Hyderabad | SB Florist';
-  let metaDescription = 'Order fresh flowers, cakes and gifts in Hyderabad & Secunderabad. Free delivery on your first order and ₹999+ orders, with same-day and midnight delivery.';
+  let pageTitle = 'Spring Blossoms Florist | Buy Flowers & Gifts Online in India';
+  let metaDescription = 'Order fresh flower bouquets, roses, cakes, and gift hampers online from Spring Blossoms Florist. Celebrate birthdays, anniversaries, and special occasions with same-day delivery in Hyderabad.';
   let canonicalUrl = `${SITE_URL}${cleanPath === '/' ? '' : cleanPath}`;
   let ogImage = `${SITE_URL}/images/og-preview.jpg`;
   let ogType = 'website';
   let structuredData = [];
   let bodyContent = '';
+
+  // ── 0.5. BLOG HUB & BLOG POST PAGES ──────────────────────────────
+  if (cleanPath === '/blog') {
+    pageTitle = 'Flower & Gifting Guides Blog | Spring Blossoms Florist';
+    metaDescription = 'Explore expert flower care tips, rose color meanings, tulip and orchid guides, and birthday & anniversary gifting ideas by Spring Blossoms Florist.';
+    canonicalUrl = `${SITE_URL}/blog`;
+    const posts = await getAllBlogPosts(false).catch(() => []);
+    structuredData.push({
+      '@context': 'https://schema.org',
+      '@type': 'Blog',
+      name: 'Spring Blossoms Florist Botanical & Gifting Journal',
+      url: canonicalUrl,
+      description: metaDescription,
+      publisher: { '@type': 'Florist', name: BRAND_NAME, url: SITE_URL }
+    });
+    bodyContent = `
+      <div class="sbf-crawler-shell p-6 max-w-5xl mx-auto">
+        <nav aria-label="Breadcrumb" class="text-sm mb-4">
+          <a href="/">Home</a> &gt; <span>Blog &amp; Flower Guides</span>
+        </nav>
+        <header class="mb-8">
+          <h1 class="text-3xl font-extrabold text-slate-900 mb-3">Flower Care, Symbolism &amp; Gifting Guides</h1>
+          <p class="text-lg text-slate-700 leading-relaxed">${escapeHtml(metaDescription)}</p>
+        </header>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          ${posts.map(p => `
+            <article class="p-5 border border-slate-200 rounded-2xl bg-white">
+              <span class="text-xs font-bold text-rose-600 uppercase">${escapeHtml(p.category)}</span>
+              <h2 class="text-xl font-bold text-slate-900 mt-1 mb-2">
+                <a href="/blog/${escapeHtml(p.slug)}">${escapeHtml(p.title)}</a>
+              </h2>
+              <p class="text-sm text-slate-600 mb-3">${escapeHtml(p.excerpt)}</p>
+              <a href="/blog/${escapeHtml(p.slug)}" class="text-rose-600 font-semibold text-sm">Read Full Guide &rarr;</a>
+            </article>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  } else if (cleanPath.startsWith('/blog/')) {
+    const blogSlug = cleanPath.replace('/blog/', '').trim();
+    const post = await getBlogPostBySlug(blogSlug, false).catch(() => null);
+    if (post) {
+      pageTitle = post.seoTitle || `${post.title} | Spring Blossoms Florist`;
+      metaDescription = post.metaDescription || post.excerpt || metaDescription;
+      canonicalUrl = post.canonicalUrl || `${SITE_URL}/blog/${post.slug}`;
+      ogType = 'article';
+      if (post.coverImage) {
+        ogImage = post.coverImage.startsWith('/') ? `${SITE_URL}${post.coverImage}` : post.coverImage;
+      }
+
+      structuredData.push(
+        {
+          '@context': 'https://schema.org',
+          '@type': 'BlogPosting',
+          headline: post.title,
+          description: metaDescription,
+          image: [ogImage],
+          datePublished: post.publishedAt,
+          dateModified: post.updatedAt || post.publishedAt,
+          author: { '@type': 'Organization', name: post.author || BRAND_NAME },
+          publisher: {
+            '@type': 'Florist',
+            name: BRAND_NAME,
+            logo: { '@type': 'ImageObject', url: `${SITE_URL}/images/logo_final.png` }
+          },
+          mainEntityOfPage: { '@type': 'WebPage', '@id': canonicalUrl }
+        },
+        {
+          '@context': 'https://schema.org',
+          '@type': 'BreadcrumbList',
+          itemListElement: [
+            { '@type': 'ListItem', position: 1, name: 'Home', item: SITE_URL },
+            { '@type': 'ListItem', position: 2, name: 'Blog', item: `${SITE_URL}/blog` },
+            { '@type': 'ListItem', position: 3, name: post.title, item: canonicalUrl }
+          ]
+        }
+      );
+
+      bodyContent = `
+        <div class="sbf-crawler-shell p-6 max-w-4xl mx-auto">
+          <nav aria-label="Breadcrumb" class="text-sm mb-4">
+            <a href="/">Home</a> &gt; <a href="/blog">Blog</a> &gt; <span>${escapeHtml(post.title)}</span>
+          </nav>
+          <article>
+            <header class="mb-8">
+              <span class="text-xs font-bold text-rose-600 uppercase">${escapeHtml(post.category)}</span>
+              <h1 class="text-3xl font-extrabold text-slate-900 mt-1 mb-3">${escapeHtml(post.title)}</h1>
+              <p class="text-slate-600 text-base leading-relaxed">${escapeHtml(post.excerpt)}</p>
+            </header>
+            <div class="space-y-6">
+              ${(post.sections || []).map(sec => `
+                <section>
+                  <h2 class="text-2xl font-bold text-slate-900 mb-2">${escapeHtml(sec.heading)}</h2>
+                  <p class="text-slate-700 leading-relaxed">${escapeHtml(sec.body)}</p>
+                </section>
+              `).join('')}
+            </div>
+            ${Array.isArray(post.relatedCategories) && post.relatedCategories.length > 0 ? `
+              <section class="mt-8 pt-6 border-t border-slate-200">
+                <h2 class="text-xl font-bold text-slate-900 mb-3">Explore Related Floral Collections</h2>
+                <div class="flex flex-wrap gap-3">
+                  ${post.relatedCategories.map(rc => `<a href="${escapeHtml(rc.url)}" class="px-3 py-1.5 bg-rose-50 text-rose-700 rounded-lg font-semibold text-sm">${escapeHtml(rc.name)}</a>`).join('')}
+                </div>
+              </section>
+            ` : ''}
+          </article>
+        </div>
+      `;
+    }
+  }
 
   // ── 1. PRODUCT PAGE ──────────────────────────────────────────────
   const productMatch = cleanPath.match(/^\/(product|products|valentine-product)\/([^/]+)$/);
@@ -1939,8 +2145,8 @@ const renderCrawlerHtml = async (reqPath) => {
 
   // ── 5. DEFAULT HOMEPAGE ──────────────────────────────────────────
   if (!bodyContent) {
-    pageTitle = 'Online Flower Delivery in Hyderabad | Spring Blossoms Florist';
-    metaDescription = 'Order fresh flower bouquets, premium roses, cakes and beautiful gift combos online from Spring Blossoms Florist. Make every occasion special with flower delivery in Hyderabad.';
+    pageTitle = 'Spring Blossoms Florist | Buy Flowers & Gifts Online in India';
+    metaDescription = 'Order fresh flower bouquets, roses, cakes, and gift hampers online from Spring Blossoms Florist. Celebrate birthdays, anniversaries, and special occasions with same-day delivery.';
     canonicalUrl = `${SITE_URL}/`;
 
     // Fetch sample featured products for crawlable homepage links
@@ -2025,12 +2231,18 @@ const renderCrawlerHtml = async (reqPath) => {
             <li><a href="/shop" class="hover:text-rose-600">All Flowers</a></li>
             <li><a href="/bouquets" class="hover:text-rose-600">Bouquets in Hyderabad</a></li>
             <li><a href="/roses" class="hover:text-rose-600">Roses</a></li>
+            <li><a href="/tulips" class="hover:text-rose-600">Tulips</a></li>
+            <li><a href="/orchids" class="hover:text-rose-600">Orchids</a></li>
+            <li><a href="/lavender-lisianthus" class="hover:text-rose-600">Lisianthus (Eustoma)</a></li>
+            <li><a href="/carnation" class="hover:text-rose-600">Carnations</a></li>
             <li><a href="/cakes" class="hover:text-rose-600">Cakes</a></li>
             <li><a href="/combos" class="hover:text-rose-600">Flower &amp; Cake Combos</a></li>
             <li><a href="/sunflowers" class="hover:text-rose-600">Sunflowers</a></li>
             <li><a href="/lilies" class="hover:text-rose-600">Lilies</a></li>
             <li><a href="/flower-baskets" class="hover:text-rose-600">Flower Baskets</a></li>
             <li><a href="/hydrangea" class="hover:text-rose-600">Hydrangeas</a></li>
+            <li><a href="/vase" class="hover:text-rose-600">Vase Arrangements</a></li>
+            <li><a href="/blog" class="hover:text-rose-600">Flower Guides Blog</a></li>
             <li><a href="/flower-delivery-hyderabad" class="hover:text-rose-600">Hyderabad Delivery</a></li>
             <li><a href="/contact" class="hover:text-rose-600">Contact Us</a></li>
           </ul>
@@ -2218,6 +2430,7 @@ module.exports = {
   generateCategoriesSitemapXml,
   generateProductsSitemapXml,
   generateOccasionsSitemapXml,
+  generateBlogSitemapXml,
   generateFullSitemapXml,
   invalidateSitemapCache,
   sitemapCache,

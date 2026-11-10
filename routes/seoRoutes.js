@@ -7,6 +7,7 @@ const {
   generateCategoriesSitemapXml,
   generateProductsSitemapXml,
   generateOccasionsSitemapXml,
+  generateBlogSitemapXml,
   generateFullSitemapXml,
   invalidateSitemapCache,
   generateRobotsTxt,
@@ -23,9 +24,19 @@ const {
   bulkGenerateSeo,
   getCategoriesSeoList,
   updateCategorySeo,
+  bulkGenerateCategoriesSeo,
   exportSeoCsv,
   importSeoCsv,
-  getValentineCalendarData
+  getValentineCalendarData,
+  getPublicGlobalSeoSettings,
+  updateAdminGlobalSeoSettings,
+  getPublicBlogs,
+  getPublicBlogBySlug,
+  getAdminBlogs,
+  createAdminBlog,
+  updateAdminBlog,
+  deleteAdminBlog,
+  getAdminSeoHealthAudit
 } = require('../controllers/seoController');
 
 // Helper to send XML responses
@@ -59,6 +70,7 @@ router.get(['/sitemap', '/site-map', '/sitemap/:section'], async (req, res) => {
     else if (section === 'categories') type = 'categories';
     else if (section === 'products') type = 'products';
     else if (section === 'occasions') type = 'occasions';
+    else if (section === 'blog' || section === 'blogs') type = 'blog';
 
     if (req.query.format === 'xml') {
       const xml = await generateSitemapXml(type);
@@ -186,6 +198,25 @@ router.get('/sitemap-occasions.xml', async (req, res) => {
   }
 });
 
+// @desc    Blog & Guides Sitemap
+// @route   GET /api/seo/sitemap-blog.xml
+// @access  Public
+router.get(['/sitemap-blog.xml', '/sitemap-blogs.xml'], async (req, res) => {
+  try {
+    if (isExplicitHtmlRequest(req)) {
+      const html = await renderSitemapUiHtml('blog');
+      return sendHtmlResponse(res, html);
+    }
+
+    const force = req.query.force === 'true' || req.query.refresh === '1';
+    const xml = await generateBlogSitemapXml(force);
+    return sendXmlResponse(res, xml);
+  } catch (error) {
+    console.error('Error generating blog sitemap:', error);
+    return res.status(500).send('<?xml version="1.0" encoding="UTF-8"?><error>Error generating blog sitemap</error>');
+  }
+});
+
 // @desc    Full Combined Sitemap
 // @route   GET /api/seo/sitemap-full.xml
 // @access  Public
@@ -249,14 +280,29 @@ router.get('/render', async (req, res) => {
 // @access  Public
 router.get('/valentine-calendar', getValentineCalendarData);
 
+// @desc    Public Global SEO Settings & Blog Endpoints
+// @route   GET /api/seo/global-settings, /api/seo/blogs, /api/seo/blogs/:slug
+// @access  Public
+router.get('/global-settings', getPublicGlobalSeoSettings);
+router.get('/blogs', getPublicBlogs);
+router.get('/blogs/:slug', getPublicBlogBySlug);
+
 // ── Admin SEO Management Endpoints ─────────────────────────────────
 router.get('/admin/stats', protect, admin, getSeoOverviewStats);
+router.get('/admin/health', protect, admin, getAdminSeoHealthAudit);
+router.get('/admin/global-settings', protect, admin, getPublicGlobalSeoSettings);
+router.put('/admin/global-settings', protect, admin, updateAdminGlobalSeoSettings);
 router.get('/admin/products', protect, admin, getProductsSeoList);
 router.put('/admin/products/:id', protect, admin, updateProductSeo);
 router.post('/admin/products/generate/:id', protect, admin, generateProductSeoSingle);
 router.post('/admin/products/bulk-generate', protect, admin, bulkGenerateSeo);
 router.get('/admin/categories', protect, admin, getCategoriesSeoList);
 router.put('/admin/categories/:id', protect, admin, updateCategorySeo);
+router.post('/admin/categories/bulk-generate', protect, admin, bulkGenerateCategoriesSeo);
+router.get('/admin/blogs', protect, admin, getAdminBlogs);
+router.post('/admin/blogs', protect, admin, createAdminBlog);
+router.put('/admin/blogs/:id', protect, admin, updateAdminBlog);
+router.delete('/admin/blogs/:id', protect, admin, deleteAdminBlog);
 router.get('/admin/export-csv', protect, admin, exportSeoCsv);
 router.post('/admin/import-csv', protect, admin, importSeoCsv);
 

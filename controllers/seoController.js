@@ -13,6 +13,17 @@ const {
   cleanText
 } = require('../services/productSeoGenerator');
 const { invalidateSitemapCache } = require('../services/seoService');
+const {
+  getGlobalSeoSettings,
+  updateGlobalSeoSettings,
+  getAllBlogPosts,
+  getBlogPostBySlug,
+  createOrUpdateBlogPost,
+  deleteBlogPost,
+  getCategorySeoExtensions,
+  saveCategorySeoExtension,
+  runComprehensiveSeoAudit
+} = require('../services/seoBlogAndSettingsService');
 
 // @desc    Get SEO Overview Statistics for Admin Dashboard
 // @route   GET /api/seo/admin/stats
@@ -448,47 +459,64 @@ const bulkGenerateSeo = async (req, res) => {
 // @access  Private/Admin
 const getCategoriesSeoList = async (req, res) => {
   try {
-    const categories = await prisma.category.findMany({
-      where: { isActive: true },
-      select: {
-        id: true,
-        name: true,
-        slug: true,
-        categoryUrl: true,
-        description: true,
-        metaTitle: true,
-        metaDescription: true,
-        updatedAt: true,
-        _count: {
-          select: { products: true }
-        }
-      },
-      orderBy: { displayOrder: 'asc' }
-    });
+    const [categories, extensions] = await Promise.all([
+      prisma.category.findMany({
+        where: { isActive: true },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          categoryUrl: true,
+          description: true,
+          metaTitle: true,
+          metaDescription: true,
+          updatedAt: true,
+          _count: {
+            select: { products: true }
+          }
+        },
+        orderBy: { displayOrder: 'asc' }
+      }),
+      getCategorySeoExtensions()
+    ]);
 
     const categoryH1Map = {
       'bouquets': 'Flower Bouquets in Hyderabad',
       'roses': 'Rose Bouquets in Hyderabad',
+      'premium-roses': 'Premium Long-Stem Rose Bouquets',
       'cakes': 'Cakes in Hyderabad for Every Celebration',
       'combos': 'Flower and Cake Combos in Hyderabad',
       'sunflowers': 'Sunflower Bouquets in Hyderabad',
       'lilies': 'Lily Flowers and Bouquets in Hyderabad',
+      'tulips': 'Fresh Tulip Bouquets Online in Hyderabad',
+      'orchids': 'Exotic Orchid Bouquets & Arrangements',
+      'lavender-lisianthus': 'Lisianthus (Eustoma) Flower Bouquets',
+      'carnation': 'Fresh Carnation Flower Bouquets',
+      'vase': 'Luxury Glass Vase Flower Arrangements',
       'flower-baskets': 'Flower Baskets for Special Occasions',
       'baskets': 'Flower Baskets for Special Occasions',
       'hydrangea': 'Hydrangea Flower Bouquets in Hyderabad'
     };
 
     const data = categories.map(c => {
-      const defaultTitle = `${c.name} Delivery in Hyderabad | Spring Blossoms Florist`;
-      const defaultDesc = c.description || `Order fresh ${c.name.toLowerCase()} online from Spring Blossoms Florist. Same-day & midnight delivery across Hyderabad.`;
-      const h1 = categoryH1Map[c.slug] || `${c.name} in Hyderabad`;
+      const ext = extensions[c.id] || extensions[c.slug] || {};
+      const defaultTitle = `Buy ${c.name} Online | Fresh ${c.name} Delivery – SBFlorist`;
+      const defaultDesc = c.description || `Order fresh ${c.name.toLowerCase()} online from Spring Blossoms Florist. Handcrafted arrangements with same-day & midnight delivery across Hyderabad & Secunderabad.`;
+      const h1 = ext.h1 || categoryH1Map[c.slug] || `${c.name} in Hyderabad`;
+      const seoIntro = ext.seoIntro || c.description || `Explore our handcrafted collection of ${c.name.toLowerCase()} prepared fresh daily by master florists at Spring Blossoms Florist.`;
+      const seoContent = ext.seoContent || '';
+      const focusKeyword = ext.focusKeyword || `${c.name} Online Hyderabad`;
+      const canonicalUrl = ext.canonicalUrl || c.categoryUrl || `/${c.slug}`;
 
       return {
         id: c.id,
         name: c.name,
         slug: c.slug,
-        categoryUrl: c.categoryUrl || `/${c.slug}`,
+        categoryUrl: canonicalUrl,
         h1,
+        seoIntro,
+        seoContent,
+        focusKeyword,
         metaTitle: c.metaTitle || defaultTitle,
         metaDescription: c.metaDescription || defaultDesc,
         hasCustomSeo: Boolean(c.metaTitle && c.metaDescription),
@@ -513,16 +541,26 @@ const getCategoriesSeoList = async (req, res) => {
 const updateCategorySeo = async (req, res) => {
   try {
     const { id } = req.params;
-    const { metaTitle, metaDescription, slug, categoryUrl } = req.body;
+    const { metaTitle, metaDescription, slug, categoryUrl, h1, seoIntro, seoContent, focusKeyword } = req.body;
 
     const updated = await prisma.category.update({
       where: { id },
       data: {
         metaTitle: cleanText(metaTitle),
         metaDescription: cleanText(metaDescription),
+        ...(seoIntro ? { description: cleanText(seoIntro) } : {}),
         ...(slug ? { slug: slugify(slug) } : {}),
         ...(categoryUrl ? { categoryUrl: String(categoryUrl).trim() } : {})
       }
+    });
+
+    await saveCategorySeoExtension(id, {
+      slug: updated.slug,
+      h1: h1 ? cleanText(h1) : undefined,
+      seoIntro: seoIntro ? cleanText(seoIntro) : undefined,
+      seoContent: seoContent !== undefined ? String(seoContent).trim() : undefined,
+      focusKeyword: focusKeyword ? cleanText(focusKeyword) : undefined,
+      canonicalUrl: categoryUrl ? String(categoryUrl).trim() : undefined
     });
 
     invalidateSitemapCache();
@@ -535,6 +573,57 @@ const updateCategorySeo = async (req, res) => {
   } catch (error) {
     console.error('Error updating category SEO:', error);
     res.status(500).json({ success: false, message: 'Failed to update category SEO', error: error.message });
+  }
+};
+
+// @desc    Bulk Generate & Persist Category SEO Metadata
+// @route   POST /api/seo/admin/categories/bulk-generate
+// @access  Private/Admin
+const bulkGenerateCategoriesSeo = async (req, res) => {
+  try {
+    const categories = await prisma.category.findMany({
+      where: { isActive: true }
+    });
+
+    let updatedCount = 0;
+    for (const c of categories) {
+      if (c.metaTitle && c.metaDescription && !req.body?.overwrite) {
+        continue;
+      }
+      const cleanName = cleanText(c.name);
+      let metaTitle = `Buy ${cleanName} Online | Fresh ${cleanName} – SBFlorist`;
+      if (metaTitle.length > 60) {
+        metaTitle = `${cleanName} Online | SBFlorist Hyderabad`;
+      }
+      if (metaTitle.length > 60) {
+        metaTitle = `${cleanName.slice(0, 42)} | SBFlorist`;
+      }
+
+      let metaDescription = `Order ${cleanName.toLowerCase()} online from Spring Blossoms Florist. Explore handcrafted arrangements with same-day and midnight delivery in Hyderabad & Secunderabad.`;
+      if (metaDescription.length > 160) {
+        metaDescription = metaDescription.slice(0, 157).trim() + '...';
+      }
+
+      await prisma.category.update({
+        where: { id: c.id },
+        data: {
+          metaTitle,
+          metaDescription,
+          description: c.description || `Explore our freshly handcrafted ${cleanName.toLowerCase()} curated by master florists at Spring Blossoms Florist for birthdays, anniversaries, and special celebrations.`
+        }
+      });
+      updatedCount++;
+    }
+
+    invalidateSitemapCache();
+    res.json({
+      success: true,
+      message: `Optimized SEO metadata for ${updatedCount} categories.`,
+      updatedCount
+    });
+  } catch (error) {
+    console.error('Error bulk generating category SEO:', error);
+    res.status(500).json({ success: false, message: 'Failed to bulk generate category SEO', error: error.message });
   }
 };
 
@@ -764,6 +853,226 @@ const getValentineCalendarData = (req, res) => {
   }
 };
 
+// @desc    Get Global SEO Settings
+// @route   GET /api/seo/global-settings
+// @access  Public
+const getPublicGlobalSeoSettings = async (req, res) => {
+  try {
+    const settings = await getGlobalSeoSettings();
+    res.json({ success: true, settings });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Update Global SEO Settings
+// @route   PUT /api/seo/admin/global-settings
+// @access  Private/Admin
+const updateAdminGlobalSeoSettings = async (req, res) => {
+  try {
+    const updated = await updateGlobalSeoSettings(req.body || {});
+    invalidateSitemapCache();
+    res.json({
+      success: true,
+      message: 'Global SEO settings updated successfully',
+      settings: updated
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Get Public Blog Posts
+// @route   GET /api/seo/blogs
+// @access  Public
+const getPublicBlogs = async (req, res) => {
+  try {
+    const { category, search } = req.query;
+    let posts = await getAllBlogPosts(false);
+
+    if (category && category !== 'all') {
+      const catLower = String(category).toLowerCase();
+      posts = posts.filter((p) => String(p.category || '').toLowerCase() === catLower);
+    }
+
+    if (search) {
+      const q = String(search).toLowerCase().trim();
+      posts = posts.filter(
+        (p) =>
+          String(p.title || '').toLowerCase().includes(q) ||
+          String(p.excerpt || '').toLowerCase().includes(q) ||
+          String(p.focusKeyword || '').toLowerCase().includes(q)
+      );
+    }
+
+    res.json({
+      success: true,
+      count: posts.length,
+      blogs: posts
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Get Single Public Blog Post by Slug + Real Catalog Related Products
+// @route   GET /api/seo/blogs/:slug
+// @access  Public
+const getPublicBlogBySlug = async (req, res) => {
+  try {
+    const { slug } = req.params;
+    const post = await getBlogPostBySlug(slug, false);
+    if (!post) {
+      return res.status(404).json({ success: false, message: 'Blog article not found' });
+    }
+
+    const allPosts = await getAllBlogPosts(false);
+    const relatedPosts = allPosts
+      .filter((p) => p.slug !== post.slug)
+      .slice(0, 4);
+
+    // Query real catalog products matching relatedProductQuery
+    let relatedProducts = [];
+    try {
+      const queryWord = String(post.relatedProductQuery || 'rose').trim();
+      const rawProducts = await prisma.product.findMany({
+        where: {
+          isVisible: true,
+          approvalStatus: 'approved',
+          OR: [
+            { name: { contains: queryWord, mode: 'insensitive' } },
+            { description: { contains: queryWord, mode: 'insensitive' } }
+          ]
+        },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          price: true,
+          comparePrice: true,
+          rating: true,
+          reviewCount: true,
+          images: { select: { url: true, alt: true }, orderBy: { isPrimary: 'desc' }, take: 1 },
+          categories: { include: { category: { select: { name: true, slug: true } } }, take: 1 }
+        },
+        take: 6,
+        orderBy: { isBestseller: 'desc' }
+      });
+
+      relatedProducts = rawProducts.map((p) => ({
+        _id: p.id,
+        id: p.id,
+        title: p.name,
+        name: p.name,
+        slug: p.slug,
+        price: Number(p.price) || 0,
+        originalPrice: p.comparePrice ? Number(p.comparePrice) : undefined,
+        rating: p.rating || 0,
+        numReviews: p.reviewCount || 0,
+        image: p.images?.[0]?.url || '/images/logo_final.png',
+        images: p.images?.map((i) => i.url) || [],
+        category: p.categories?.[0]?.category?.name || 'Flowers'
+      }));
+    } catch (e) {
+      console.warn('Error fetching related products for blog post:', e.message);
+    }
+
+    res.json({
+      success: true,
+      blog: post,
+      relatedPosts,
+      relatedProducts
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Get All Blog Posts for Admin (including drafts)
+// @route   GET /api/seo/admin/blogs
+// @access  Private/Admin
+const getAdminBlogs = async (req, res) => {
+  try {
+    const posts = await getAllBlogPosts(true, true);
+    res.json({
+      success: true,
+      count: posts.length,
+      blogs: posts
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Create Blog Post (Admin)
+// @route   POST /api/seo/admin/blogs
+// @access  Private/Admin
+const createAdminBlog = async (req, res) => {
+  try {
+    const post = await createOrUpdateBlogPost(req.body || {});
+    invalidateSitemapCache();
+    res.status(201).json({
+      success: true,
+      message: 'Blog article created successfully',
+      blog: post
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Update Blog Post (Admin)
+// @route   PUT /api/seo/admin/blogs/:id
+// @access  Private/Admin
+const updateAdminBlog = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const post = await createOrUpdateBlogPost(req.body || {}, id);
+    invalidateSitemapCache();
+    res.json({
+      success: true,
+      message: 'Blog article updated successfully',
+      blog: post
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Delete Blog Post (Admin)
+// @route   DELETE /api/seo/admin/blogs/:id
+// @access  Private/Admin
+const deleteAdminBlog = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deleted = await deleteBlogPost(id);
+    invalidateSitemapCache();
+    res.json({
+      success: true,
+      deleted,
+      message: deleted ? 'Blog article deleted' : 'Blog article not found'
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Run Comprehensive SEO Health & Diagnostics Audit
+// @route   GET /api/seo/admin/health
+// @access  Private/Admin
+const getAdminSeoHealthAudit = async (req, res) => {
+  try {
+    const audit = await runComprehensiveSeoAudit();
+    res.json({
+      success: true,
+      audit
+    });
+  } catch (error) {
+    console.error('Error running SEO health audit:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   getSeoOverviewStats,
   getProductsSeoList,
@@ -772,8 +1081,18 @@ module.exports = {
   bulkGenerateSeo,
   getCategoriesSeoList,
   updateCategorySeo,
+  bulkGenerateCategoriesSeo,
   exportSeoCsv,
   importSeoCsv,
-  getValentineCalendarData
+  getValentineCalendarData,
+  getPublicGlobalSeoSettings,
+  updateAdminGlobalSeoSettings,
+  getPublicBlogs,
+  getPublicBlogBySlug,
+  getAdminBlogs,
+  createAdminBlog,
+  updateAdminBlog,
+  deleteAdminBlog,
+  getAdminSeoHealthAudit
 };
 
