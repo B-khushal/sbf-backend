@@ -889,7 +889,8 @@ const renderSitemapUiHtml = async (type = 'index') => {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(currentTitle)} | ${BRAND_NAME}</title>
-  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="icon" type="image/x-icon" href="/favicons/favicon.ico?v=2">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicons/favicon-32x32.png?v=2">
   <style>
     :root {
       --primary: #be123c;

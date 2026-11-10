@@ -36,7 +36,17 @@ const {
   createAdminBlog,
   updateAdminBlog,
   deleteAdminBlog,
-  getAdminSeoHealthAudit
+  getAdminSeoHealthAudit,
+  getAdminKeywordMappings,
+  syncAdminKeywordMappings,
+  saveAdminKeywordMapping,
+  removeAdminKeywordMapping,
+  exportAdminKeywordMappingsCsv,
+  importAdminKeywordMappingsCsv,
+  getAdminBacklinks,
+  saveAdminBacklink,
+  removeAdminBacklink,
+  getAdminSeoPerformance
 } = require('../controllers/seoController');
 
 // Helper to send XML responses
@@ -305,5 +315,23 @@ router.put('/admin/blogs/:id', protect, admin, updateAdminBlog);
 router.delete('/admin/blogs/:id', protect, admin, deleteAdminBlog);
 router.get('/admin/export-csv', protect, admin, exportSeoCsv);
 router.post('/admin/import-csv', protect, admin, importSeoCsv);
+
+// Keyword Mapping CRM Routes
+router.get('/admin/keyword-mappings', protect, admin, getAdminKeywordMappings);
+router.post('/admin/keyword-mappings/sync', protect, admin, syncAdminKeywordMappings);
+router.get('/admin/keyword-mappings/export', protect, admin, exportAdminKeywordMappingsCsv);
+router.post('/admin/keyword-mappings/import', protect, admin, importAdminKeywordMappingsCsv);
+router.post('/admin/keyword-mappings', protect, admin, saveAdminKeywordMapping);
+router.put('/admin/keyword-mappings/:id', protect, admin, saveAdminKeywordMapping);
+router.delete('/admin/keyword-mappings/:id', protect, admin, removeAdminKeywordMapping);
+
+// Backlink & Authority Tracker Routes
+router.get('/admin/backlinks', protect, admin, getAdminBacklinks);
+router.post('/admin/backlinks', protect, admin, saveAdminBacklink);
+router.put('/admin/backlinks/:id', protect, admin, saveAdminBacklink);
+router.delete('/admin/backlinks/:id', protect, admin, removeAdminBacklink);
+
+// SEO & Conversion Performance Dashboard Route
+router.get('/admin/performance', protect, admin, getAdminSeoPerformance);
 
 module.exports = router;

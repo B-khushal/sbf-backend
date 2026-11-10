@@ -22,7 +22,16 @@ const {
   deleteBlogPost,
   getCategorySeoExtensions,
   saveCategorySeoExtension,
-  runComprehensiveSeoAudit
+  runComprehensiveSeoAudit,
+  getKeywordMappings,
+  upsertKeywordMapping,
+  deleteKeywordMapping,
+  exportKeywordMappingsCsv,
+  importKeywordMappingsCsv,
+  getBacklinksData,
+  upsertBacklinkRecord,
+  deleteBacklinkRecord,
+  getSeoPerformanceDashboardData
 } = require('../services/seoBlogAndSettingsService');
 
 // @desc    Get SEO Overview Statistics for Admin Dashboard
@@ -1073,6 +1082,179 @@ const getAdminSeoHealthAudit = async (req, res) => {
   }
 };
 
+// @desc    Get Centralized Keyword-to-Page Mappings & Cannibalization Diagnostics
+// @route   GET /api/seo/admin/keyword-mappings
+// @access  Private/Admin
+const getAdminKeywordMappings = async (req, res) => {
+  try {
+    const forceSync = req.query.sync === 'true';
+    const data = await getKeywordMappings(forceSync);
+    res.json({
+      success: true,
+      ...data
+    });
+  } catch (error) {
+    console.error('Error getting keyword mappings:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Sync Keyword Mappings from Live Catalog, Categories, Occasions & Blogs
+// @route   POST /api/seo/admin/keyword-mappings/sync
+// @access  Private/Admin
+const syncAdminKeywordMappings = async (req, res) => {
+  try {
+    const data = await getKeywordMappings(true);
+    res.json({
+      success: true,
+      message: `Synchronized ${data.mappings.length} pages into Keyword Mapping System`,
+      ...data
+    });
+  } catch (error) {
+    console.error('Error syncing keyword mappings:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Create or Update a Keyword Mapping Record
+// @route   POST /api/seo/admin/keyword-mappings
+// @route   PUT /api/seo/admin/keyword-mappings/:id
+// @access  Private/Admin
+const saveAdminKeywordMapping = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await upsertKeywordMapping(req.body || {}, id || null);
+    res.json({
+      success: true,
+      message: 'Keyword mapping saved successfully',
+      ...result
+    });
+  } catch (error) {
+    console.error('Error saving keyword mapping:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Delete a Keyword Mapping Record
+// @route   DELETE /api/seo/admin/keyword-mappings/:id
+// @access  Private/Admin
+const removeAdminKeywordMapping = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await deleteKeywordMapping(id);
+    res.json({
+      success: true,
+      message: result.deleted ? 'Keyword mapping deleted' : 'Mapping not found',
+      ...result
+    });
+  } catch (error) {
+    console.error('Error deleting keyword mapping:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Export Keyword Mappings as CSV
+// @route   GET /api/seo/admin/keyword-mappings/export
+// @access  Private/Admin
+const exportAdminKeywordMappingsCsv = async (req, res) => {
+  try {
+    const csv = await exportKeywordMappingsCsv();
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="sbflorist-keyword-mappings.csv"');
+    res.status(200).send(csv);
+  } catch (error) {
+    console.error('Error exporting keyword mappings CSV:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Import Keyword Mappings from CSV JSON rows
+// @route   POST /api/seo/admin/keyword-mappings/import
+// @access  Private/Admin
+const importAdminKeywordMappingsCsv = async (req, res) => {
+  try {
+    const { rows } = req.body || {};
+    const data = await importKeywordMappingsCsv(Array.isArray(rows) ? rows : []);
+    res.json({
+      success: true,
+      message: `Imported and updated keyword mappings (${data.mappings.length} total pages)`,
+      ...data
+    });
+  } catch (error) {
+    console.error('Error importing keyword mappings CSV:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Get Backlink & Referring Domain Authority Data + Playbook
+// @route   GET /api/seo/admin/backlinks
+// @access  Private/Admin
+const getAdminBacklinks = async (req, res) => {
+  try {
+    const data = await getBacklinksData();
+    res.json({
+      success: true,
+      ...data
+    });
+  } catch (error) {
+    console.error('Error fetching backlinks:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Create or Update a Backlink / Outreach Prospect Record
+// @route   POST /api/seo/admin/backlinks
+// @route   PUT /api/seo/admin/backlinks/:id
+// @access  Private/Admin
+const saveAdminBacklink = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const data = await upsertBacklinkRecord(req.body || {}, id || null);
+    res.json({
+      success: true,
+      message: 'Backlink record saved successfully',
+      ...data
+    });
+  } catch (error) {
+    console.error('Error saving backlink record:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Delete a Backlink / Outreach Prospect Record
+// @route   DELETE /api/seo/admin/backlinks/:id
+// @access  Private/Admin
+const removeAdminBacklink = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const data = await deleteBacklinkRecord(id);
+    res.json({
+      success: true,
+      message: 'Backlink record removed',
+      ...data
+    });
+  } catch (error) {
+    console.error('Error deleting backlink record:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Get SEO & Conversion Performance Dashboard Data (GSC/GA4 + Live DB Funnel + Competitor Gap)
+// @route   GET /api/seo/admin/performance
+// @access  Private/Admin
+const getAdminSeoPerformance = async (req, res) => {
+  try {
+    const performance = await getSeoPerformanceDashboardData();
+    res.json({
+      success: true,
+      performance
+    });
+  } catch (error) {
+    console.error('Error fetching SEO performance data:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   getSeoOverviewStats,
   getProductsSeoList,
@@ -1093,6 +1275,16 @@ module.exports = {
   createAdminBlog,
   updateAdminBlog,
   deleteAdminBlog,
-  getAdminSeoHealthAudit
+  getAdminSeoHealthAudit,
+  getAdminKeywordMappings,
+  syncAdminKeywordMappings,
+  saveAdminKeywordMapping,
+  removeAdminKeywordMapping,
+  exportAdminKeywordMappingsCsv,
+  importAdminKeywordMappingsCsv,
+  getAdminBacklinks,
+  saveAdminBacklink,
+  removeAdminBacklink,
+  getAdminSeoPerformance
 };
 
