@@ -13,13 +13,13 @@ const getOverview = async (req, res) => {
     const sourceProfile = dbConnectionManager.getMaskedProfile('source');
     const destProfile = dbConnectionManager.getMaskedProfile('destination');
 
-    const history = dbMigrationHistoryService.getHistory();
+    const activeJob = dbMigrationEngine.getStatus();
+    const activeMigrationId = activeJob.active ? activeJob.migrationId : null;
+    const history = dbMigrationHistoryService.getHistory(activeMigrationId);
     const lastSuccessful = history.find(h => h.status === 'completed');
     const totalRecordsTransferredAllTime = history
       .filter(h => h.status === 'completed')
       .reduce((acc, h) => acc + (h.recordsTransferred || 0), 0);
-
-    const activeJob = dbMigrationEngine.getStatus();
 
     res.json({
       success: true,
@@ -314,7 +314,9 @@ const verifyMigration = async (req, res) => {
  */
 const getHistory = async (req, res) => {
   try {
-    const history = dbMigrationHistoryService.getHistory();
+    const activeJob = dbMigrationEngine.getStatus();
+    const activeMigrationId = activeJob.active ? activeJob.migrationId : null;
+    const history = dbMigrationHistoryService.getHistory(activeMigrationId);
     res.json({ success: true, history });
   } catch (err) {
     res.status(500).json({ success: false, error: sanitizeError(err) });

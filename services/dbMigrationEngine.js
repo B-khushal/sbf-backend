@@ -301,6 +301,13 @@ class DbMigrationEngine extends EventEmitter {
       sourceClient = dbConnectionManager.createClient('source', true);
       destClient = dbConnectionManager.createClient('destination', false);
 
+      sourceClient.on('error', (err) => {
+        this.log(`⚠️ Source client connection notice: ${sanitizeError(err)}`, 'warning');
+      });
+      destClient.on('error', (err) => {
+        this.log(`⚠️ Destination client connection notice: ${sanitizeError(err)}`, 'warning');
+      });
+
       await Promise.all([
         sourceClient.connect(),
         destClient.connect()
@@ -360,6 +367,10 @@ class DbMigrationEngine extends EventEmitter {
           this.activeJob.successfulTables.push(table.fullName);
           this.activeJob.progress = Math.round((this.activeJob.tablesCompleted / totalTables) * 90);
           this.log(`✅ Completed ${table.fullName}: ${recordsInserted} records transferred`, 'info');
+          dbMigrationHistoryService.updateMigrationRecord(this.activeJob.migrationId, {
+            recordsTransferred: this.activeJob.recordsTransferred,
+            durationMs: Date.now() - this.activeJob.startedAt
+          });
         } catch (tableErr) {
           const errMsg = sanitizeError(tableErr);
           this.activeJob.failedTables.push({
@@ -438,6 +449,58 @@ class DbMigrationEngine extends EventEmitter {
   }
 
   /**
+   * Resolves introspected Postgres column metadata to valid DDL SQL type string
+   */
+  _resolvePgColumnType(c) {
+    const udt = String(c.udtName || '').toLowerCase();
+    const dt = String(c.dataType || '').toLowerCase();
+
+    if (dt === 'array' || udt.startsWith('_')) {
+      const baseUdt = udt.startsWith('_') ? udt.slice(1) : udt;
+      const baseMap = {
+        text: 'TEXT',
+        varchar: 'VARCHAR',
+        bpchar: 'CHAR',
+        int2: 'SMALLINT',
+        int4: 'INTEGER',
+        int8: 'BIGINT',
+        float4: 'REAL',
+        float8: 'DOUBLE PRECISION',
+        numeric: 'NUMERIC',
+        bool: 'BOOLEAN',
+        uuid: 'UUID',
+        json: 'JSON',
+        jsonb: 'JSONB',
+        timestamptz: 'TIMESTAMP WITH TIME ZONE',
+        timestamp: 'TIMESTAMP',
+        date: 'DATE',
+      };
+      const mapped = baseMap[baseUdt] || baseUdt.toUpperCase() || 'TEXT';
+      return `${mapped}[]`;
+    }
+
+    if (dt === 'character varying' && c.charMaxLength) {
+      return `VARCHAR(${c.charMaxLength})`;
+    }
+    if (dt === 'numeric' && c.precision) {
+      return `NUMERIC(${c.precision}, ${c.scale || 0})`;
+    }
+    if (udt === 'text') return 'TEXT';
+    if (udt === 'timestamptz') return 'TIMESTAMP WITH TIME ZONE';
+    if (udt === 'timestamp') return 'TIMESTAMP';
+    if (udt === 'bool') return 'BOOLEAN';
+    if (udt === 'jsonb') return 'JSONB';
+    if (udt === 'json') return 'JSON';
+    if (udt === 'uuid') return 'UUID';
+    if (udt === 'int4') return 'INTEGER';
+    if (udt === 'int8') return 'BIGINT';
+    if (udt === 'int2') return 'SMALLINT';
+    if (udt === 'float8') return 'DOUBLE PRECISION';
+    if (udt === 'float4') return 'REAL';
+    return c.udtName || c.dataType || 'TEXT';
+  }
+
+  /**
    * Transfers schema structures and table DDL from source to destination
    */
   async _transferSchemaStructures(sourceClient, destClient) {
@@ -461,27 +524,7 @@ class DbMigrationEngine extends EventEmitter {
         }
 
         const colDefs = table.columns.map(c => {
-          let typeStr = c.udtName;
-          if (c.dataType === 'character varying' && c.charMaxLength) {
-            typeStr = `VARCHAR(${c.charMaxLength})`;
-          } else if (c.dataType === 'numeric' && c.precision) {
-            typeStr = `NUMERIC(${c.precision}, ${c.scale || 0})`;
-          } else if (c.udtName === 'text') {
-            typeStr = 'TEXT';
-          } else if (c.udtName === 'timestamptz') {
-            typeStr = 'TIMESTAMP WITH TIME ZONE';
-          } else if (c.udtName === 'timestamp') {
-            typeStr = 'TIMESTAMP';
-          } else if (c.udtName === 'bool') {
-            typeStr = 'BOOLEAN';
-          } else if (c.udtName === 'jsonb') {
-            typeStr = 'JSONB';
-          } else if (c.udtName === 'json') {
-            typeStr = 'JSON';
-          } else if (c.udtName === 'uuid') {
-            typeStr = 'UUID';
-          }
-
+          const typeStr = this._resolvePgColumnType(c);
           let def = `"${c.name}" ${typeStr}`;
           if (!c.isNullable) def += ' NOT NULL';
           if (c.defaultValue && !c.defaultValue.includes('nextval')) {
@@ -499,8 +542,72 @@ class DbMigrationEngine extends EventEmitter {
         const createSql = `CREATE TABLE "${schema}"."${tblName}" (\n  ${colDefs.join(',\n  ')}\n);`;
         await destClient.query(createSql);
         this.log(`  ➕ Created destination table: "${schema}"."${tblName}"`, 'info');
+      } else if (Array.isArray(table.columns) && table.columns.length > 0) {
+        // Add any columns present in source that do not yet exist in destination
+        const destColsRes = await destClient.query(`
+          SELECT column_name
+          FROM information_schema.columns
+          WHERE table_schema = $1 AND table_name = $2
+        `, [schema, tblName]);
+        const destColSet = new Set(destColsRes.rows.map(r => r.column_name));
+
+        for (const c of table.columns) {
+          if (!destColSet.has(c.name)) {
+            const typeStr = this._resolvePgColumnType(c);
+            let alterSql = `ALTER TABLE "${schema}"."${tblName}" ADD COLUMN IF NOT EXISTS "${c.name}" ${typeStr}`;
+            if (c.defaultValue && !c.defaultValue.includes('nextval')) {
+              alterSql += ` DEFAULT ${c.defaultValue}`;
+            }
+            alterSql += ';';
+            try {
+              await destClient.query(alterSql);
+              this.log(`  ➕ Added missing column "${c.name}" to "${schema}"."${tblName}"`, 'info');
+            } catch (alterErr) {
+              this.log(`  ⚠️ Could not add column "${c.name}" to "${schema}"."${tblName}": ${sanitizeError(alterErr)}`, 'warning');
+            }
+          }
+        }
       }
     }
+  }
+
+  /**
+   * Serializes a single column value safely for node-postgres parameterized queries
+   */
+  _serializeParamValue(val, colMeta) {
+    if (val === null || val === undefined) return null;
+
+    const udtName = String(colMeta?.udtName || '').toLowerCase();
+    const dataType = String(colMeta?.dataType || '').toLowerCase();
+
+    // JSON / JSONB columns: pg automatically parses JSON values on read (including
+    // scalar strings, numbers, booleans, arrays, objects), so we must always JSON.stringify
+    // before writing back to a json/jsonb column.
+    if (udtName === 'json' || udtName === 'jsonb' || dataType === 'json' || dataType === 'jsonb') {
+      return JSON.stringify(val);
+    }
+
+    // PostgreSQL ARRAY columns (e.g., TEXT[], VARCHAR[], INT[]):
+    // Pass native JS arrays directly so node-postgres encodes PG array literals properly
+    // instead of converting them into JSON strings like '["a","b"]'.
+    if (dataType === 'array' || udtName.startsWith('_')) {
+      if (Array.isArray(val)) {
+        if (udtName === '_json' || udtName === '_jsonb') {
+          return val.map(el => (el === null || el === undefined ? null : JSON.stringify(el)));
+        }
+        return val;
+      }
+      return val;
+    }
+
+    if (typeof val === 'object' && !(val instanceof Date) && !Buffer.isBuffer(val)) {
+      if (typeof val.toPostgres === 'function') {
+        return val.toPostgres();
+      }
+      return JSON.stringify(val);
+    }
+
+    return val;
   }
 
   /**
@@ -529,8 +636,32 @@ class DbMigrationEngine extends EventEmitter {
     let totalTransferredForTable = 0;
     let hasMore = true;
 
-    // Fetch column names in reliable order
-    const colNames = table.columns.map(c => c.name);
+    // Intersect source columns with destination columns to guard against schema drift in data_only mode
+    const sourceCols = table.columns || [];
+    if (sourceCols.length === 0) return 0;
+
+    let colNames = sourceCols.map(c => c.name);
+    const colMetaMap = new Map(sourceCols.map(c => [c.name, c]));
+
+    try {
+      const destColsRes = await destClient.query(`
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = $1 AND table_name = $2
+      `, [schema, tblName]);
+      if (destColsRes.rowCount > 0) {
+        const destColSet = new Set(destColsRes.rows.map(r => r.column_name));
+        const filteredCols = colNames.filter(name => destColSet.has(name));
+        if (filteredCols.length < colNames.length) {
+          const skipped = colNames.filter(name => !destColSet.has(name));
+          this.log(`  ⚠️ Skipping columns absent in destination "${schema}"."${tblName}": ${skipped.join(', ')}`, 'warning');
+        }
+        colNames = filteredCols;
+      }
+    } catch (colErr) {
+      // Fallback to source columns
+    }
+
     if (colNames.length === 0) return 0;
 
     const quotedCols = colNames.map(c => `"${c}"`).join(', ');
@@ -561,7 +692,7 @@ class DbMigrationEngine extends EventEmitter {
       }
 
       // Insert rows into DESTINATION
-      await this._insertBatchIntoDestination(destClient, schema, tblName, colNames, rows, pkCols, strategy);
+      await this._insertBatchIntoDestination(destClient, schema, tblName, colNames, colMetaMap, rows, pkCols, strategy);
 
       totalTransferredForTable += rows.length;
       this.activeJob.recordsTransferred += rows.length;
@@ -571,10 +702,7 @@ class DbMigrationEngine extends EventEmitter {
         hasMore = false;
       }
 
-      // Periodic progress emission
-      if (totalTransferredForTable % (batchSize * 2) === 0 || !hasMore) {
-        this.emit('progress', this.getStatus());
-      }
+      this.emit('progress', this.getStatus());
     }
 
     return totalTransferredForTable;
@@ -583,64 +711,66 @@ class DbMigrationEngine extends EventEmitter {
   /**
    * Generates and executes batch INSERT/UPSERT on destination
    */
-  async _insertBatchIntoDestination(destClient, schema, tblName, colNames, rows, pkCols, strategy) {
+  async _insertBatchIntoDestination(destClient, schema, tblName, colNames, colMetaMap, rows, pkCols, strategy) {
     if (rows.length === 0) return;
 
-    // Use parameterized multi-row INSERT
-    // Format: INSERT INTO "schema"."table" ("col1", "col2") VALUES ($1, $2), ($3, $4)
-    const valuePlaceholders = [];
-    const flatParams = [];
-    let paramIndex = 1;
+    // Respect PostgreSQL's 65,535 bind parameter limit by chunking wide tables safely
+    const maxRowsPerQuery = Math.max(1, Math.floor(30000 / Math.max(1, colNames.length)));
 
-    for (const row of rows) {
-      const rowPlaceholders = [];
-      for (const col of colNames) {
-        rowPlaceholders.push(`$${paramIndex++}`);
-        let val = row[col];
-        // Ensure proper JSON stringification if needed
-        if (typeof val === 'object' && val !== null && !(val instanceof Date) && !Buffer.isBuffer(val)) {
-          val = JSON.stringify(val);
+    for (let start = 0; start < rows.length; start += maxRowsPerQuery) {
+      const chunk = rows.slice(start, start + maxRowsPerQuery);
+
+      const valuePlaceholders = [];
+      const flatParams = [];
+      let paramIndex = 1;
+
+      for (const row of chunk) {
+        const rowPlaceholders = [];
+        for (const col of colNames) {
+          rowPlaceholders.push(`$${paramIndex++}`);
+          const colMeta = colMetaMap.get(col);
+          flatParams.push(this._serializeParamValue(row[col], colMeta));
         }
-        flatParams.push(val);
+        valuePlaceholders.push(`(${rowPlaceholders.join(', ')})`);
       }
-      valuePlaceholders.push(`(${rowPlaceholders.join(', ')})`);
-    }
 
-    const quotedCols = colNames.map(c => `"${c}"`).join(', ');
-    let insertSql = `INSERT INTO "${schema}"."${tblName}" (${quotedCols}) VALUES \n  ${valuePlaceholders.join(',\n  ')}`;
+      const quotedCols = colNames.map(c => `"${c}"`).join(', ');
+      let insertSql = `INSERT INTO "${schema}"."${tblName}" (${quotedCols}) VALUES \n  ${valuePlaceholders.join(',\n  ')}`;
 
-    // Conflict strategy
-    if (strategy === 'upsert' && pkCols && pkCols.length > 0) {
-      const quotedPk = pkCols.map(p => `"${p}"`).join(', ');
-      const updateCols = colNames
-        .filter(c => !pkCols.includes(c))
-        .map(c => `"${c}" = EXCLUDED."${c}"`)
-        .join(', ');
+      // Conflict strategy
+      const validPkCols = pkCols && pkCols.filter(p => colNames.includes(p));
+      if (strategy === 'upsert' && validPkCols && validPkCols.length > 0) {
+        const quotedPk = validPkCols.map(p => `"${p}"`).join(', ');
+        const updateCols = colNames
+          .filter(c => !validPkCols.includes(c))
+          .map(c => `"${c}" = EXCLUDED."${c}"`)
+          .join(', ');
 
-      if (updateCols.length > 0) {
-        insertSql += `\nON CONFLICT (${quotedPk}) DO UPDATE SET ${updateCols};`;
-      } else {
+        if (updateCols.length > 0) {
+          insertSql += `\nON CONFLICT (${quotedPk}) DO UPDATE SET ${updateCols};`;
+        } else {
+          insertSql += `\nON CONFLICT (${quotedPk}) DO NOTHING;`;
+        }
+      } else if (strategy === 'skip' && validPkCols && validPkCols.length > 0) {
+        const quotedPk = validPkCols.map(p => `"${p}"`).join(', ');
         insertSql += `\nON CONFLICT (${quotedPk}) DO NOTHING;`;
+      } else {
+        insertSql += ';';
       }
-    } else if (strategy === 'skip' && pkCols && pkCols.length > 0) {
-      const quotedPk = pkCols.map(p => `"${p}"`).join(', ');
-      insertSql += `\nON CONFLICT (${quotedPk}) DO NOTHING;`;
-    } else {
-      insertSql += ';';
-    }
 
-    // Execute with automatic retry on transient error
-    let attempts = 0;
-    while (attempts < 3) {
-      try {
-        await destClient.query(insertSql, flatParams);
-        break;
-      } catch (err) {
-        attempts++;
-        if (attempts >= 3) {
-          throw err;
+      // Execute with automatic retry on transient error
+      let attempts = 0;
+      while (attempts < 3) {
+        try {
+          await destClient.query(insertSql, flatParams);
+          break;
+        } catch (err) {
+          attempts++;
+          if (attempts >= 3) {
+            throw err;
+          }
+          await new Promise(r => setTimeout(r, 500 * attempts));
         }
-        await new Promise(r => setTimeout(r, 500 * attempts));
       }
     }
   }

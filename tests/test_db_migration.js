@@ -116,7 +116,25 @@ async function runTests() {
     console.log('✅ Test 5 Passed: Column comparison & difference detection verified.');
   }
 
-  console.log('\n🎉 ALL 5 DATABASE MIGRATION ENGINE AUTOMATED TESTS PASSED!\n');
+  // Test 6: PostgreSQL ARRAY, JSON/JSONB, and DDL Column Type Serialization
+  {
+    const arrayColMeta = { name: 'keywords', dataType: 'ARRAY', udtName: '_text' };
+    const serializedArray = dbMigrationEngine._serializeParamValue(['place order', 'buy flowers'], arrayColMeta);
+    assert.ok(Array.isArray(serializedArray), 'ARRAY column values must remain JS arrays');
+    assert.deepStrictEqual(serializedArray, ['place order', 'buy flowers']);
+
+    const jsonColMeta = { name: 'deviceInfo', dataType: 'jsonb', udtName: 'jsonb' };
+    assert.strictEqual(dbMigrationEngine._serializeParamValue({ os: 'Windows' }, jsonColMeta), '{"os":"Windows"}');
+    assert.strictEqual(dbMigrationEngine._serializeParamValue('mobile', jsonColMeta), '"mobile"');
+    assert.strictEqual(dbMigrationEngine._serializeParamValue('', jsonColMeta), '""');
+    assert.strictEqual(dbMigrationEngine._serializeParamValue(null, jsonColMeta), null);
+
+    assert.strictEqual(dbMigrationEngine._resolvePgColumnType(arrayColMeta), 'TEXT[]');
+    assert.strictEqual(dbMigrationEngine._resolvePgColumnType({ dataType: 'ARRAY', udtName: '_int4' }), 'INTEGER[]');
+    console.log('✅ Test 6 Passed: ARRAY & JSON/JSONB parameter serialization and DDL mapping verified.');
+  }
+
+  console.log('\n🎉 ALL 6 DATABASE MIGRATION ENGINE AUTOMATED TESTS PASSED!\n');
 }
 
 runTests().catch(err => {

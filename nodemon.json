@@ -1,0 +1,20 @@
+{
+  "watch": ["server.js", "config", "controllers", "middleware", "models", "routes", "services", "utils", "prisma"],
+  "ignore": [
+    "node_modules",
+    "node_modules/**",
+    "data",
+    "data/**",
+    "logs",
+    "logs/**",
+    "uploads",
+    "uploads/**",
+    ".wwebjs_auth",
+    ".wwebjs_auth/**",
+    ".wwebjs_cache",
+    ".wwebjs_cache/**",
+    "*.log"
+  ],
+  "ext": "js,mjs,cjs"
+}
+

@@ -1987,50 +1987,53 @@ const getSectionProductsForSorting = asyncHandler(async (req, res) => {
 // @access Private/Admin
 // Helper to cleanly apply section display order to a product's displayOrders object
 const setProductSectionOrder = (displayOrders, section, numOrder) => {
-  const dobj = displayOrders && typeof displayOrders === 'object' && !Array.isArray(displayOrders) ? { ...displayOrders } : {};
-  const orderVal = Number(numOrder);
+  const dobj =
+    displayOrders && typeof displayOrders === 'object' && !Array.isArray(displayOrders)
+      ? { ...displayOrders }
+      : {};
+  const parsedOrder = Number(numOrder);
+  const orderVal = Number.isFinite(parsedOrder) ? parsedOrder : 0;
+  const sec = String(section || '').trim();
+  const secKey = sec.replace(/^(category:|occasion:)/, '').trim().toLowerCase();
 
-  if (section === 'featured') {
+  const ensurePlainSubObj = (val) =>
+    val && typeof val === 'object' && !Array.isArray(val) ? { ...val } : {};
+
+  if (sec === 'featured') {
     dobj.featured = orderVal;
-  } else if (section === 'shop' || section === 'none') {
+  } else if (sec === 'shop' || sec === 'none') {
     dobj.shop = orderVal;
-  } else if (section === 'newArrivals' || section === 'new') {
+  } else if (sec === 'newArrivals' || sec === 'new') {
     dobj.newArrivals = orderVal;
-  } else if (section === 'recommended') {
+  } else if (sec === 'recommended') {
     dobj.recommended = orderVal;
-  } else if (section === 'bestsellers') {
+  } else if (sec === 'bestsellers') {
     dobj.bestsellers = orderVal;
-  } else if (section === 'combos' || section === 'category:combos') {
+  } else if (sec === 'combos' || sec === 'category:combos') {
     dobj.combos = orderVal;
-    if (!dobj.categories || typeof dobj.categories !== 'object') dobj.categories = {};
+    dobj.categories = ensurePlainSubObj(dobj.categories);
     dobj.categories.combos = orderVal;
-  } else if (section === 'cakes' || section === 'category:cakes') {
+  } else if (sec === 'cakes' || sec === 'category:cakes') {
     dobj.cakes = orderVal;
-    if (!dobj.categories || typeof dobj.categories !== 'object') dobj.categories = {};
+    dobj.categories = ensurePlainSubObj(dobj.categories);
     dobj.categories.cakes = orderVal;
   } else if (secKey === 'budget_friendly' || secKey === 'budget-friendly' || secKey === 'under-1000') {
     dobj.budgetFriendly = orderVal;
     dobj['budget-friendly'] = orderVal;
     dobj.budget_friendly = orderVal;
-    if (!dobj.categories || typeof dobj.categories !== 'object' || Array.isArray(dobj.categories)) {
-      dobj.categories = {};
-    }
+    dobj.categories = ensurePlainSubObj(dobj.categories);
     dobj.categories['budget-friendly'] = orderVal;
     dobj.categories.budget_friendly = orderVal;
-  } else if (section.startsWith('category:')) {
-    const categoryName = section.substring(9).trim().toLowerCase();
-    if (!dobj.categories || typeof dobj.categories !== 'object' || Array.isArray(dobj.categories)) {
-      dobj.categories = {};
-    }
+  } else if (sec.startsWith('category:')) {
+    const categoryName = sec.substring(9).trim().toLowerCase();
+    dobj.categories = ensurePlainSubObj(dobj.categories);
     dobj.categories[categoryName] = orderVal;
   } else {
     // Occasion or custom section
-    const occSlug = section.startsWith('occasion:')
-      ? section.substring(9).trim().toLowerCase()
-      : section.trim().toLowerCase();
-    if (!dobj.occasions || typeof dobj.occasions !== 'object' || Array.isArray(dobj.occasions)) {
-      dobj.occasions = {};
-    }
+    const occSlug = sec.startsWith('occasion:')
+      ? sec.substring(9).trim().toLowerCase()
+      : sec.toLowerCase();
+    dobj.occasions = ensurePlainSubObj(dobj.occasions);
     dobj.occasions[occSlug] = orderVal;
 
     const camel = occSlug.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
@@ -2038,6 +2041,41 @@ const setProductSectionOrder = (displayOrders, section, numOrder) => {
   }
 
   return dobj;
+};
+
+// Helper to persist batched displayOrders updates inside Prisma transactions while skipping missing product IDs
+const applyBatchSectionOrderUpdates = async (entries, section, chunkSize = 25) => {
+  const normalizedEntries = (Array.isArray(entries) ? entries : [])
+    .filter(([id]) => typeof id === 'string' && id.trim().length > 0)
+    .map(([id, orderNum]) => [id.trim(), orderNum]);
+
+  if (normalizedEntries.length === 0) {
+    return [];
+  }
+
+  const productIds = normalizedEntries.map(([id]) => id);
+  const existingProducts = await prisma.product.findMany({
+    where: { id: { in: productIds } },
+    select: { id: true, displayOrders: true }
+  });
+  const productMap = new Map(existingProducts.map((p) => [p.id, p]));
+  const validEntries = normalizedEntries.filter(([productId]) => productMap.has(productId));
+
+  for (let i = 0; i < validEntries.length; i += chunkSize) {
+    const batch = validEntries.slice(i, i + chunkSize);
+    const operations = batch.map(([productId, orderNum]) => {
+      const existing = productMap.get(productId);
+      const currentOrders = existing ? existing.displayOrders : {};
+      const newDisplayOrders = setProductSectionOrder(currentOrders, section, orderNum);
+      return prisma.product.update({
+        where: { id: productId },
+        data: { displayOrders: newDisplayOrders }
+      });
+    });
+    await prisma.$transaction(operations);
+  }
+
+  return validEntries.map(([productId]) => productId);
 };
 
 // @desc Update single or multiple section product orders and merchandising settings
@@ -2102,30 +2140,10 @@ const updateSectionProductsOrder = asyncHandler(async (req, res) => {
     }
   }
   
-  if (displayOrders && typeof displayOrders === 'object') {
+  if (displayOrders && typeof displayOrders === 'object' && !Array.isArray(displayOrders)) {
     const entries = Object.entries(displayOrders);
     if (entries.length > 0) {
-      const productIds = entries.map(([id]) => id);
-      const existingProducts = await prisma.product.findMany({
-        where: { id: { in: productIds } },
-        select: { id: true, displayOrders: true }
-      });
-      const productMap = new Map(existingProducts.map(p => [p.id, p]));
-
-      const chunk = 50;
-      for (let i = 0; i < entries.length; i += chunk) {
-        const batch = entries.slice(i, i + chunk);
-        const operations = batch.map(([productId, orderNumber]) => {
-          const currentProduct = productMap.get(productId);
-          const currentOrders = currentProduct ? currentProduct.displayOrders : {};
-          const updatedOrders = setProductSectionOrder(currentOrders, section, orderNumber);
-          return prisma.product.update({
-            where: { id: productId },
-            data: { displayOrders: updatedOrders }
-          });
-        });
-        await prisma.$transaction(operations);
-      }
+      const updatedProductIds = await applyBatchSectionOrderUpdates(entries, section);
 
       try {
         const { clearSearchCache } = require('./searchController');
@@ -2145,9 +2163,9 @@ const updateSectionProductsOrder = asyncHandler(async (req, res) => {
             section,
             previousPositions: auditMetadata?.previousPositions || {},
             newPositions: displayOrders,
-            affectedCount: auditMetadata?.affectedCount || entries.length,
-            description: auditMetadata?.actionDescription || `Updated order for ${entries.length} products in section: ${section}`,
-            productIds,
+            affectedCount: auditMetadata?.affectedCount || updatedProductIds.length,
+            description: auditMetadata?.actionDescription || `Updated order for ${updatedProductIds.length} products in section: ${section}`,
+            productIds: updatedProductIds,
             timestamp: new Date()
           }
         });
@@ -2181,17 +2199,17 @@ const bulkReorderProducts = asyncHandler(async (req, res) => {
     minDataThreshold
   } = req.body;
 
-  if (!section) {
+  if (!section || typeof section !== 'string' || !section.trim()) {
     return res.status(400).json({ message: 'Section is required' });
   }
 
-  if (!displayOrders || typeof displayOrders !== 'object') {
+  if (!displayOrders || typeof displayOrders !== 'object' || Array.isArray(displayOrders)) {
     return res.status(400).json({ message: 'displayOrders mapping is required' });
   }
 
-  const secKey = (section || '').replace(/^(category:|occasion:)/, '').trim().toLowerCase();
+  const secKey = section.replace(/^(category:|occasion:)/, '').trim().toLowerCase();
   const isBudget = secKey === 'budget_friendly' || secKey === 'budget-friendly' || secKey === 'under-1000';
-  const isOccasionSection = (section || '').startsWith('occasion:') || section === 'occasions';
+  const isOccasionSection = section.startsWith('occasion:') || section === 'occasions';
 
   const prefUpdates = {};
   if (sortBy) prefUpdates.sortBy = sortBy;
@@ -2203,14 +2221,20 @@ const bulkReorderProducts = asyncHandler(async (req, res) => {
   } else if (displayOrders && Object.keys(displayOrders).length > 0 && !isOccasionSection) {
     prefUpdates.mode = 'manual';
   }
-  if (pinnedProductIds !== undefined) prefUpdates.pinnedProductIds = pinnedProductIds;
-  if (protectedTopCount !== undefined) prefUpdates.protectedTopCount = Number(protectedTopCount);
+  if (pinnedProductIds !== undefined) prefUpdates.pinnedProductIds = isOccasionSection ? [] : pinnedProductIds;
+  if (protectedTopCount !== undefined && Number.isFinite(Number(protectedTopCount))) {
+    prefUpdates.protectedTopCount = isOccasionSection ? 0 : Number(protectedTopCount);
+  }
   if (rotationFrequency !== undefined) prefUpdates.rotationFrequency = rotationFrequency;
-  if (rotationVersion !== undefined) prefUpdates.rotationVersion = Number(rotationVersion);
+  if (rotationVersion !== undefined && Number.isFinite(Number(rotationVersion))) {
+    prefUpdates.rotationVersion = Number(rotationVersion);
+  }
   if (isRotationEnabled !== undefined) prefUpdates.isRotationEnabled = Boolean(isRotationEnabled);
   if (isPersonalizationEnabled !== undefined) prefUpdates.isPersonalizationEnabled = Boolean(isPersonalizationEnabled);
   if (scoringWeights !== undefined) prefUpdates.scoringWeights = scoringWeights;
-  if (minDataThreshold !== undefined) prefUpdates.minDataThreshold = Number(minDataThreshold);
+  if (minDataThreshold !== undefined && Number.isFinite(Number(minDataThreshold))) {
+    prefUpdates.minDataThreshold = Number(minDataThreshold);
+  }
 
   if (Object.keys(prefUpdates).length > 0) {
     const sectionsToUpdate = isBudget
@@ -2232,28 +2256,7 @@ const bulkReorderProducts = asyncHandler(async (req, res) => {
     return res.json({ success: true, message: 'No order updates provided' });
   }
 
-  const productIds = entries.map(([id]) => id);
-  const products = await prisma.product.findMany({
-    where: { id: { in: productIds } },
-    select: { id: true, displayOrders: true }
-  });
-  const productMap = new Map(products.map(p => [p.id, p]));
-
-  // Batch updates in chunks of 50 via prisma transactions
-  const chunk = 50;
-  for (let i = 0; i < entries.length; i += chunk) {
-    const batch = entries.slice(i, i + chunk);
-    const operations = batch.map(([productId, orderNum]) => {
-      const existing = productMap.get(productId);
-      const currentOrders = existing ? existing.displayOrders : {};
-      const newDisplayOrders = setProductSectionOrder(currentOrders, section, Number(orderNum));
-      return prisma.product.update({
-        where: { id: productId },
-        data: { displayOrders: newDisplayOrders }
-      });
-    });
-    await prisma.$transaction(operations);
-  }
+  const updatedProductIds = await applyBatchSectionOrderUpdates(entries, section);
 
   try {
     const { clearSearchCache } = require('./searchController');
@@ -2273,9 +2276,9 @@ const bulkReorderProducts = asyncHandler(async (req, res) => {
         section,
         previousPositions: auditMetadata?.previousPositions || {},
         newPositions: displayOrders,
-        affectedCount: auditMetadata?.affectedCount || entries.length,
-        description: auditMetadata?.actionDescription || `Bulk reordered ${entries.length} products in section: ${section}`,
-        productIds,
+        affectedCount: auditMetadata?.affectedCount || updatedProductIds.length,
+        description: auditMetadata?.actionDescription || `Bulk reordered ${updatedProductIds.length} products in section: ${section}`,
+        productIds: updatedProductIds,
         timestamp: new Date()
       }
     });
@@ -2285,9 +2288,9 @@ const bulkReorderProducts = asyncHandler(async (req, res) => {
 
   return res.json({
     success: true,
-    message: `Display order successfully updated for ${entries.length} products in section: ${section}`,
+    message: `Display order successfully updated for ${updatedProductIds.length} products in section: ${section}`,
     auditLogId: auditLog?.id || null,
-    updatedCount: entries.length
+    updatedCount: updatedProductIds.length
   });
 });
 
@@ -2358,28 +2361,8 @@ const rollbackOrderChanges = asyncHandler(async (req, res) => {
   }
 
   const entries = Object.entries(previousPositions);
-  const productIds = entries.map(([id]) => id);
-
-  const products = await prisma.product.findMany({
-    where: { id: { in: productIds } },
-    select: { id: true, displayOrders: true }
-  });
-  const productMap = new Map(products.map(p => [p.id, p]));
-
-  const chunk = 50;
-  for (let i = 0; i < entries.length; i += chunk) {
-    const batch = entries.slice(i, i + chunk);
-    const operations = batch.map(([productId, orderNum]) => {
-      const existing = productMap.get(productId);
-      const currentOrders = existing ? existing.displayOrders : {};
-      const newDisplayOrders = setProductSectionOrder(currentOrders, section, Number(orderNum));
-      return prisma.product.update({
-        where: { id: productId },
-        data: { displayOrders: newDisplayOrders }
-      });
-    });
-    await prisma.$transaction(operations);
-  }
+  const restoredProductIds = await applyBatchSectionOrderUpdates(entries, section);
+  merchandisingService.invalidateMerchandisingCache(section);
 
   try {
     const { clearSearchCache } = require('./searchController');
@@ -2396,16 +2379,16 @@ const rollbackOrderChanges = asyncHandler(async (req, res) => {
     details: {
       section,
       rolledBackAuditLogId: auditLogId,
-      restoredCount: entries.length,
-      description: `Rolled back order changes for ${entries.length} products to checkpoint from ${log.createdAt || log.timestamp}`,
+      restoredCount: restoredProductIds.length,
+      description: `Rolled back order changes for ${restoredProductIds.length} products to checkpoint from ${log.createdAt || log.timestamp}`,
       timestamp: new Date()
     }
   });
 
   return res.json({
     success: true,
-    message: `Successfully rolled back ${entries.length} products in section: ${section}`,
-    restoredCount: entries.length
+    message: `Successfully rolled back ${restoredProductIds.length} products in section: ${section}`,
+    restoredCount: restoredProductIds.length
   });
 });
 

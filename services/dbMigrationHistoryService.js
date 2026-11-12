@@ -122,8 +122,39 @@ class DbMigrationHistoryService {
   /**
    * Lists all past migration runs
    */
-  getHistory() {
-    return this._loadHistory();
+  getHistory(activeMigrationId = null) {
+    const history = this._loadHistory();
+    let changed = false;
+
+    const reconciled = history.map(item => {
+      const isStaleActive =
+        ['in_progress', 'starting', 'paused', 'cancelling'].includes(item.status) &&
+        item.migrationId !== activeMigrationId;
+
+      if (!isStaleActive) return item;
+
+      changed = true;
+      const completedAt = item.completedAt || new Date().toISOString();
+      const durationMs = item.startedAt
+        ? Math.max(0, new Date(completedAt).getTime() - new Date(item.startedAt).getTime())
+        : item.durationMs || 0;
+
+      return {
+        ...item,
+        status: 'failed',
+        completedAt,
+        durationMs,
+        errorDetails:
+          item.errorDetails ||
+          'Migration was interrupted before completion (server restarted or process terminated).'
+      };
+    });
+
+    if (changed) {
+      this._saveHistory(reconciled);
+    }
+
+    return reconciled;
   }
 
   /**
