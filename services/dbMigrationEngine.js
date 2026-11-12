@@ -482,6 +482,9 @@ class DbMigrationEngine extends EventEmitter {
     if (dt === 'character varying' && c.charMaxLength) {
       return `VARCHAR(${c.charMaxLength})`;
     }
+    if ((udt === 'bpchar' || dt === 'character') && c.charMaxLength) {
+      return `CHAR(${c.charMaxLength})`;
+    }
     if (dt === 'numeric' && c.precision) {
       return `NUMERIC(${c.precision}, ${c.scale || 0})`;
     }
@@ -591,13 +594,23 @@ class DbMigrationEngine extends EventEmitter {
     // Pass native JS arrays directly so node-postgres encodes PG array literals properly
     // instead of converting them into JSON strings like '["a","b"]'.
     if (dataType === 'array' || udtName.startsWith('_')) {
-      if (Array.isArray(val)) {
-        if (udtName === '_json' || udtName === '_jsonb') {
-          return val.map(el => (el === null || el === undefined ? null : JSON.stringify(el)));
+      let arrVal = val;
+      if (typeof arrVal === 'string') {
+        const trimmed = arrVal.trim();
+        if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+          try {
+            const parsed = JSON.parse(trimmed);
+            if (Array.isArray(parsed)) arrVal = parsed;
+          } catch (e) {}
         }
-        return val;
       }
-      return val;
+      if (Array.isArray(arrVal)) {
+        if (udtName === '_json' || udtName === '_jsonb') {
+          return arrVal.map(el => (el === null || el === undefined ? null : JSON.stringify(el)));
+        }
+        return arrVal;
+      }
+      return arrVal;
     }
 
     if (typeof val === 'object' && !(val instanceof Date) && !Buffer.isBuffer(val)) {

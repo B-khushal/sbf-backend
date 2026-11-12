@@ -1,7 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 
-const HISTORY_FILE_PATH = path.join(__dirname, '../data/migration_history.json');
+const LEGACY_HISTORY_FILE_PATH = path.join(__dirname, '../data/migration_history.json');
+// Stored with .dat extension so default nodemon watchers (which watch *.json) never restart the server mid-migration
+const HISTORY_FILE_PATH = path.join(__dirname, '../data/migration_history.dat');
 const LOGS_DIR = path.join(__dirname, '../data/migration_logs');
 
 class DbMigrationHistoryService {
@@ -21,6 +23,12 @@ class DbMigrationHistoryService {
       if (fs.existsSync(HISTORY_FILE_PATH)) {
         const raw = fs.readFileSync(HISTORY_FILE_PATH, 'utf8');
         return JSON.parse(raw);
+      }
+      if (fs.existsSync(LEGACY_HISTORY_FILE_PATH)) {
+        const raw = fs.readFileSync(LEGACY_HISTORY_FILE_PATH, 'utf8');
+        const parsed = JSON.parse(raw);
+        fs.writeFileSync(HISTORY_FILE_PATH, JSON.stringify(parsed, null, 2), 'utf8');
+        return parsed;
       }
     } catch (e) {
       console.warn('[DbMigrationHistoryService] Failed reading history file:', e.message);

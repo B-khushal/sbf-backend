@@ -123,6 +123,10 @@ async function runTests() {
     assert.ok(Array.isArray(serializedArray), 'ARRAY column values must remain JS arrays');
     assert.deepStrictEqual(serializedArray, ['place order', 'buy flowers']);
 
+    const serializedArrayFromJson = dbMigrationEngine._serializeParamValue('["place order","buy flowers"]', arrayColMeta);
+    assert.ok(Array.isArray(serializedArrayFromJson), 'Stringified JSON array for ARRAY column must coerce to JS array');
+    assert.deepStrictEqual(serializedArrayFromJson, ['place order', 'buy flowers']);
+
     const jsonColMeta = { name: 'deviceInfo', dataType: 'jsonb', udtName: 'jsonb' };
     assert.strictEqual(dbMigrationEngine._serializeParamValue({ os: 'Windows' }, jsonColMeta), '{"os":"Windows"}');
     assert.strictEqual(dbMigrationEngine._serializeParamValue('mobile', jsonColMeta), '"mobile"');
@@ -131,10 +135,35 @@ async function runTests() {
 
     assert.strictEqual(dbMigrationEngine._resolvePgColumnType(arrayColMeta), 'TEXT[]');
     assert.strictEqual(dbMigrationEngine._resolvePgColumnType({ dataType: 'ARRAY', udtName: '_int4' }), 'INTEGER[]');
+    assert.strictEqual(dbMigrationEngine._resolvePgColumnType({ dataType: 'character', udtName: 'bpchar', charMaxLength: 4 }), 'CHAR(4)');
     console.log('✅ Test 6 Passed: ARRAY & JSON/JSONB parameter serialization and DDL mapping verified.');
   }
 
-  console.log('\n🎉 ALL 6 DATABASE MIGRATION ENGINE AUTOMATED TESTS PASSED!\n');
+  // Test 7: Migration History Reconciliation (active vs stale)
+  {
+    const dbMigrationHistoryService = require('../services/dbMigrationHistoryService');
+    const rec = dbMigrationHistoryService.createMigrationRecord({
+      migrationId: 'mig_test_active_check',
+      startedBy: 'Test Runner',
+      migrationType: 'complete'
+    });
+    assert.strictEqual(rec.status, 'in_progress');
+
+    // Active job stays in_progress when activeMigrationId matches
+    const whileActive = dbMigrationHistoryService.getHistory('mig_test_active_check').find(h => h.migrationId === 'mig_test_active_check');
+    assert.strictEqual(whileActive.status, 'in_progress');
+
+    // Stale job is marked failed when activeMigrationId is null
+    const whenStale = dbMigrationHistoryService.getHistory(null).find(h => h.migrationId === 'mig_test_active_check');
+    assert.strictEqual(whenStale.status, 'failed');
+    assert.ok(whenStale.errorDetails && whenStale.errorDetails.length > 0);
+
+    // Clean up test record
+    dbMigrationHistoryService.deleteMigrationRecord('mig_test_active_check');
+    console.log('✅ Test 7 Passed: Migration history persistence (.dat) & active/stale reconciliation verified.');
+  }
+
+  console.log('\n🎉 ALL 7 DATABASE MIGRATION ENGINE AUTOMATED TESTS PASSED!\n');
 }
 
 runTests().catch(err => {

@@ -8,7 +8,7 @@
     "start": "node server.js",
     "postinstall": "prisma generate",
     "build": "prisma generate",
-    "server": "nodemon server.js",
+    "server": "nodemon --ignore data/ --ignore logs/ --ignore uploads/ --ignore .wwebjs_auth/ --ignore .wwebjs_cache/ -e js,mjs,cjs server.js",
     "client": "npm start --prefix ../sbf-main",
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "sync-reviews": "node scripts/syncReviews.js"
