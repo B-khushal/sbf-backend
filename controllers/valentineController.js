@@ -774,6 +774,11 @@ const bulkAssignValentineProducts = async (req, res) => {
       if (prod) {
         if (updates.isValentineProduct !== undefined) prod.isValentineProduct = Boolean(updates.isValentineProduct);
         if (updates.showInValentineShop !== undefined) prod.showInValentineShop = Boolean(updates.showInValentineShop);
+        if (updates.productType === 'regular' || updates.productType === 'valentine') {
+          prod.productType = updates.productType;
+        } else if (updates.isValentineProduct !== undefined) {
+          prod.productType = Boolean(updates.isValentineProduct) ? 'valentine' : 'regular';
+        }
         if (updates.isValentineExclusive !== undefined) prod.isValentineExclusive = Boolean(updates.isValentineExclusive);
         if (updates.valentineDate !== undefined) prod.valentineDate = updates.valentineDate;
         if (updates.availableDates !== undefined) prod.availableDates = updates.availableDates;

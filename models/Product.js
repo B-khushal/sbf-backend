@@ -374,6 +374,7 @@ function sanitizeProductDataForPrisma(data = {}) {
   if (data.details && typeof data.details === 'object') {
     detailsObj = Array.isArray(data.details) ? { items: data.details } : { ...data.details };
   }
+  if (data.productType !== undefined) detailsObj.productType = data.productType === 'valentine' ? 'valentine' : 'regular';
   if (data.availableDates !== undefined) detailsObj.availableDates = Array.isArray(data.availableDates) ? data.availableDates : [];
   if (data.valentineDate !== undefined) detailsObj.valentineDate = data.valentineDate;
   if (data.isValentineExclusive !== undefined) detailsObj.isValentineExclusive = Boolean(data.isValentineExclusive);
@@ -877,6 +878,7 @@ class ProductDocument {
     // Valentine Properties
     this.isValentineProduct = Boolean(data.isValentineProduct ?? detailsObj.isValentineProduct ?? false);
     this.showInValentineShop = Boolean(data.showInValentineShop ?? detailsObj.showInValentineShop ?? false);
+    this.productType = data.productType || detailsObj.productType || (this.isValentineProduct ? 'valentine' : 'regular');
     this.isValentineExclusive = Boolean(data.isValentineExclusive ?? detailsObj.isValentineExclusive ?? false);
     this.featureInValentineHero = Boolean(data.featureInValentineHero ?? detailsObj.featureInValentineHero ?? false);
     this.valentineCategories = data.valentineCategories ?? detailsObj.valentineCategories ?? [];
@@ -967,6 +969,7 @@ class ProductDocument {
       rejectionReason: this.rejectionReason,
       isValentineProduct: !!this.isValentineProduct,
       showInValentineShop: !!this.showInValentineShop,
+      productType: this.productType || (this.isValentineProduct ? 'valentine' : 'regular'),
       isValentineExclusive: !!this.isValentineExclusive,
       featureInValentineHero: !!this.featureInValentineHero,
       valentineCategories: this.valentineCategories || [],

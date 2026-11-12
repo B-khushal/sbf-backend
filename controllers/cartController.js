@@ -1,10 +1,13 @@
 const User = require('../models/User');
 const Product = require('../models/Product');
 const AddonProduct = require('../models/AddonProduct');
+const ValentineSettings = require('../models/ValentineSettings');
 const { logActivity } = require('../utils/activityLogger');
 
 const mapCartItemsAsync = async (userWithCart) => {
   const rawCart = Array.isArray(userWithCart.cart) ? userWithCart.cart : [];
+  const valentineSettings = await ValentineSettings.getSettings();
+  const isValentineModeActive = Boolean(valentineSettings?.enabled);
   const results = [];
 
   for (const item of rawCart) {
@@ -94,8 +97,8 @@ const mapCartItemsAsync = async (userWithCart) => {
       selectedVariant: item.selectedVariant,
       quantity: item.quantity || 1,
       addedAt: item.addedAt || new Date(),
-      productType: prod.productType || 'regular',
-      isValentineProduct: Boolean(prod.isValentineProduct),
+      productType: isValentineModeActive ? (prod.productType || 'regular') : 'regular',
+      isValentineProduct: Boolean(isValentineModeActive && (prod.isValentineProduct || prod.productType === 'valentine' || prod.showInValentineShop)),
       sameDay: prod.sameDay !== undefined ? prod.sameDay : true,
     });
   }
@@ -179,34 +182,39 @@ const addToCart = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Check mixed cart conflicts (prevent regular and valentine products together)
-    let cartHasValentine = false;
-    let cartHasRegular = false;
-    for (const item of user.cart) {
-      if (item.productId) {
-        let cartProd;
-        if (item.productModel === 'AddonProduct') {
-          cartProd = await AddonProduct.findById(item.productId);
-        } else {
-          cartProd = await Product.findById(item.productId);
-        }
-        if (cartProd) {
-          if (cartProd.productType === 'valentine' || cartProd.isValentineProduct) {
-            cartHasValentine = true;
+    const valentineSettings = await ValentineSettings.getSettings();
+    const isValentineModeActive = Boolean(valentineSettings?.enabled);
+
+    // Check mixed cart conflicts (prevent regular and valentine products together while Valentine mode is active)
+    if (isValentineModeActive) {
+      let cartHasValentine = false;
+      let cartHasRegular = false;
+      for (const item of user.cart) {
+        if (item.productId) {
+          let cartProd;
+          if (item.productModel === 'AddonProduct') {
+            cartProd = await AddonProduct.findById(item.productId);
           } else {
-            cartHasRegular = true;
+            cartProd = await Product.findById(item.productId);
+          }
+          if (cartProd) {
+            if (cartProd.productType === 'valentine' || cartProd.isValentineProduct || cartProd.showInValentineShop) {
+              cartHasValentine = true;
+            } else {
+              cartHasRegular = true;
+            }
           }
         }
       }
-    }
 
-    const isIncomingValentine = product.productType === 'valentine' || product.isValentineProduct;
-    if ((isIncomingValentine && cartHasRegular) || (!isIncomingValentine && cartHasValentine)) {
-      return res.status(400).json({
-        success: false,
-        code: 'MIXED_CART_CONFLICT',
-        message: "Valentine Special products and Regular products cannot be checked out together because they follow different delivery schedules."
-      });
+      const isIncomingValentine = product.productType === 'valentine' || product.isValentineProduct || product.showInValentineShop;
+      if ((isIncomingValentine && cartHasRegular) || (!isIncomingValentine && cartHasValentine)) {
+        return res.status(400).json({
+          success: false,
+          code: 'MIXED_CART_CONFLICT',
+          message: "Valentine Special products and Regular products cannot be checked out together because they follow different delivery schedules."
+        });
+      }
     }
 
     // Check if item already exists in cart
