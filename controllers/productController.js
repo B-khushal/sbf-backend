@@ -2704,6 +2704,62 @@ const getSharePreview = async (req, res) => {
     cleanedHtml = cleanedHtml.replace(/<meta\s+(property|name)=["']og:[^]*?["']\s+content=["'][^]*?["']\s*\/?>/gi, '');
     cleanedHtml = cleanedHtml.replace(/<meta\s+(property|name)=["']twitter:[^]*?["']\s+content=["'][^]*?["']\s*\/?>/gi, '');
 
+    const productJsonLd = {
+      "@context": "https://schema.org/",
+      "@type": "Product",
+      "name": product ? product.title : metaData.title,
+      "image": [metaData.image],
+      "description": metaData.description,
+      "sku": product ? String(product.sku || product._id || idOrSlug) : String(idOrSlug),
+      "offers": {
+        "@type": "Offer",
+        "url": metaData.url,
+        "priceCurrency": "INR",
+        "price": metaData.price,
+        "priceValidUntil": "2027-12-31",
+        "itemCondition": "https://schema.org/NewCondition",
+        "availability": "https://schema.org/InStock",
+        "seller": {
+          "@type": "Florist",
+          "name": "Spring Blossoms Florist",
+          "telephone": "+91 88860 03009"
+        },
+        "hasMerchantReturnPolicy": {
+          "@type": "MerchantReturnPolicy",
+          "applicableCountry": "IN",
+          "returnPolicyCategory": "https://schema.org/MerchantReturnNotPermitted"
+        },
+        "shippingDetails": {
+          "@type": "OfferShippingDetails",
+          "shippingRate": {
+            "@type": "MonetaryAmount",
+            "value": Number(metaData.price) >= 999 ? "0" : "150",
+            "currency": "INR"
+          },
+          "shippingDestination": {
+            "@type": "DefinedRegion",
+            "addressCountry": "IN",
+            "addressRegion": "Telangana"
+          },
+          "deliveryTime": {
+            "@type": "ShippingDeliveryTime",
+            "handlingTime": {
+              "@type": "QuantitativeValue",
+              "minValue": 0,
+              "maxValue": 0,
+              "unitCode": "DAY"
+            },
+            "transitTime": {
+              "@type": "QuantitativeValue",
+              "minValue": 0,
+              "maxValue": 1,
+              "unitCode": "DAY"
+            }
+          }
+        }
+      }
+    };
+
     const newTags = `
   <title>${metaData.title}</title>
   <meta name="description" content="${metaData.description}" />
@@ -2722,7 +2778,10 @@ const getSharePreview = async (req, res) => {
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="${metaData.title}" />
   <meta name="twitter:description" content="${metaData.description}" />
-  <meta name="twitter:image" content="${metaData.image}" />`;
+  <meta name="twitter:image" content="${metaData.image}" />
+  <script type="application/ld+json">
+  ${JSON.stringify(productJsonLd, null, 2)}
+  </script>`;
 
     cleanedHtml = cleanedHtml.replace(/<head>/i, `<head>${newTags}`);
 
