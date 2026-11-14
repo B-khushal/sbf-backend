@@ -94,21 +94,21 @@ const formatW3cDate = (date) => {
 // Authoritative list of canonical public static & location pages
 // Excludes auth-protected (/vendors-consent) and robots-disallowed (/vendor/register) routes
 const STATIC_PAGE_DEFS = [
-  { path: '/', lastmod: '2026-11-08' },
-  { path: '/shop', lastmod: '2026-11-08' },
-  { path: '/blog', lastmod: '2026-11-08' },
-  { path: '/flower-delivery-hyderabad', lastmod: '2026-11-08' },
-  { path: '/flower-delivery-secunderabad', lastmod: '2026-11-08' },
-  { path: '/valentine-special', lastmod: '2026-10-27' },
-  { path: '/valentine-shop', lastmod: '2026-10-27' },
-  { path: '/about', lastmod: '2026-10-28' },
-  { path: '/contact', lastmod: '2026-10-28' },
-  { path: '/shipping', lastmod: '2026-10-28' },
-  { path: '/privacy', lastmod: '2026-10-14' },
-  { path: '/terms', lastmod: '2026-10-14' },
-  { path: '/refund-policy', lastmod: '2026-10-28' },
-  { path: '/cancellation-policy', lastmod: '2026-10-28' },
-  { path: '/faq', lastmod: '2026-10-27' }
+  { path: '/', lastmod: '2026-11-14' },
+  { path: '/shop/', lastmod: '2026-11-14' },
+  { path: '/blog/', lastmod: '2026-11-14' },
+  { path: '/flower-delivery-hyderabad/', lastmod: '2026-11-14' },
+  { path: '/flower-delivery-secunderabad/', lastmod: '2026-11-14' },
+  { path: '/valentine-special/', lastmod: '2026-11-14' },
+  { path: '/valentine-shop/', lastmod: '2026-11-14' },
+  { path: '/about/', lastmod: '2026-11-14' },
+  { path: '/contact/', lastmod: '2026-11-14' },
+  { path: '/shipping/', lastmod: '2026-11-14' },
+  { path: '/privacy/', lastmod: '2026-11-14' },
+  { path: '/terms/', lastmod: '2026-11-14' },
+  { path: '/refund-policy/', lastmod: '2026-11-14' },
+  { path: '/cancellation-policy/', lastmod: '2026-11-14' },
+  { path: '/faq/', lastmod: '2026-11-14' }
 ];
 
 // Reserved static paths to prevent duplicate category inclusion
@@ -209,20 +209,20 @@ const buildCanonicalOccasionItems = async () => {
   const items = [];
 
   // Primary Occasions Hub
-  const baseOccUrl = `${SITE_URL}/occasions`;
+  const baseOccUrl = `${SITE_URL}/occasions/`;
   seenUrls.add(baseOccUrl);
   items.push({
     id: 'hub',
     name: 'All Occasions Directory Hub',
     slug: 'occasions',
     url: baseOccUrl,
-    lastmod: '2026-10-28',
+    lastmod: '2026-11-14',
     isHub: true
   });
 
   for (const occ of occasions) {
     if (!occ.slug) continue;
-    const occUrl = `${SITE_URL}/occasions/${occ.slug}`;
+    const occUrl = `${SITE_URL}/occasions/${occ.slug}/`;
     if (seenUrls.has(occUrl)) continue;
     seenUrls.add(occUrl);
 
@@ -1374,11 +1374,17 @@ const renderSitemapUiHtml = async (type = 'index') => {
 const generateRobotsTxt = () => {
   return `# Robots.txt for Spring Blossoms Florist (https://sbflorist.in)
 User-agent: *
+
+# ── Allow Indexable Public Routes ───────────────────
 Allow: /
 Allow: /shop
+Allow: /shop/
 Allow: /blog
+Allow: /blog/
 Allow: /flower-delivery-hyderabad
+Allow: /flower-delivery-hyderabad/
 Allow: /flower-delivery-secunderabad
+Allow: /flower-delivery-secunderabad/
 Allow: /bouquets
 Allow: /roses
 Allow: /premium-roses
@@ -1396,31 +1402,33 @@ Allow: /hydrangea
 Allow: /occasions/
 Allow: /product/
 Allow: /products/
+Allow: /valentine-special
+Allow: /valentine-shop
+Allow: /valentine-product/
 Allow: /about
+Allow: /about/
 Allow: /contact
+Allow: /contact/
 Allow: /terms
 Allow: /privacy
 Allow: /shipping
 Allow: /refund-policy
 Allow: /cancellation-policy
+Allow: /faq
+Allow: /llms.txt
 
-# Disallow private user states, checkout, and admin routes
+# ── Disallow Private Admin, Vendor, and API Routes ──
 Disallow: /admin/
 Disallow: /vendor/
 Disallow: /marketing/
-Disallow: /checkout/
-Disallow: /cart
-Disallow: /profile
-Disallow: /account
-Disallow: /orders
-Disallow: /login
-Disallow: /signup
-Disallow: /register
-Disallow: /forgot-password
-Disallow: /track/
 Disallow: /api/
 
+# ── Sitemap Index and Child Sitemaps ────────────────
 Sitemap: ${SITE_URL}/sitemap.xml
+Sitemap: ${SITE_URL}/sitemap-pages.xml
+Sitemap: ${SITE_URL}/sitemap-categories.xml
+Sitemap: ${SITE_URL}/sitemap-occasions.xml
+Sitemap: ${SITE_URL}/sitemap-products.xml
 `;
 };
 
@@ -1442,6 +1450,7 @@ const renderCrawlerHtml = async (reqPath) => {
   let ogType = 'website';
   let structuredData = [];
   let bodyContent = '';
+  let isNotFound = false;
 
   // ── 0.5. BLOG HUB & BLOG POST PAGES ──────────────────────────────
   if (cleanPath === '/blog') {
@@ -1637,6 +1646,42 @@ const renderCrawlerHtml = async (reqPath) => {
             '@type': 'Florist',
             name: BRAND_NAME,
             url: SITE_URL
+          },
+          hasMerchantReturnPolicy: {
+            '@type': 'MerchantReturnPolicy',
+            applicableCountry: 'IN',
+            returnPolicyCategory: 'https://schema.org/MerchantReturnNotPermitted',
+            merchantReturnLink: `${SITE_URL}/refund-policy`
+          },
+          shippingDetails: {
+            '@type': 'OfferShippingDetails',
+            shippingRate: {
+              '@type': 'MonetaryAmount',
+              value: finalPrice >= 999 ? 0 : 150,
+              currency: 'INR'
+            },
+            shippingDestination: [
+              {
+                '@type': 'DefinedRegion',
+                addressCountry: 'IN',
+                addressRegion: 'Telangana'
+              }
+            ],
+            deliveryTime: {
+              '@type': 'ShippingDeliveryTime',
+              handlingTime: {
+                '@type': 'QuantitativeValue',
+                minValue: 0,
+                maxValue: 1,
+                unitCode: 'DAY'
+              },
+              transitTime: {
+                '@type': 'QuantitativeValue',
+                minValue: 0,
+                maxValue: 1,
+                unitCode: 'DAY'
+              }
+            }
           }
         }
       };
@@ -1679,6 +1724,18 @@ const renderCrawlerHtml = async (reqPath) => {
               </div>
             </div>
           </article>
+        </div>
+      `;
+    } else {
+      pageTitle = '404 - Product Not Found | Spring Blossoms Florist';
+      metaDescription = 'The requested flower arrangement or product is currently unavailable or has been removed from our catalog.';
+      canonicalUrl = `${SITE_URL}${cleanPath}`;
+      isNotFound = true;
+      bodyContent = `
+        <div class="sbf-crawler-shell p-8 max-w-3xl mx-auto text-center" style="padding: 4rem 1rem; text-align: center; font-family: sans-serif;">
+          <h1 style="font-size: 2.5rem; font-weight: 800; color: #0f172a; margin-bottom: 1rem;">Product Not Found (404)</h1>
+          <p style="font-size: 1.125rem; color: #475569; margin-bottom: 2rem;">The floral arrangement or product you requested is no longer available in our Hyderabad catalog.</p>
+          <p><a href="/shop" style="display: inline-block; background: #e11d48; color: #ffffff; padding: 0.75rem 1.5rem; border-radius: 0.5rem; text-decoration: none; font-weight: 600;">Browse All Available Flowers</a></p>
         </div>
       `;
     }
@@ -2393,6 +2450,7 @@ const renderCrawlerHtml = async (reqPath) => {
     <title>${escapeHtml(pageTitle)}</title>
     <meta name="description" content="${escapeHtml(metaDescription)}" />
     <link rel="canonical" href="${escapeHtml(canonicalUrl)}" />
+    ${isNotFound ? '<meta name="robots" content="noindex, nofollow" />' : ''}
     <meta property="og:title" content="${escapeHtml(pageTitle)}" />
     <meta property="og:description" content="${escapeHtml(metaDescription)}" />
     <meta property="og:type" content="${escapeHtml(ogType)}" />
@@ -2421,7 +2479,13 @@ const renderCrawlerHtml = async (reqPath) => {
     );
   }
 
-  return finalHtml;
+  return {
+    html: finalHtml,
+    status: isNotFound ? 404 : 200,
+    toString() {
+      return this.html;
+    }
+  };
 };
 
 module.exports = {

@@ -275,10 +275,12 @@ router.get('/robots.txt', (req, res) => {
 router.get('/render', async (req, res) => {
   try {
     const targetPath = req.query.path || '/';
-    const html = await renderCrawlerHtml(targetPath);
+    const result = await renderCrawlerHtml(targetPath);
+    const html = typeof result === 'object' && result.html ? result.html : String(result);
+    const statusCode = typeof result === 'object' && result.status ? result.status : 200;
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.setHeader('Cache-Control', 'public, max-age=1800, s-maxage=3600');
-    return res.status(200).send(html);
+    res.setHeader('Cache-Control', statusCode === 404 ? 'no-cache, no-store' : 'public, max-age=1800, s-maxage=3600');
+    return res.status(statusCode).send(html);
   } catch (error) {
     console.error('Error rendering crawler HTML:', error);
     return res.status(500).send('Internal Server Error rendering page');
