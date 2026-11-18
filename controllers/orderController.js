@@ -125,6 +125,8 @@ const resolveOrderCustomerDetails = async (order) => {
     customerEmail = normalizeEmail(order.shippingDetails.email);
   } else if (isValidEmailStr(order.shippingAddress?.email)) {
     customerEmail = normalizeEmail(order.shippingAddress.email);
+  } else if (isValidEmailStr(order.giftDetails?.senderEmail)) {
+    customerEmail = normalizeEmail(order.giftDetails.senderEmail);
   } else if (isValidEmailStr(order.giftDetails?.recipientEmail)) {
     customerEmail = normalizeEmail(order.giftDetails.recipientEmail);
   }
@@ -917,97 +919,80 @@ const updateOrderToDelivered = async (req, res) => {
     const previousStatus = order.status;
 
     // Update order status
+    const resendEmail = Boolean(req.body?.resendEmail);
+    const normalizedPrevStatus = String(previousStatus || '').trim().toLowerCase();
     order.isDelivered = true;
     order.deliveredAt = Date.now();
     order.status = 'delivered';
+    order.orderStatus = 'delivered';
 
-    console.log('🔄 Status change:', previousStatus, '→', order.status);
+    console.log('🔄 Status change:', normalizedPrevStatus, '→', order.status);
 
-    // Update stock when order is delivered
-    if (!['being_made', 'delivered'].includes(previousStatus) && !order.stockUpdated) {
+    // Update stock when order is delivered — non-blocking so paid delivered orders never fail
+    if (!['being_made', 'delivered'].includes(normalizedPrevStatus) && !order.stockUpdated) {
       console.log('📦 Updating stock for order:', order.orderNumber);
 
-      for (const item of order.items) {
-        let product;
-        if (item.productModel === 'AddonProduct') {
-          product = await AddonProduct.findById(item.product._id);
-        } else {
-          product = await Product.findById(item.product._id);
-        }
-        if (product) {
+      for (const item of (order.items || [])) {
+        try {
+          const itemProductId =
+            item?.product && typeof item.product === 'object'
+              ? (item.product._id || item.product.id)
+              : (item?.productId || item?.product || null);
+          if (!itemProductId) continue;
+
           if (item.productModel === 'AddonProduct') {
-            if (product.stock >= item.quantity) {
-              product.stock -= item.quantity;
-              await product.save({ validateBeforeSave: false });
-              console.log(`✅ Updated stock for addon product ${product.title || product.name}: ${product.stock + item.quantity} -> ${product.stock}`);
-            } else {
-              console.log(`Warning: Insufficient stock for addon product ${product.title || product.name}. Available: ${product.stock}, Required: ${item.quantity}`);
-              return res.status(400).json({
-                message: `Insufficient stock for addon product ${product.title || product.name}. Available: ${product.stock}, Required: ${item.quantity}`
-              });
+            const addon = await AddonProduct.findById(itemProductId);
+            if (addon && typeof addon.stock === 'number') {
+              addon.stock = Math.max(0, addon.stock - (Number(item.quantity) || 1));
+              await addon.save({ validateBeforeSave: false });
             }
           } else {
-            const requiredStock = (product.personalizationEnabled && (item.characterCount || item.customization?.personalization?.characterCount))
-              ? (item.characterCount || item.customization?.personalization?.characterCount) * item.quantity
-              : item.quantity;
+            const product = await Product.findById(itemProductId);
+            if (product) {
+              const requiredStock = (product.personalizationEnabled && (item.characterCount || item.customization?.personalization?.characterCount))
+                ? (item.characterCount || item.customization?.personalization?.characterCount) * item.quantity
+                : (Number(item.quantity) || 1);
 
-            if (product.countInStock >= requiredStock) {
-              product.countInStock -= requiredStock;
+              product.countInStock = Math.max(0, Number(product.countInStock || 0) - requiredStock);
 
               if (product.productType === 'valentine' || product.isValentineProduct) {
-                const d = new Date(order.shippingDetails.deliveryDate);
+                const d = new Date(order.shippingDetails?.deliveryDate || Date.now());
                 const dayStr = `${d.getDate()} Feb`;
                 const fullDayStr = `${d.getDate()} February`;
-                let keyToUse = null;
                 if (product.dateWiseStock && typeof product.dateWiseStock.has === 'function') {
-                  if (product.dateWiseStock.has(dayStr)) keyToUse = dayStr;
-                  else if (product.dateWiseStock.has(fullDayStr)) keyToUse = fullDayStr;
+                  const keyToUse = product.dateWiseStock.has(dayStr)
+                    ? dayStr
+                    : product.dateWiseStock.has(fullDayStr)
+                    ? fullDayStr
+                    : null;
                   if (keyToUse) {
                     const currentStock = product.dateWiseStock.get(keyToUse);
-                    product.dateWiseStock.set(keyToUse, Math.max(0, currentStock - item.quantity));
+                    product.dateWiseStock.set(keyToUse, Math.max(0, currentStock - (Number(item.quantity) || 1)));
                   }
                 }
               }
 
               try {
-                // Clean product data before saving to prevent casting errors
                 cleanProductData(product);
                 await product.save();
-                console.log(`✅ Updated stock for product ${product.title}: ${product.countInStock + requiredStock} -> ${product.countInStock}`);
               } catch (productSaveError) {
-                console.error(`❌ Error saving product ${product.title}:`, productSaveError);
-
-                // Try to save without cleaning if the cleaning failed
                 try {
-                  // Reset any changes and just update the stock
-                  const freshProduct = await Product.findById(item.product._id);
-                  const freshRequiredStock = (freshProduct && freshProduct.personalizationEnabled && (item.characterCount || item.customization?.personalization?.characterCount))
-                    ? (item.characterCount || item.customization?.personalization?.characterCount) * item.quantity
-                    : item.quantity;
-
-                  if (freshProduct && freshProduct.countInStock >= freshRequiredStock) {
-                    freshProduct.countInStock -= freshRequiredStock;
-                    // Force save without validation for malformed data
+                  const freshProduct = await Product.findById(itemProductId);
+                  if (freshProduct) {
+                    freshProduct.countInStock = Math.max(0, Number(freshProduct.countInStock || 0) - requiredStock);
                     await freshProduct.save({ validateBeforeSave: false });
-                    console.log(`⚠️  Force-updated stock for product ${freshProduct.title} (bypassed validation)`);
-                  } else {
-                    console.error(`❌ Could not force-update stock for product ${product.title}`);
                   }
                 } catch (forceSaveError) {
-                  console.error(`❌ Force save also failed for product ${product.title}:`, forceSaveError);
+                  console.error(`❌ Force save also failed for product ${product.title}:`, forceSaveError.message);
                 }
               }
-            } else {
-              console.log(`Warning: Insufficient stock for product ${product.title}. Available: ${product.countInStock}, Required: ${requiredStock}`);
-              return res.status(400).json({
-                message: `Insufficient stock for product ${product.title}. Available: ${product.countInStock}, Required: ${requiredStock}`
-              });
             }
           }
+        } catch (itemErr) {
+          console.warn(`⚠️ Non-blocking stock error on deliver for #${order.orderNumber}:`, itemErr.message);
         }
       }
 
-      // Mark stock as updated
       order.stockUpdated = true;
     } else {
       console.log('📦 Stock already updated or status already processed');
@@ -1016,56 +1001,61 @@ const updateOrderToDelivered = async (req, res) => {
     const updatedOrder = await order.save();
     console.log('💾 Order saved successfully');
 
-    // Send delivery confirmation email with invoice when order is delivered
-    if (previousStatus !== 'delivered') {
-      console.log('🚚 Order delivered, sending delivery confirmation email with invoice...');
-      console.log('📧 Previous status:', previousStatus, 'New status:', order.status);
+    let emailNotification = {
+      attempted: false,
+      sent: false,
+      recipient: null,
+      error: null,
+      skippedReason: null,
+    };
 
-      // Create delivery notification for admin
-      try {
-        const { createAdminNotification } = require('./notificationController');
-        await createAdminNotification({
-          type: 'info',
-          title: '🚚 Order Delivered!',
-          message: `Order ${order.orderNumber} has been successfully delivered to ${order.shippingDetails?.fullName || 'customer'}.`,
-          metadata: {
-            orderId: order._id,
-            orderNumber: order.orderNumber,
-            customerName: order.shippingDetails?.fullName,
-            deliveredAt: new Date().toISOString()
-          }
-        });
-        console.log('✅ Delivery notification created for admin:', order.orderNumber);
-      } catch (notificationError) {
-        console.error('❌ Error creating delivery notification:', notificationError);
+    // Send delivery confirmation email with invoice when order is delivered (or explicitly resent)
+    if (normalizedPrevStatus !== 'delivered' || resendEmail) {
+      emailNotification.attempted = true;
+      console.log('🚚 Order delivered, sending delivery confirmation email with invoice...');
+
+      if (normalizedPrevStatus !== 'delivered') {
+        try {
+          const { createAdminNotification } = require('./notificationController');
+          await createAdminNotification({
+            type: 'info',
+            title: '🚚 Order Delivered!',
+            message: `Order ${order.orderNumber} has been successfully delivered to ${order.shippingDetails?.fullName || 'customer'}.`,
+            metadata: {
+              orderId: order._id,
+              orderNumber: order.orderNumber,
+              customerName: order.shippingDetails?.fullName,
+              deliveredAt: new Date().toISOString()
+            }
+          });
+        } catch (notificationError) {
+          console.error('❌ Error creating delivery notification:', notificationError);
+        }
       }
 
       try {
         const resolvedDetails = await resolveOrderCustomerDetails(order);
-        const { customer, customerEmail, customerName, customerPhone } = resolvedDetails;
+        const { customerEmail, customerName, customerPhone } = resolvedDetails;
 
         if (customerEmail) {
-          // Self-heal order if missing email in DB or was 'N/A'
+          emailNotification.recipient = customerEmail;
           if (order.customerEmail !== customerEmail || order.shippingDetails?.email !== customerEmail) {
             try {
               await Order.findByIdAndUpdate(order._id, {
                 customerEmail: customerEmail,
                 'shippingDetails.email': customerEmail
               });
-              console.log(`[Order Controller] 🔄 Self-healed order #${order.orderNumber} customerEmail to: ${customerEmail}`);
             } catch (healErr) {
               console.warn('[Order Controller] Could not persist healed email to order:', healErr.message);
             }
           }
 
-          // Populate product details for delivery email
           const populatedOrder = await Order.findById(order._id)
             .populate({
               path: 'items.product',
               select: 'name title price images sku discount'
             });
 
-          // Prepare delivery notification data
           const deliveryNotificationData = {
             order: populatedOrder || order,
             customer: {
@@ -1076,34 +1066,32 @@ const updateOrderToDelivered = async (req, res) => {
             items: (populatedOrder && populatedOrder.items) || order.items || []
           };
 
-          console.log(`[Order Controller] 👤 Customer details resolved: Name="${customerName}", Email="${customerEmail}"`);
-          console.log(`[Order Controller] 📤 Triggering sendDeliveryConfirmationWithInvoice for order #${order.orderNumber}`);
-
-          // Send delivery confirmation email with invoice
           const { sendDeliveryConfirmationWithInvoice } = require('../services/emailNotificationService');
           const emailResult = await sendDeliveryConfirmationWithInvoice(deliveryNotificationData);
 
-          console.log(`[Order Controller] 📧 sendDeliveryConfirmationWithInvoice output for order #${order.orderNumber}:`, emailResult);
-
-          if (emailResult.success) {
-            console.log(`[Order Controller] ✅ Delivery confirmation email with invoice sent successfully to: ${customerEmail}`);
+          if (emailResult && emailResult.success) {
+            emailNotification.sent = true;
           } else {
-            console.error(`[Order Controller] ❌ Failed to send delivery confirmation email:`, emailResult.error);
+            emailNotification.error = emailResult?.error || 'Failed to send delivery confirmation email';
           }
         } else {
-          console.warn(`⚠️ [Order Controller] No valid customer email found for delivery confirmation of order #${order.orderNumber}`);
+          emailNotification.error = 'No valid customer email address found on order or user profile';
         }
       } catch (deliveryEmailError) {
+        emailNotification.error = deliveryEmailError.message || 'Unexpected error while sending delivery email';
         console.error('❌ Error sending delivery confirmation email:', deliveryEmailError);
-        console.error('Error stack:', deliveryEmailError.stack);
-        // Don't fail the order status update if email fails
       }
     } else {
+      emailNotification.skippedReason = 'Order was already marked delivered';
       console.log('📧 Email not sent - order was already delivered');
     }
 
     console.log('✅ updateOrderToDelivered completed successfully');
-    res.json(updatedOrder);
+    const responsePayload =
+      typeof updatedOrder?.toJSON === 'function'
+        ? { ...updatedOrder.toJSON(), emailNotification }
+        : { ...updatedOrder, emailNotification };
+    res.json(responsePayload);
   } catch (error) {
     console.error('❌ Error in updateOrderToDelivered:', error);
     console.error('Error stack:', error.stack);
@@ -1513,8 +1501,13 @@ const getTodayOrders = async (req, res) => {
 // @access  Private/Admin
 const updateOrderStatus = async (req, res) => {
   try {
-    const { status } = req.body;
-    console.log(`[Order Controller] 🔄 updateOrderStatus status update request received for order ID: ${req.params.id}, New status: "${status}"`);
+    const rawStatus = req.body?.status;
+    const status = String(rawStatus || '').trim().toLowerCase();
+    const resendEmail = Boolean(req.body?.resendEmail);
+    if (!status) {
+      return res.status(400).json({ message: 'Status is required' });
+    }
+    console.log(`[Order Controller] 🔄 updateOrderStatus status update request received for order ID: ${req.params.id}, New status: "${status}", resendEmail: ${resendEmail}`);
     console.log('📝 Request body:', req.body);
 
     const order = await Order.findById(req.params.id).populate({
@@ -1532,7 +1525,7 @@ const updateOrderStatus = async (req, res) => {
     console.log('📧 Shipping details email:', order.shippingDetails?.email);
     console.log('📧 Shipping details name:', order.shippingDetails?.fullName);
 
-    const previousStatus = order.status;
+    const previousStatus = String(order.status || order.orderStatus || '').trim().toLowerCase();
     order.status = status;
     order.orderStatus = status;
 
@@ -1572,55 +1565,58 @@ const updateOrderStatus = async (req, res) => {
 
     console.log('🔄 Status change:', previousStatus, '→', order.status);
 
-    // Update stock when order is confirmed (being_made or delivered)
+    // Update stock when order is confirmed (being_made or delivered) — non-blocking so paid delivered orders never fail
     if ((status === 'being_made' || status === 'delivered') && !['being_made', 'delivered'].includes(previousStatus) && !order.stockUpdated) {
       console.log('📦 Updating stock for order:', order.orderNumber);
 
-      for (const item of order.items) {
-        const product = await Product.findById(item.product._id);
-        if (product) {
-          // Check if we have enough stock
-          const requiredStock = (product.personalizationEnabled && (item.characterCount || item.customization?.personalization?.characterCount))
-            ? (item.characterCount || item.customization?.personalization?.characterCount) * item.quantity
-            : item.quantity;
+      for (const item of (order.items || [])) {
+        try {
+          const itemProductId =
+            item?.product && typeof item.product === 'object'
+              ? (item.product._id || item.product.id)
+              : (item?.productId || item?.product || null);
+          if (!itemProductId) continue;
 
-          if (product.countInStock >= requiredStock) {
-            product.countInStock -= requiredStock;
+          if (item.productModel === 'AddonProduct') {
+            const addon = await AddonProduct.findById(itemProductId);
+            if (addon && typeof addon.stock === 'number') {
+              addon.stock = Math.max(0, addon.stock - (Number(item.quantity) || 1));
+              await addon.save({ validateBeforeSave: false });
+            }
+            continue;
+          }
+
+          const product = await Product.findById(itemProductId);
+          if (product) {
+            const requiredStock = (product.personalizationEnabled && (item.characterCount || item.customization?.personalization?.characterCount))
+              ? (item.characterCount || item.customization?.personalization?.characterCount) * item.quantity
+              : (Number(item.quantity) || 1);
+
+            const currentStock = Number(product.countInStock || 0);
+            if (currentStock < requiredStock) {
+              console.warn(`⚠️ Low stock for ${product.title} (Available: ${currentStock}, Required: ${requiredStock}). Clamping to 0 so delivery status & email proceed.`);
+            }
+            product.countInStock = Math.max(0, currentStock - requiredStock);
 
             try {
-              // Clean product data before saving to prevent casting errors
               cleanProductData(product);
               await product.save();
-              console.log(`✅ Updated stock for product ${product.title}: ${product.countInStock + requiredStock} -> ${product.countInStock}`);
+              console.log(`✅ Updated stock for product ${product.title}: ${currentStock} -> ${product.countInStock}`);
             } catch (productSaveError) {
-              console.error(`❌ Error saving product ${product.title}:`, productSaveError);
-
-              // Try to save without cleaning if the cleaning failed
+              console.error(`❌ Error saving product ${product.title}:`, productSaveError.message);
               try {
-                // Reset any changes and just update the stock
-                const freshProduct = await Product.findById(item.product._id);
-                const freshRequiredStock = (freshProduct && freshProduct.personalizationEnabled && (item.characterCount || item.customization?.personalization?.characterCount))
-                  ? (item.characterCount || item.customization?.personalization?.characterCount) * item.quantity
-                  : item.quantity;
-
-                if (freshProduct && freshProduct.countInStock >= freshRequiredStock) {
-                  freshProduct.countInStock -= freshRequiredStock;
-                  // Force save without validation for malformed data
+                const freshProduct = await Product.findById(itemProductId);
+                if (freshProduct) {
+                  freshProduct.countInStock = Math.max(0, Number(freshProduct.countInStock || 0) - requiredStock);
                   await freshProduct.save({ validateBeforeSave: false });
-                  console.log(`⚠️  Force-updated stock for product ${freshProduct.title} (bypassed validation)`);
-                } else {
-                  console.error(`❌ Could not force-update stock for product ${product.title}`);
                 }
               } catch (forceSaveError) {
-                console.error(`❌ Force save also failed for product ${product.title}:`, forceSaveError);
+                console.error(`❌ Force save also failed for product ${product.title}:`, forceSaveError.message);
               }
             }
-          } else {
-            console.log(`Warning: Insufficient stock for product ${product.title}. Available: ${product.countInStock}, Required: ${requiredStock}`);
-            return res.status(400).json({
-              message: `Insufficient stock for product ${product.title}. Available: ${product.countInStock}, Required: ${requiredStock}`
-            });
           }
+        } catch (itemStockErr) {
+          console.warn(`⚠️ Non-blocking stock update error for order #${order.orderNumber}:`, itemStockErr.message);
         }
       }
 
@@ -1677,41 +1673,56 @@ const updateOrderStatus = async (req, res) => {
     const updatedOrder = await order.save();
     console.log('💾 Order saved successfully');
 
-    // Send delivery confirmation email with invoice when order is delivered
+    // Send delivery confirmation email with invoice when order is delivered (or explicitly resent)
+    const shouldSendDeliveredEmail =
+      status === 'delivered' && (previousStatus !== 'delivered' || resendEmail);
+
     console.log('🧪 Checking delivery email condition...');
     console.log('  status === "delivered":', status === 'delivered');
     console.log('  previousStatus !== "delivered":', previousStatus !== 'delivered');
-    console.log('  previousStatus value:', previousStatus);
-    console.log('  Overall condition result:', status === 'delivered' && previousStatus !== 'delivered');
+    console.log('  resendEmail:', resendEmail);
+    console.log('  Overall condition result:', shouldSendDeliveredEmail);
 
-    if (status === 'delivered' && previousStatus !== 'delivered') {
+    let emailNotification = {
+      attempted: false,
+      sent: false,
+      recipient: null,
+      error: null,
+      skippedReason: null,
+    };
+
+    if (shouldSendDeliveredEmail) {
+      emailNotification.attempted = true;
       console.log('🚚 Order delivered, sending delivery confirmation email with invoice...');
       console.log('📧 Previous status:', previousStatus, 'New status:', order.status);
 
-      // Create delivery notification for admin
-      try {
-        const { createAdminNotification } = require('./notificationController');
-        await createAdminNotification({
-          type: 'info',
-          title: '🚚 Order Delivered!',
-          message: `Order ${order.orderNumber} has been successfully delivered to ${order.shippingDetails?.fullName || 'customer'}.`,
-          metadata: {
-            orderId: order._id,
-            orderNumber: order.orderNumber,
-            customerName: order.shippingDetails?.fullName,
-            deliveredAt: new Date().toISOString()
-          }
-        });
-        console.log('✅ Delivery notification created for admin:', order.orderNumber);
-      } catch (notificationError) {
-        console.error('Error creating delivery notification:', notificationError);
+      // Create delivery notification for admin (only on first transition)
+      if (previousStatus !== 'delivered') {
+        try {
+          const { createAdminNotification } = require('./notificationController');
+          await createAdminNotification({
+            type: 'info',
+            title: '🚚 Order Delivered!',
+            message: `Order ${order.orderNumber} has been successfully delivered to ${order.shippingDetails?.fullName || 'customer'}.`,
+            metadata: {
+              orderId: order._id,
+              orderNumber: order.orderNumber,
+              customerName: order.shippingDetails?.fullName,
+              deliveredAt: new Date().toISOString()
+            }
+          });
+          console.log('✅ Delivery notification created for admin:', order.orderNumber);
+        } catch (notificationError) {
+          console.error('Error creating delivery notification:', notificationError);
+        }
       }
 
       try {
         const resolvedDetails = await resolveOrderCustomerDetails(order);
-        const { customer, customerEmail, customerName, customerPhone } = resolvedDetails;
+        const { customerEmail, customerName, customerPhone } = resolvedDetails;
 
         if (customerEmail) {
+          emailNotification.recipient = customerEmail;
           // Self-heal order if missing email in DB or was 'N/A'
           if (order.customerEmail !== customerEmail || order.shippingDetails?.email !== customerEmail) {
             try {
@@ -1746,27 +1757,30 @@ const updateOrderStatus = async (req, res) => {
           console.log(`[Order Controller] 👤 Customer details resolved: Name="${customerName}", Email="${customerEmail}"`);
           console.log(`[Order Controller] 📤 Triggering sendDeliveryConfirmationWithInvoice for order #${order.orderNumber}`);
 
-          // Send delivery confirmation email with invoice
           const { sendDeliveryConfirmationWithInvoice } = require('../services/emailNotificationService');
           const emailResult = await sendDeliveryConfirmationWithInvoice(deliveryNotificationData);
 
           console.log(`[Order Controller] 📧 sendDeliveryConfirmationWithInvoice output for order #${order.orderNumber}:`, emailResult);
 
-          if (emailResult.success) {
+          if (emailResult && emailResult.success) {
+            emailNotification.sent = true;
             console.log(`[Order Controller] ✅ Delivery confirmation email with invoice sent successfully to: ${customerEmail}`);
           } else {
-            console.error(`[Order Controller] ❌ Failed to send delivery confirmation email:`, emailResult.error);
+            emailNotification.error = emailResult?.error || 'Failed to send delivery confirmation email';
+            console.error(`[Order Controller] ❌ Failed to send delivery confirmation email:`, emailNotification.error);
           }
         } else {
+          emailNotification.error = 'No valid customer email address found on order or user profile';
           console.warn(`⚠️ [Order Controller] No valid customer email found for delivery confirmation of order #${order.orderNumber}`);
         }
       } catch (deliveryEmailError) {
+        emailNotification.error = deliveryEmailError.message || 'Unexpected error while sending delivery email';
         console.error('❌ Error sending delivery confirmation email:', deliveryEmailError);
         console.error('Error stack:', deliveryEmailError.stack);
-        // Don't fail the order status update if email fails
       }
-    } else {
-      console.log('📧 Email not sent - order was already delivered or status is not delivered');
+    } else if (status === 'delivered') {
+      emailNotification.skippedReason = 'Order was already marked delivered';
+      console.log('📧 Email skipped - order was already delivered (pass resendEmail: true to resend)');
     }
 
     // Restore stock if order is cancelled from being_made or delivered status
@@ -1812,7 +1826,11 @@ const updateOrderStatus = async (req, res) => {
     }
 
     console.log('✅ updateOrderStatus completed successfully');
-    res.json(updatedOrder);
+    const responsePayload =
+      typeof updatedOrder?.toJSON === 'function'
+        ? { ...updatedOrder.toJSON(), emailNotification }
+        : { ...updatedOrder, emailNotification };
+    res.json(responsePayload);
   } catch (error) {
     console.error('❌ Error in updateOrderStatus:', error);
     console.error('Error stack:', error.stack);

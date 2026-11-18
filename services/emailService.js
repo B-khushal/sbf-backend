@@ -256,15 +256,18 @@ const sendEmail = async ({
         sender: `${from.name} <${from.address}>`,
         recipient: Array.isArray(to) ? to.join(", ") : to,
         subject,
+        type,
         emailType: type,
         status,
         smtpResponse,
+        error: errorMessage || null,
         errorMessage,
         timestamp: new Date(),
         metadata: {
           messageId,
           cc,
           replyTo,
+          smtpResponse,
           hasAttachments: !!(attachments && attachments.length),
         },
       });

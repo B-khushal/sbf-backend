@@ -385,6 +385,7 @@ class OrderDocument {
         discount: (this.discount !== undefined && this.discount !== null) ? parseFloat(this.discount) : (this.discountAmount !== undefined ? parseFloat(this.discountAmount) : undefined),
         finalTotal: (this.finalTotal !== undefined && this.finalTotal !== null) ? parseFloat(this.finalTotal) : (this.totalAmount !== undefined ? parseFloat(this.totalAmount) : undefined),
         trackingHistory: this.trackingHistory || undefined,
+        stockUpdated: typeof this.stockUpdated === 'boolean' ? this.stockUpdated : undefined,
         customerName: this.customerName || undefined,
         customerEmail: resolvedCustomerEmail || undefined,
         customerPhone: this.customerPhone || undefined,
@@ -418,7 +419,8 @@ class OrderDocument {
         deliveryCharge: (this.deliveryCharge !== undefined && this.deliveryCharge !== null) ? parseFloat(this.deliveryCharge) : (this.shippingFee !== undefined ? parseFloat(this.shippingFee) : 0),
         discount: (this.discount !== undefined && this.discount !== null) ? parseFloat(this.discount) : (this.discountAmount !== undefined ? parseFloat(this.discountAmount) : 0),
         finalTotal: (this.finalTotal !== undefined && this.finalTotal !== null) ? parseFloat(this.finalTotal) : (this.totalAmount !== undefined ? parseFloat(this.totalAmount) : 0),
-        trackingHistory: this.trackingHistory || undefined
+        trackingHistory: this.trackingHistory || undefined,
+        stockUpdated: Boolean(this.stockUpdated)
       }
     });
 

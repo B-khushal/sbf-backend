@@ -203,7 +203,18 @@ const generateInvoicePDF = async (htmlContent, orderNumber) => {
       options.phantomPath = process.env.PHANTOM_PATH;
     }
 
+    let settled = false;
+    const timeoutId = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        reject(new Error(`PDF generation timed out after 12s for order ${orderNumber}`));
+      }
+    }, 12000);
+
     pdf.create(htmlContent, options).toBuffer((err, buffer) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
       if (err) {
         console.error('❌ Failed to generate PDF:', err);
         reject(err);
@@ -1650,6 +1661,8 @@ const sendDeliveryConfirmationWithInvoice = async (orderData) => {
         resolvedEmail = normalizeEmail(order.shippingDetails.email);
       } else if (isValidRecipientEmail(order.shippingAddress?.email)) {
         resolvedEmail = normalizeEmail(order.shippingAddress.email);
+      } else if (isValidRecipientEmail(order.giftDetails?.senderEmail)) {
+        resolvedEmail = normalizeEmail(order.giftDetails.senderEmail);
       } else if (isValidRecipientEmail(order.giftDetails?.recipientEmail)) {
         resolvedEmail = normalizeEmail(order.giftDetails.recipientEmail);
       }
@@ -1720,7 +1733,14 @@ const sendDeliveryConfirmationWithInvoice = async (orderData) => {
     customer.name = resolvedName || 'Customer';
     customer.phone = resolvedPhone || '';
 
-    // If order was missing customerEmail in DB or had 'N/A', self-heal order in DB
+    const { checkIsPlaceholderCustomer } = require('../utils/testCustomerHelper');
+    const check = checkIsPlaceholderCustomer(orderData);
+    if (check.isPlaceholder) {
+      console.log(`Customer notifications skipped:\nReason: ${check.reason}\nOrder: ${order?.orderNumber || 'Unknown'}\nEmail: ${customer?.email || 'N/A'}`);
+      return { success: true, message: 'Skipped delivery confirmation email for placeholder customer.' };
+    }
+
+    // If order was missing customerEmail in DB or had 'N/A', self-heal order in DB (never on test/placeholder orders)
     if (resolvedEmail && (order._id || order.id || order.orderNumber) && (order.customerEmail !== resolvedEmail || order.shippingDetails?.email !== resolvedEmail)) {
       try {
         const Order = require('../models/Order');
@@ -1735,13 +1755,6 @@ const sendDeliveryConfirmationWithInvoice = async (orderData) => {
       } catch (healErr) {
         console.warn('[Delivery Confirmation Email Trigger] ⚠️ Could not update healed email on order in DB:', healErr.message);
       }
-    }
-
-    const { checkIsPlaceholderCustomer } = require('../utils/testCustomerHelper');
-    const check = checkIsPlaceholderCustomer(orderData);
-    if (check.isPlaceholder) {
-      console.log(`Customer notifications skipped:\nReason: ${check.reason}\nOrder: ${order?.orderNumber || 'Unknown'}\nEmail: ${customer?.email || 'N/A'}`);
-      return { success: true, message: 'Skipped delivery confirmation email for placeholder customer.' };
     }
 
     console.log(`[Delivery Confirmation Email Trigger]   Order Number: ${order.orderNumber}`);
@@ -1824,7 +1837,60 @@ const sendDeliveryConfirmationWithInvoice = async (orderData) => {
       emailOptions.subject = `🎉 Order Delivered #INV-${order.orderNumber} - Spring Blossoms Florist`;
     }
 
-    const result = await sendEmail(emailOptions);
+    let result = await sendEmail(emailOptions);
+
+    // Fallback to dedicated delivery confirmation SMTP transporter if primary SMTP failed
+    if (!result.success) {
+      console.warn(
+        `[Delivery Confirmation Email Trigger] ⚠️ Primary sendEmail failed (${result.error}). Retrying via dedicated deliveryConfirmationTransporter...`
+      );
+      try {
+        const fallbackTransporter = deliveryConfirmationTransporter || initDeliveryConfirmationEmailService();
+        if (fallbackTransporter) {
+          const fallbackMail = {
+            from: {
+              name: 'Spring Blossoms Delivery',
+              address: DELIVERY_CONFIRMATION_EMAIL_CONFIG.auth.user,
+            },
+            to: emailOptions.to,
+            cc: emailOptions.cc,
+            subject: emailOptions.subject,
+            html: emailOptions.html,
+            text: emailOptions.text,
+            attachments: emailOptions.attachments,
+          };
+          const fallbackInfo = await fallbackTransporter.sendMail(fallbackMail);
+          result = {
+            success: true,
+            messageId: fallbackInfo.messageId || '',
+            response: fallbackInfo.response || 'Sent via dedicated delivery transporter',
+          };
+          try {
+            const EmailLog = require('../models/EmailLog');
+            await EmailLog.create({
+              recipient: emailOptions.to,
+              subject: emailOptions.subject,
+              type: 'delivered',
+              status: 'success',
+              metadata: {
+                messageId: result.messageId,
+                cc: emailOptions.cc,
+                viaFallback: true,
+                hasAttachments: Boolean(emailOptions.attachments && emailOptions.attachments.length),
+              },
+            });
+          } catch (logErr) {
+            console.warn('Non-blocking fallback EmailLog error:', logErr.message);
+          }
+        }
+      } catch (fallbackErr) {
+        console.error(
+          '[Delivery Confirmation Email Trigger] ❌ Dedicated deliveryConfirmationTransporter fallback also failed:',
+          fallbackErr.message
+        );
+        result = { success: false, error: `${result.error}; Fallback: ${fallbackErr.message}` };
+      }
+    }
 
     if (result.success) {
       if (pdfBuffer) {
@@ -1836,7 +1902,11 @@ const sendDeliveryConfirmationWithInvoice = async (orderData) => {
       console.error('❌ Failed to send delivery confirmation email:', result.error);
     }
 
-    return result;
+    return {
+      ...result,
+      recipient: customer.email,
+      hasAttachment: Boolean(pdfBuffer),
+    };
   } catch (error) {
     console.error('❌ Failed to send delivery confirmation email:', error);
     if (error.stack) {

@@ -661,9 +661,16 @@ exports.forceCompleteAssignment = async (req, res) => {
     await assignment.save();
 
     // Sync order status
-    const order = await Order.findById(assignment.orderId._id);
+    const order = await Order.findById(assignment.orderId._id || assignment.orderId).populate({
+      path: 'items.product',
+      select: 'name title price images sku discount'
+    });
+    const previousOrderStatus = String(order?.status || order?.orderStatus || '').trim().toLowerCase();
     if (order) {
       order.status = 'delivered';
+      order.orderStatus = 'delivered';
+      order.isDelivered = true;
+      order.deliveredAt = new Date();
       await order.save();
     }
 
@@ -684,19 +691,60 @@ exports.forceCompleteAssignment = async (req, res) => {
     }
 
     // Log earnings
-    await DeliveryEarning.create({
-      partnerId: assignment.partnerId,
-      assignmentId: assignment._id,
-      orderId: order._id,
-      amount: parseFloat(earningsAmount.toFixed(2)),
-      basePay: config.baseDeliveryEarning,
-      deliveryChargeShare: order.deliveryCharge || 0
-    });
+    if (order) {
+      await DeliveryEarning.create({
+        partnerId: assignment.partnerId,
+        assignmentId: assignment._id,
+        orderId: order._id,
+        amount: parseFloat(earningsAmount.toFixed(2)),
+        basePay: config.baseDeliveryEarning,
+        deliveryChargeShare: order.deliveryCharge || 0
+      });
+    }
 
-    // Notify customer
-    await deliveryNotificationService.sendDeliveryNotification('delivered', assignment, order, partner);
+    // Trigger Delivered email confirmation with invoice PDF (non-blocking failure)
+    let emailNotification = { attempted: false, sent: false, recipient: null, error: null };
+    if (order && (previousOrderStatus !== 'delivered' || req.body?.resendEmail === true)) {
+      emailNotification.attempted = true;
+      try {
+        const customerEmail =
+          order.customerEmail ||
+          order.shippingDetails?.email ||
+          order.shippingAddress?.email ||
+          order.giftDetails?.senderEmail ||
+          order.giftDetails?.recipientEmail ||
+          null;
+        const customerName =
+          order.customerName ||
+          order.shippingDetails?.fullName ||
+          order.shippingAddress?.fullName ||
+          'Customer';
+        const customerPhone =
+          order.customerPhone ||
+          order.shippingDetails?.phone ||
+          order.shippingAddress?.phone ||
+          '';
 
-    res.json({ success: true, assignment });
+        const emailResult = await sendDeliveryConfirmationWithInvoice({
+          order,
+          customer: { name: customerName, email: customerEmail, phone: customerPhone },
+          items: order.items || []
+        });
+        emailNotification.sent = Boolean(emailResult?.success);
+        emailNotification.recipient = emailResult?.recipient || customerEmail;
+        emailNotification.error = emailResult?.success ? null : (emailResult?.error || 'Failed to send delivery email');
+      } catch (invoiceErr) {
+        console.error('[Delivery Controller] ❌ Force-Complete Invoice Delivery Email Error:', invoiceErr);
+        emailNotification.error = invoiceErr.message;
+      }
+    }
+
+    // Notify customer (WhatsApp/SMS/Push)
+    if (order) {
+      await deliveryNotificationService.sendDeliveryNotification('delivered', assignment, order, partner);
+    }
+
+    res.json({ success: true, assignment, emailNotification });
   } catch (error) {
     res.status(500).json({ message: 'Error force completing order', error: error.message });
   }

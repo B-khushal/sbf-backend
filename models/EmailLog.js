@@ -42,9 +42,9 @@ class EmailLogModel {
         id: data.id || data._id || `eml_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
         recipient: data.recipient || data.to || 'unknown@recipient.com',
         subject: data.subject || 'Email',
-        type: data.type || null,
+        type: data.type || data.emailType || null,
         status: data.status || 'sent',
-        error: data.error || null,
+        error: data.error || data.errorMessage || null,
         metadata: data.metadata ? data.metadata : null
       }
     });
