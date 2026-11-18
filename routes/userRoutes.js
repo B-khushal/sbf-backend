@@ -10,10 +10,28 @@ const {
 const { protect, admin } = require('../middleware/authMiddleware');
 
 const { getUserProfile, updateUserProfile } = require('../controllers/authController');
+const {
+  getAddresses,
+  createAddress,
+  updateAddress,
+  deleteAddress,
+  setDefaultAddress,
+} = require('../controllers/addressController');
 
 router.route('/profile')
   .get(protect, getUserProfile)
   .put(protect, updateUserProfile);
+
+// Customer Address Management (must be before /:id)
+router.route('/addresses')
+  .get(protect, getAddresses)
+  .post(protect, createAddress);
+
+router.route('/addresses/:id')
+  .put(protect, updateAddress)
+  .delete(protect, deleteAddress);
+
+router.patch('/addresses/:id/default', protect, setDefaultAddress);
 
 router.route('/')
   .get(protect, admin, getUsers);

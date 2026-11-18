@@ -11,6 +11,13 @@ const {
   googleAuth,
 } = require('../controllers/authController');
 const { protect, optionalProtect } = require('../middleware/authMiddleware');
+const {
+  getAddresses,
+  createAddress,
+  updateAddress,
+  deleteAddress,
+  setDefaultAddress,
+} = require('../controllers/addressController');
 
 // Rate limiter for auth endpoints (50 requests per 15 minutes)
 const authLimiter = rateLimit({
@@ -72,5 +79,15 @@ router.post('/logout', optionalProtect, logoutUser);
 router.route('/profile')
   .get(protect, getUserProfile)
   .put(protect, updateUserProfile);
+
+router.route('/addresses')
+  .get(protect, getAddresses)
+  .post(protect, createAddress);
+
+router.route('/addresses/:id')
+  .put(protect, updateAddress)
+  .delete(protect, deleteAddress);
+
+router.patch('/addresses/:id/default', protect, setDefaultAddress);
 
 module.exports = router; // ✅ Ensure this is correctly exported

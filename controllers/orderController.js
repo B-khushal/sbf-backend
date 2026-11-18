@@ -10,7 +10,7 @@ const { createOrderNotification } = require('./notificationController');
 const { sendEmailNotification, sendDeliveryConfirmationWithInvoice } = require('../services/emailNotificationService');
 const { sendOrderNotificationToAdmins, sendToAllAdmins } = require('../services/fcmService');
 const { logActivity } = require('../utils/activityLogger');
-const { calculateDeliveryFee } = require('../services/deliveryService');
+const { calculateDeliveryFee, checkPincodeServiceability } = require('../services/deliveryService');
 const Offer = require('../models/Offer');
 const { normalizeEmail } = require('../utils/emailNormalizer');
 const prisma = require('../config/prisma');
@@ -1881,6 +1881,9 @@ const createRazorpayOrderHandler = async (req, res) => {
       if (cardMsg) {
         customNotes.cardMessage = String(cardMsg).substring(0, 200);
       }
+      if (orderData.giftPackaging || orderData.giftDetails?.giftPackaging) {
+        customNotes.giftPackaging = `Yes (₹${orderData.giftPackagingFee || 99})`;
+      }
       if (orderData.items && Array.isArray(orderData.items)) {
         customNotes.itemSummary = orderData.items.map(i => `${i.quantity || 1}x ${i.title || 'Bouquet'}`).join(', ').substring(0, 200);
       }
@@ -1919,11 +1922,10 @@ const createRazorpayOrderHandler = async (req, res) => {
       });
     }
 
-    // Generic error handling
+    // Generic error handling (never leak stack trace in response)
     res.status(500).json({
       success: false,
-      message: error.message || 'Error creating order',
-      error: error.stack
+      message: error.message || 'Error creating order'
     });
   }
 };
@@ -2097,6 +2099,12 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
           landmark: orderData.shippingDetails?.landmark || '',
           houseNo: orderData.shippingDetails?.houseNo || '',
           floor: orderData.shippingDetails?.floor || '',
+          alternatePhone: orderData.shippingDetails?.alternatePhone || '',
+          addressType: orderData.shippingDetails?.addressType || 'home',
+          cardSender: orderData.shippingDetails?.cardSender || '',
+          cardRecipient: orderData.shippingDetails?.cardRecipient || '',
+          giftPackaging: Boolean(orderData.giftPackaging || orderData.shippingDetails?.giftPackaging),
+          giftPackagingFee: Number(orderData.giftPackagingFee || orderData.shippingDetails?.giftPackagingFee || 0),
           deliveryInstructions: orderData.shippingDetails?.deliveryInstructions || '',
         },
         items: itemsList.map(item => ({
@@ -2902,12 +2910,32 @@ const getOrderInvoice = async (req, res) => {
   }
 };
 
+// @desc    Verify delivery serviceability & slot availability by PIN code
+// @route   GET /api/orders/serviceability/:pincode
+// @access  Public
+const checkServiceability = async (req, res) => {
+  try {
+    const pincode = req.params.pincode || req.query.pincode || '';
+    const result = await checkPincodeServiceability(pincode);
+    res.json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    console.error('Error in checkServiceability:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Unable to check delivery serviceability right now',
+    });
+  }
+};
+
 // @desc    Calculate delivery fee dynamically
 // @route   POST /api/orders/calculate-delivery
 // @access  Public (Optional auth)
 const calculateDelivery = async (req, res) => {
   try {
-    const { subtotal, timeSlot, email, phone, userId: bodyUserId } = req.body;
+    const { subtotal, timeSlot, email, phone, userId: bodyUserId, pincode, giftPackaging } = req.body;
     const userId = req.user?._id || req.user?.id || bodyUserId || null;
 
     if (subtotal === undefined) {
@@ -2922,7 +2950,9 @@ const calculateDelivery = async (req, res) => {
       timeSlot,
       userId,
       email,
-      phone
+      phone,
+      pincode,
+      giftPackaging: Boolean(giftPackaging),
     });
 
     res.json({
@@ -2933,8 +2963,7 @@ const calculateDelivery = async (req, res) => {
     console.error('Error in calculateDelivery:', error);
     res.status(500).json({
       success: false,
-      message: 'Error calculating delivery fee',
-      error: error.message
+      message: 'Error calculating delivery fee'
     });
   }
 };
@@ -2956,5 +2985,6 @@ module.exports = {
   getUpcomingDeliveries,
   getDeliveryCalendar,
   testDeliveryEmail,
+  checkServiceability,
   calculateDelivery,
 };

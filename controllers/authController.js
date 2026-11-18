@@ -3,6 +3,7 @@ const generateToken = require('../utils/generateToken');
 const { OAuth2Client } = require('google-auth-library');
 const { logActivity } = require('../utils/activityLogger');
 const { normalizeEmail } = require('../utils/emailNormalizer');
+const { sanitizeText, normalizeIndianPhone, normalizePincode } = require('../data/serviceablePincodes');
 
 // Initialize Google OAuth client
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -12,19 +13,24 @@ const normalizeAddresses = (addresses = []) => {
     return [];
   }
 
-  return addresses
+  const normalized = addresses
     .filter((address) => address && typeof address === 'object')
     .map((address, index) => {
-      const rawName = (address.fullName || `${address.firstName || ''} ${address.lastName || ''}`).trim();
-      const nameParts = rawName.split(' ');
-      const firstName = address.firstName || nameParts[0] || '';
-      const lastName = address.lastName || nameParts.slice(1).join(' ') || '';
-      const streetAddr = address.address || address.street || address.addressLine1 || address.formattedAddress || '';
-      const apt = address.apartment || address.addressLine2 || address.houseNo || '';
-      const zip = address.zipCode || address.pincode || '';
+      const rawName = sanitizeText(address.fullName || `${address.firstName || ''} ${address.lastName || ''}`, 120);
+      const nameParts = rawName.split(/\s+/).filter(Boolean);
+      const firstName = sanitizeText(address.firstName || nameParts[0] || '', 60);
+      const lastName = sanitizeText(address.lastName || nameParts.slice(1).join(' ') || '', 60);
+      const streetAddr = sanitizeText(address.address || address.street || address.addressLine1 || address.formattedAddress || '', 240);
+      const apt = sanitizeText(address.apartment || address.addressLine2 || '', 160);
+      const houseNo = sanitizeText(address.houseNo || '', 120);
+      const zip = normalizePincode(address.zipCode || address.pincode || '');
+      const addrType = ['home', 'work', 'other'].includes(String(address.type || '').toLowerCase())
+        ? String(address.type).toLowerCase()
+        : 'home';
+      const instructions = sanitizeText(address.deliveryInstructions || address.deliverySpecialInstructions || address.notes || '', 250);
 
       return {
-        id: String(address.id || `${Date.now()}-${index}`),
+        id: String(address.id || `addr_${Date.now()}_${index}`),
         firstName,
         lastName,
         fullName: rawName || `${firstName} ${lastName}`.trim(),
@@ -33,32 +39,45 @@ const normalizeAddresses = (addresses = []) => {
         addressLine1: streetAddr,
         apartment: apt,
         addressLine2: apt,
-        houseNo: address.houseNo || apt || '',
-        city: address.city || 'Hyderabad',
-        state: address.state || 'Telangana',
+        houseNo,
+        floor: sanitizeText(address.floor || '', 60),
+        city: sanitizeText(address.city || 'Hyderabad', 80) || 'Hyderabad',
+        state: sanitizeText(address.state || 'Telangana', 80) || 'Telangana',
         zipCode: zip,
         pincode: zip,
-        phone: address.phone || '',
-        email: address.email || '',
-        notes: address.notes || address.deliveryInstructions || '',
+        country: sanitizeText(address.country || 'India', 60) || 'India',
+        phone: normalizeIndianPhone(address.phone || '') || sanitizeText(address.phone || '', 20),
+        alternatePhone: normalizeIndianPhone(address.alternatePhone || ''),
+        email: sanitizeText(address.email || '', 180),
+        type: addrType,
+        notes: sanitizeText(address.notes || '', 250),
+        deliveryInstructions: instructions,
+        deliverySpecialInstructions: instructions,
         deliveryOption: address.deliveryOption === 'gift' ? 'gift' : 'self',
         isDefault: !!address.isDefault,
-        giftMessage: address.giftMessage || '',
-        receiverFirstName: address.receiverFirstName || '',
-        receiverLastName: address.receiverLastName || '',
-        receiverEmail: address.receiverEmail || '',
-        receiverPhone: address.receiverPhone || '',
-        receiverAddress: address.receiverAddress || '',
-        receiverApartment: address.receiverApartment || '',
-        receiverCity: address.receiverCity || '',
-        receiverState: address.receiverState || '',
-        receiverZipCode: address.receiverZipCode || '',
-        latitude: address.latitude,
-        longitude: address.longitude,
-        formattedAddress: address.formattedAddress || streetAddr,
-        landmark: address.landmark || '',
+        cardMessage: sanitizeText(address.cardMessage || address.giftMessage || '', 200),
+        giftMessage: sanitizeText(address.giftMessage || address.cardMessage || '', 200),
+        receiverFirstName: sanitizeText(address.receiverFirstName || '', 60),
+        receiverLastName: sanitizeText(address.receiverLastName || '', 60),
+        receiverEmail: sanitizeText(address.receiverEmail || '', 180),
+        receiverPhone: sanitizeText(address.receiverPhone || '', 20),
+        receiverAddress: sanitizeText(address.receiverAddress || '', 240),
+        receiverApartment: sanitizeText(address.receiverApartment || '', 160),
+        receiverCity: sanitizeText(address.receiverCity || '', 80),
+        receiverState: sanitizeText(address.receiverState || '', 80),
+        receiverZipCode: normalizePincode(address.receiverZipCode || ''),
+        latitude: typeof address.latitude === 'number' ? address.latitude : null,
+        longitude: typeof address.longitude === 'number' ? address.longitude : null,
+        formattedAddress: sanitizeText(address.formattedAddress || streetAddr, 300),
+        landmark: sanitizeText(address.landmark || '', 160),
       };
     });
+
+  if (normalized.length > 0 && !normalized.some((a) => a.isDefault)) {
+    normalized[0].isDefault = true;
+  }
+
+  return normalized.sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
 };
 
 // @desc    Auth user & get token

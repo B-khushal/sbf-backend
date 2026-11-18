@@ -5,6 +5,113 @@ const DeliveryAssignment = require('../models/DeliveryAssignment');
 const DeliverySetting = require('../models/DeliverySetting');
 const DeliveryZone = require('../models/DeliveryZone');
 const deliveryNotificationService = require('./deliveryNotificationService');
+const { lookupPincode, normalizePincode } = require('../data/serviceablePincodes');
+
+const DEFAULT_SLOT_CONFIG = [
+  { id: 'same_day', label: 'Same-Day Standard', time: '9:00 AM - 9:00 PM', extraCharge: 150, cutoffHour: 18, enabled: true, description: 'Delivered anytime between 9 AM & 9 PM' },
+  { id: 'morning', label: 'Morning', time: '9:00 AM - 12:00 PM', extraCharge: 150, cutoffHour: 9, enabled: true, description: 'Fresh morning hand-delivery' },
+  { id: 'afternoon', label: 'Afternoon', time: '1:00 PM - 4:00 PM', extraCharge: 150, cutoffHour: 13, enabled: true, description: 'Guaranteed afternoon window' },
+  { id: 'evening', label: 'Evening', time: '5:00 PM - 8:00 PM', extraCharge: 150, cutoffHour: 17, enabled: true, description: 'Popular evening celebration slot' },
+  { id: 'midnight', label: 'Midnight Express', time: '10:00 PM - 12:00 AM', extraCharge: 300, cutoffHour: 20, enabled: true, description: 'Surprise midnight doorstep delivery' },
+];
+
+const getIstNow = () => {
+  const now = new Date();
+  const utc = now.getTime() + now.getTimezoneOffset() * 60000;
+  return new Date(utc + 5.5 * 3600000);
+};
+
+/**
+ * Verifies whether a 6-digit Indian PIN code is serviceable by SBFlorist
+ * and returns real slot pricing, cut-off status, and delivery estimate.
+ */
+const checkPincodeServiceability = async (rawPincode) => {
+  const pincode = normalizePincode(rawPincode);
+  if (pincode.length !== 6) {
+    return {
+      serviceable: false,
+      pincode,
+      message: 'Please enter a valid 6-digit PIN code.',
+    };
+  }
+
+  const pinInfo = lookupPincode(pincode);
+  let settings = null;
+  try {
+    settings = await Settings.findOne();
+  } catch (e) {
+    settings = null;
+  }
+
+  // Also check custom admin-configured DeliveryZones if any exist
+  let customZone = null;
+  try {
+    const zones = await DeliveryZone.find({ isActive: true });
+    if (Array.isArray(zones)) {
+      customZone = zones.find((z) => {
+        const pins = Array.isArray(z.pincodes) ? z.pincodes.map(String) : [];
+        return pins.includes(pincode);
+      }) || null;
+    }
+  } catch (e) {
+    customZone = null;
+  }
+
+  const isServiceable = Boolean(pinInfo || customZone);
+  const deliverySettings = settings?.deliverySettings || {};
+  const istNow = getIstNow();
+  const currentIstHour = istNow.getHours() + istNow.getMinutes() / 60;
+  const sameDayAvailable = currentIstHour < 18;
+
+  const configuredSlots = Array.isArray(deliverySettings.timeSlots) && deliverySettings.timeSlots.length > 0
+    ? deliverySettings.timeSlots
+    : null;
+
+  const slots = DEFAULT_SLOT_CONFIG.map((slot) => {
+    const matched = configuredSlots?.find((s) => s.id === slot.id);
+    const enabled = matched ? matched.enabled !== false : slot.enabled;
+    // Flat delivery pricing: Same-Day Standard & Fixed-Time = ₹150, Midnight Express = ₹300
+    const configuredCharge =
+      matched && matched.extraCharge !== undefined && Number(matched.extraCharge) > 0
+        ? Number(matched.extraCharge)
+        : slot.extraCharge;
+    const flatCharge = slot.id === 'midnight' ? (configuredCharge || 300) : 150;
+    return {
+      ...slot,
+      enabled,
+      extraCharge: flatCharge,
+      availableToday: enabled && currentIstHour < (slot.cutoffHour - 0.25),
+    };
+  }).filter((s) => s.enabled);
+
+  const giftPackagingPrice = Number(deliverySettings.giftPackagingCharge ?? 99);
+
+  if (!isServiceable) {
+    return {
+      serviceable: false,
+      pincode,
+      message: `Sorry, we currently deliver across Hyderabad & Secunderabad. PIN code ${pincode} is outside our service area.`,
+      slots,
+      giftPackagingPrice,
+    };
+  }
+
+  return {
+    serviceable: true,
+    pincode,
+    area: pinInfo?.area || customZone?.name || 'Hyderabad',
+    city: pinInfo?.city || customZone?.city || 'Hyderabad',
+    state: pinInfo?.state || 'Telangana',
+    sameDayAvailable,
+    estimatedDelivery: sameDayAvailable
+      ? 'Same-day delivery available (order before 6:00 PM IST)'
+      : 'Next-day delivery available from 9:00 AM IST',
+    slots,
+    giftPackagingPrice,
+    freeDeliveryThreshold: 999,
+    firstOrderFreeEnabled: deliverySettings.firstOrderFree !== false,
+  };
+};
 
 /**
  * Checks if a customer is eligible for first-order free delivery.
@@ -59,51 +166,49 @@ const checkFirstOrderEligibility = async ({ userId, email, phone }) => {
  * @param {string} [params.phone]
  * @returns {Promise<Object>} The delivery fee details: { deliveryCharge, isFirstOrderFreeDelivery, standardFee }
  */
-const calculateDeliveryFee = async ({ subtotal, timeSlot, userId, email, phone }) => {
+const calculateDeliveryFee = async ({ subtotal, timeSlot, userId, email, phone, pincode, giftPackaging }) => {
   let settings = await Settings.findOne();
-  if (!settings) {
+  if (!settings && typeof Settings.initializeDefaultSettings === 'function') {
     await Settings.initializeDefaultSettings();
     settings = await Settings.findOne();
   }
 
-  const deliverySettings = settings.deliverySettings || {};
-  const isFirstOrderFreeEnabled = deliverySettings.firstOrderFree !== false; 
-  
-  const timeSlots = deliverySettings.timeSlots || [];
-  const activeSlot = timeSlots.find(s => (s.id === timeSlot || s.time === timeSlot) && s.enabled);
-  const isFixedSlot = ['morning', 'afternoon', 'late_afternoon', 'evening', 'fixed', 'fixed_time'].includes(timeSlot);
-  const defaultSlotExtra = timeSlot === 'midnight' ? 150 : (isFixedSlot ? 150 : 0);
-  const slotExtraCharge = activeSlot ? (activeSlot.extraCharge !== undefined ? activeSlot.extraCharge : defaultSlotExtra) : defaultSlotExtra;
+  const deliverySettings = settings?.deliverySettings || {};
+  const isFirstOrderFreeEnabled = deliverySettings.firstOrderFree !== false;
 
-  const rules = deliverySettings.deliveryChargeRules || [
-    { minOrderAmount: 0, charge: 150 },
-    { minOrderAmount: 999, charge: 0 }
-  ];
-  
-  const sortedRules = [...rules].sort((a, b) => b.minOrderAmount - a.minOrderAmount);
-  const matchingRule = sortedRules.find(r => subtotal >= r.minOrderAmount);
-  let baseCharge = matchingRule ? matchingRule.charge : 150;
+  // Flat delivery pricing:
+  // - Same-Day Standard & Fixed-Time slots (Morning, Afternoon, Evening): ₹150 only
+  // - Midnight Express: ₹300 only
+  const normalizedSlot = String(timeSlot || 'same_day').toLowerCase();
+  const isMidnightSlot = normalizedSlot === 'midnight';
+  const flatSlotFee = isMidnightSlot ? 300 : 150;
 
   let isEligible = false;
   if (isFirstOrderFreeEnabled) {
     isEligible = await checkFirstOrderEligibility({ userId, email, phone });
   }
 
-  let deliveryCharge = 0;
-  if (isEligible) {
-    deliveryCharge = 0;
-  } else {
-    deliveryCharge = baseCharge + slotExtraCharge;
+  let deliveryCharge = isEligible ? 0 : flatSlotFee;
+
+  if (!isEligible && deliverySettings.rushDelivery?.enabled) {
+    deliveryCharge += (Number(deliverySettings.rushDelivery.charge) || 0);
   }
 
-  if (deliverySettings.rushDelivery?.enabled) {
-    deliveryCharge += (deliverySettings.rushDelivery.charge || 0);
-  }
+  const giftPackagingPrice = 0;
+  const giftPackagingFee = 0;
+
+  const pinInfo = pincode ? lookupPincode(pincode) : null;
 
   return {
     deliveryCharge,
+    baseDeliveryFee: isEligible ? 0 : flatSlotFee,
+    slotExtraCharge: 0,
+    giftPackagingFee,
+    giftPackagingPrice,
     isFirstOrderFreeDelivery: isEligible,
-    standardFee: baseCharge + slotExtraCharge
+    standardFee: flatSlotFee,
+    serviceable: pincode ? Boolean(pinInfo) : true,
+    serviceArea: pinInfo?.area || null,
   };
 };
 
@@ -315,6 +420,7 @@ const rejectOrTimeoutAssignment = async (assignmentId, actionType = 'reject') =>
 
 module.exports = {
   checkFirstOrderEligibility,
+  checkPincodeServiceability,
   calculateDeliveryFee,
   calculateHaversineDistance,
   findBestPartnerForOrder,

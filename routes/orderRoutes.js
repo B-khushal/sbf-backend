@@ -18,6 +18,7 @@ const {
   getUpcomingDeliveries,
   getDeliveryCalendar,
   testDeliveryEmail,
+  checkServiceability,
   calculateDelivery,
 } = require('../controllers/orderController');
 const { sendReviewRequestEmailForOrder } = require('../controllers/reviewController');
@@ -47,6 +48,9 @@ router.post(
   }),
   sendReviewRequestEmailForOrder
 );
+
+// Delivery serviceability check (must be before /:id catch-all)
+router.get('/serviceability/:pincode', checkServiceability);
 
 // Invoice download route (must be before /:id catch-all)
 router.get('/:id/invoice', optionalProtect, getOrderInvoice);

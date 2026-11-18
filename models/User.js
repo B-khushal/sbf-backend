@@ -1,6 +1,7 @@
 const prisma = require('../config/prisma');
 const bcrypt = require('bcryptjs');
 const { normalizeEmail } = require('../utils/emailNormalizer');
+const { unpackNotesAndAltPhone, packNotesAndAltPhone } = require('../data/serviceablePincodes');
 
 class UserDocument {
   constructor(data) {
@@ -43,12 +44,18 @@ class UserDocument {
       ? data.addresses.map((a, idx) => {
           if (!a || typeof a !== 'object') return null;
           const rawName = (a.fullName || `${a.firstName || ''} ${a.lastName || ''}`).trim();
-          const nameParts = rawName.split(' ');
+          const nameParts = rawName.split(/\s+/).filter(Boolean);
           const firstName = a.firstName || nameParts[0] || '';
           const lastName = a.lastName || nameParts.slice(1).join(' ') || '';
           const streetAddr = a.address || a.street || a.addressLine1 || a.formattedAddress || '';
-          const apt = a.apartment || a.addressLine2 || a.houseNo || '';
+          const apt = a.apartment || a.addressLine2 || '';
+          const house = a.houseNo || '';
           const zip = a.zipCode || a.pincode || '';
+          const { notes: cleanNotes, alternatePhone } = unpackNotesAndAltPhone(a.notes, a.alternatePhone);
+          const instructions = a.deliveryInstructions || a.deliverySpecialInstructions || cleanNotes || '';
+          const addrType = ['home', 'work', 'other'].includes(String(a.type || '').toLowerCase())
+            ? String(a.type).toLowerCase()
+            : 'home';
 
           return {
             id: String(a.id || a._id || `addr_${Date.now()}_${idx}`),
@@ -60,17 +67,24 @@ class UserDocument {
             addressLine1: streetAddr,
             apartment: apt,
             addressLine2: apt,
-            houseNo: a.houseNo || apt || '',
+            houseNo: house,
+            floor: a.floor || '',
             city: a.city || 'Hyderabad',
             state: a.state || 'Telangana',
             zipCode: zip,
             pincode: zip,
+            country: a.country || 'India',
             phone: a.phone || '',
+            alternatePhone,
             email: a.email || '',
-            notes: a.notes || a.deliveryInstructions || '',
+            type: addrType,
+            notes: cleanNotes,
+            deliveryInstructions: instructions,
+            deliverySpecialInstructions: a.deliverySpecialInstructions || instructions,
             deliveryOption: a.deliveryOption === 'gift' ? 'gift' : 'self',
             isDefault: !!a.isDefault,
-            giftMessage: a.giftMessage || '',
+            cardMessage: a.cardMessage || a.giftMessage || '',
+            giftMessage: a.giftMessage || a.cardMessage || '',
             receiverFirstName: a.receiverFirstName || '',
             receiverLastName: a.receiverLastName || '',
             receiverEmail: a.receiverEmail || '',
@@ -80,12 +94,14 @@ class UserDocument {
             receiverCity: a.receiverCity || '',
             receiverState: a.receiverState || '',
             receiverZipCode: a.receiverZipCode || '',
-            latitude: a.latitude,
-            longitude: a.longitude,
+            latitude: a.latitude ?? null,
+            longitude: a.longitude ?? null,
             formattedAddress: a.formattedAddress || streetAddr,
             landmark: a.landmark || '',
+            createdAt: a.createdAt,
+            updatedAt: a.updatedAt,
           };
-        }).filter(Boolean)
+        }).filter(Boolean).sort((a, b) => Number(Boolean(b.isDefault)) - Number(Boolean(a.isDefault)))
       : [];
     this.login_history = [];
     this.permissions = [];
@@ -219,29 +235,70 @@ class UserDocument {
       }
     }
 
-    // Persist addresses to PostgreSQL Address table
+    // Persist addresses to PostgreSQL Address table (preserving all columns)
     if (Array.isArray(this.addresses)) {
       try {
         await prisma.address.deleteMany({ where: { userId } });
-        for (const addr of this.addresses) {
+        const hasAnyDefault = this.addresses.some((a) => a && a.isDefault);
+        for (let idx = 0; idx < this.addresses.length; idx++) {
+          const addr = this.addresses[idx];
           if (!addr) continue;
-          const fullName = addr.fullName || `${addr.firstName || ''} ${addr.lastName || ''}`.trim() || 'Address';
+          const rawFullName = (addr.fullName || `${addr.firstName || ''} ${addr.lastName || ''}`).trim() || 'Customer';
+          const parts = rawFullName.split(/\s+/).filter(Boolean);
+          const fName = addr.firstName || parts[0] || '';
+          const lName = addr.lastName || parts.slice(1).join(' ') || '';
+          const streetVal = addr.address || addr.street || addr.addressLine1 || addr.formattedAddress || '';
+          const aptVal = addr.apartment || addr.addressLine2 || '';
+          const houseVal = addr.houseNo || '';
+          const zipVal = addr.zipCode || addr.pincode || '';
+          const addrType = ['home', 'work', 'other'].includes(String(addr.type || '').toLowerCase())
+            ? String(addr.type).toLowerCase()
+            : 'home';
+          const packedNotes = packNotesAndAltPhone(addr.notes || '', addr.alternatePhone || '');
+          const instructions = addr.deliveryInstructions || addr.deliverySpecialInstructions || '';
+
           await prisma.address.create({
             data: {
-              id: addr.id || addr._id || `addr_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+              id: String(addr.id || addr._id || `addr_${Date.now()}_${idx}_${Math.random().toString(36).substr(2, 5)}`),
               userId,
-              fullName: fullName,
+              fullName: rawFullName,
+              firstName: fName,
+              lastName: lName,
+              email: addr.email || null,
               phone: addr.phone || null,
-              street: addr.address || addr.street || addr.formattedAddress || '',
-              addressLine1: addr.address || addr.addressLine1 || '',
-              addressLine2: addr.apartment || addr.addressLine2 || '',
+              street: streetVal,
+              address: streetVal,
+              addressLine1: streetVal,
+              apartment: aptVal,
+              addressLine2: aptVal,
+              houseNo: houseVal,
+              floor: addr.floor || null,
               city: addr.city || 'Hyderabad',
               state: addr.state || 'Telangana',
-              pincode: addr.zipCode || addr.pincode || '',
-              zipCode: addr.zipCode || addr.pincode || '',
+              pincode: zipVal,
+              zipCode: zipVal,
               country: addr.country || 'India',
-              landmark: addr.landmark || addr.apartment || '',
-              isDefault: !!addr.isDefault
+              landmark: addr.landmark || '',
+              type: addrType,
+              isDefault: hasAnyDefault ? !!addr.isDefault : idx === 0,
+              deliveryOption: addr.deliveryOption === 'gift' ? 'gift' : 'self',
+              deliveryInstructions: instructions || null,
+              deliverySpecialInstructions: addr.deliverySpecialInstructions || instructions || null,
+              notes: packedNotes || null,
+              cardMessage: addr.cardMessage || addr.giftMessage || null,
+              giftMessage: addr.giftMessage || addr.cardMessage || null,
+              receiverFirstName: addr.receiverFirstName || null,
+              receiverLastName: addr.receiverLastName || null,
+              receiverEmail: addr.receiverEmail || null,
+              receiverPhone: addr.receiverPhone || null,
+              receiverAddress: addr.receiverAddress || null,
+              receiverApartment: addr.receiverApartment || null,
+              receiverCity: addr.receiverCity || null,
+              receiverState: addr.receiverState || null,
+              receiverZipCode: addr.receiverZipCode || null,
+              latitude: typeof addr.latitude === 'number' ? addr.latitude : null,
+              longitude: typeof addr.longitude === 'number' ? addr.longitude : null,
+              formattedAddress: addr.formattedAddress || streetVal || null,
             }
           });
         }
