@@ -648,7 +648,12 @@ const startServer = async () => {
     });
     app.use('/api/', globalLimiter);
 
-    app.use(express.json({ limit: '50mb' }));
+    app.use(express.json({
+      limit: '50mb',
+      verify: (req, res, buf) => {
+        req.rawBody = buf;
+      }
+    }));
     app.use(express.urlencoded({ limit: '50mb', extended: true }));
     const { emailNormalizerMiddleware } = require('./utils/emailNormalizer');
     app.use(emailNormalizerMiddleware);

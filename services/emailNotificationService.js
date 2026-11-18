@@ -310,26 +310,33 @@ const formatItemCustomizationHTML = (item, options = { isCompact: false }) => {
 
 // Generate comprehensive email template
 const generateOrderConfirmationEmail = (orderData) => {
-  const { order, customer, items } = orderData;
+  const { order, customer } = orderData;
+  const safeItems = Array.isArray(orderData.items) && orderData.items.length > 0
+    ? orderData.items
+    : (Array.isArray(order?.items) ? order.items : []);
 
-  const itemsList = items.map(item => {
+  const itemsList = safeItems.map(item => {
+    if (!item) return '';
     const customizationsHTML = formatItemCustomizationHTML(item, { isCompact: false });
+    const prodName = (typeof item.product === 'object' && item.product ? (item.product.name || item.product.title) : null)
+      || item.productName || item.title || item.name || 'Florist Item';
+    const prodSku = (typeof item.product === 'object' && item.product ? item.product.sku : null) || item.sku || '';
 
     return `
       <tr style="border-bottom: 1px solid #e5e7eb;">
         <td style="padding: 12px; text-align: left;">
           <div style="font-weight: 600; color: #374151;">
-            ${item.product.name || item.product.title}
+            ${prodName}
           </div>
-          ${item.product.sku ? `<div style="font-size: 12px; color: #6b7280;">SKU: ${item.product.sku}</div>` : ''}
+          ${prodSku ? `<div style="font-size: 12px; color: #6b7280;">SKU: ${prodSku}</div>` : ''}
           ${item.selectedVariant?.label ? `<div style="font-size: 12px; color: #6366f1; font-weight: 500;">Variant: ${item.selectedVariant.label}</div>` : ''}
           ${customizationsHTML}
         </td>
         <td style="padding: 12px; text-align: center; font-weight: 500;">
-          ${item.quantity}
+          ${item.quantity || 1}
         </td>
         <td style="padding: 12px; text-align: right; font-weight: 600; color: #374151;">
-          ${formatCurrency(item.finalPrice || item.price, order.currency)}
+          ${formatCurrency(item.finalPrice || item.price, order?.currency || 'INR')}
         </td>
       </tr>
     `;
@@ -600,29 +607,36 @@ const generateOrderConfirmationEmail = (orderData) => {
 
 // Generate admin notification email template
 const generateAdminOrderNotificationEmail = (orderData) => {
-  const { order, customer, items } = orderData;
+  const { order, customer } = orderData;
+  const safeItems = Array.isArray(orderData.items) && orderData.items.length > 0
+    ? orderData.items
+    : (Array.isArray(order?.items) ? order.items : []);
 
-  const hasCake = items.some(i => i.customizations?.cakeWeight || i.customizations?.weight || i.customizations?.cakeFlavor || i.customizations?.cakeMessage || i.product?.category?.toLowerCase?.().includes('cake'));
-  const hasCombo = items.some(i => i.customizations?.isCombo || i.customizations?.isGiftBundle || i.product?.category?.toLowerCase?.().includes('combo') || i.product?.category?.toLowerCase?.().includes('hamper'));
+  const hasCake = safeItems.some(i => i && (i.customizations?.cakeWeight || i.customizations?.weight || i.customizations?.cakeFlavor || i.customizations?.cakeMessage || i.product?.category?.toLowerCase?.().includes('cake')));
+  const hasCombo = safeItems.some(i => i && (i.customizations?.isCombo || i.customizations?.isGiftBundle || i.product?.category?.toLowerCase?.().includes('combo') || i.product?.category?.toLowerCase?.().includes('hamper')));
 
-  const itemsList = items.map(item => {
+  const itemsList = safeItems.map(item => {
+    if (!item) return '';
     const customizationsHTML = formatItemCustomizationHTML(item, { isCompact: false });
+    const prodName = (typeof item.product === 'object' && item.product ? (item.product.name || item.product.title) : null)
+      || item.productName || item.title || item.name || 'Florist Item';
+    const prodSku = (typeof item.product === 'object' && item.product ? item.product.sku : null) || item.sku || '';
 
     return `
       <tr style="border-bottom: 1px solid #e5e7eb;">
         <td style="padding: 12px; text-align: left;">
           <div style="font-weight: 600; color: #374151;">
-            ${item.product.name || item.product.title}
+            ${prodName}
           </div>
-          ${item.product.sku ? `<div style="font-size: 12px; color: #6b7280;">SKU: ${item.product.sku}</div>` : ''}
+          ${prodSku ? `<div style="font-size: 12px; color: #6b7280;">SKU: ${prodSku}</div>` : ''}
           ${item.selectedVariant?.label ? `<div style="font-size: 12px; color: #6366f1; font-weight: 500;">Variant: ${item.selectedVariant.label}</div>` : ''}
           ${customizationsHTML}
         </td>
         <td style="padding: 12px; text-align: center; font-weight: 500;">
-          ${item.quantity}
+          ${item.quantity || 1}
         </td>
         <td style="padding: 12px; text-align: right; font-weight: 600; color: #374151;">
-          ${formatCurrency(item.finalPrice || item.price, order.currency)}
+          ${formatCurrency(item.finalPrice || item.price, order?.currency || 'INR')}
         </td>
       </tr>
     `;

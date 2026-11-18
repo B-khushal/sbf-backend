@@ -3,7 +3,7 @@ const Product = require('../models/Product');
 const AddonProduct = require('../models/AddonProduct');
 const User = require('../models/User');
 const moment = require('moment'); // Import moment.js for date formatting
-const { createOrder: createRazorpayOrder, verifyPayment, RAZORPAY_KEY_ID } = require('../services/razorpayService');
+const { createOrder: createRazorpayOrder, verifyPayment, verifyWebhookSignature, fetchPayment, RAZORPAY_KEY_ID } = require('../services/razorpayService');
 const Notification = require('../models/Notification');
 const { admin } = require('../middleware/authMiddleware');
 const { createOrderNotification } = require('./notificationController');
@@ -1825,8 +1825,8 @@ const updateOrderStatus = async (req, res) => {
 // @access  Private
 const createRazorpayOrderHandler = async (req, res) => {
   try {
-    console.log('Received request body:', req.body);
-    const { amount, currency } = req.body;
+    console.log('Received create-razorpay-order request body:', req.body);
+    const { amount, currency = 'INR', orderData } = req.body;
 
     if (!amount) {
       return res.status(400).json({
@@ -1851,8 +1851,43 @@ const createRazorpayOrderHandler = async (req, res) => {
     // Amount should already be in paise from frontend
     const amountInPaise = Math.round(parseFloat(amount));
 
-    console.log('Creating Razorpay order with:', { amount: amountInPaise, currency });
-    const order = await createRazorpayOrder(amountInPaise, currency);
+    // Construct rich notes from orderData if provided to safeguard payment details
+    const customNotes = {};
+    if (orderData && typeof orderData === 'object') {
+      const custName = orderData.customerName || orderData.shippingDetails?.fullName;
+      const custEmail = orderData.customerEmail || orderData.shippingDetails?.email;
+      const custPhone = orderData.customerPhone || orderData.shippingDetails?.phone;
+      if (custName) customNotes.customerName = String(custName).substring(0, 100);
+      if (custEmail) customNotes.customerEmail = String(custEmail).substring(0, 100);
+      if (custPhone) customNotes.customerPhone = String(custPhone).substring(0, 50);
+      if (orderData.shippingDetails?.city) customNotes.city = String(orderData.shippingDetails.city).substring(0, 50);
+      if (orderData.shippingDetails?.pincode || orderData.shippingDetails?.zipCode) {
+        customNotes.pincode = String(orderData.shippingDetails.pincode || orderData.shippingDetails.zipCode).substring(0, 20);
+      }
+      if (orderData.shippingDetails?.deliveryDate) {
+        customNotes.deliveryDate = String(orderData.shippingDetails.deliveryDate).substring(0, 50);
+      }
+      if (orderData.shippingDetails?.timeSlot) {
+        customNotes.timeSlot = String(orderData.shippingDetails.timeSlot).substring(0, 50);
+      }
+      if (orderData.shippingDetails?.address) {
+        customNotes.address = String(orderData.shippingDetails.address).substring(0, 200);
+      }
+      const deliveryInstr = orderData.shippingDetails?.deliverySpecialInstructions || orderData.shippingDetails?.deliveryInstructions || orderData.shippingDetails?.notes;
+      if (deliveryInstr) {
+        customNotes.specialInstructions = String(deliveryInstr).substring(0, 200);
+      }
+      const cardMsg = orderData.shippingDetails?.cardMessage || orderData.giftDetails?.message;
+      if (cardMsg) {
+        customNotes.cardMessage = String(cardMsg).substring(0, 200);
+      }
+      if (orderData.items && Array.isArray(orderData.items)) {
+        customNotes.itemSummary = orderData.items.map(i => `${i.quantity || 1}x ${i.title || 'Bouquet'}`).join(', ').substring(0, 200);
+      }
+    }
+
+    console.log('Creating Razorpay order with:', { amount: amountInPaise, currency, customNotes });
+    const order = await createRazorpayOrder(amountInPaise, currency, customNotes);
     console.log('Razorpay order created:', order);
 
     // Send back the response in the format Razorpay expects
@@ -1920,91 +1955,94 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
     );
 
     if (!isValid) {
+      console.error('❌ Invalid payment signature for order:', razorpay_order_id);
       return res.status(400).json({
         success: false,
         message: 'Invalid payment signature'
       });
     }
 
+    // 1. Idempotency Check: check if order already exists in DB
+    let existingOrder = null;
+    if (razorpay_order_id) {
+      existingOrder = await Order.findOne({ razorpayOrderId: razorpay_order_id });
+    }
+    if (!existingOrder && razorpay_payment_id) {
+      existingOrder = await Order.findOne({ razorpayPaymentId: razorpay_payment_id });
+    }
+
+    if (existingOrder && existingOrder.paymentStatus === 'completed') {
+      console.log(`✅ Order ${existingOrder.orderNumber} already exists and is marked completed.`);
+      const populatedOrder = (await Order.findById(existingOrder.id || existingOrder._id).populate({
+        path: 'items.product',
+        select: 'name title price images sku discount'
+      })) || existingOrder;
+
+      return res.json({
+        success: true,
+        order: populatedOrder
+      });
+    }
+
     // If payment is verified and orderData is provided, create the order
     if (orderData) {
       // Resolve any client-side valentine-gift- IDs
-      await resolveGiftBuilderProductIds(orderData.items, req.user?._id);
-
-      // Validate required data
-      if (!orderData.items || orderData.items.length === 0) {
-        return res.status(400).json({
-          success: false,
-          message: 'Order must contain items'
-        });
+      if (Array.isArray(orderData.items)) {
+        await resolveGiftBuilderProductIds(orderData.items, req.user?._id || req.user?.id);
       }
 
-      // Valentine validations
+      // Valentine validations (Warning only on verified payment to never drop paid orders)
       try {
-        await validateOrderValentineRules(orderData.items, orderData.shippingDetails);
+        if (orderData.items && orderData.shippingDetails) {
+          await validateOrderValentineRules(orderData.items, orderData.shippingDetails);
+        }
       } catch (valError) {
-        return res.status(400).json({
-          success: false,
-          message: valError.message
-        });
+        console.warn('⚠️ Valentine rule warning on paid order (proceeding):', valError.message);
       }
 
-      const userId = req.user?._id || null;
-      if (!userId && (!orderData.shippingDetails?.email || !orderData.shippingDetails?.phone)) {
-        return res.status(400).json({
-          success: false,
-          message: 'Email and phone number are required for guest checkout'
-        });
-      }
-
-      // Generate order number in YYMM-XXX-DD format using robust sequence calculation
-      const orderNumber = await generateUniqueOrderNumber();
+      const userId = req.user?._id || req.user?.id || null;
 
       // Server-side calculation and validation
-      const subtotalCalculated = orderData.items.reduce((sum, item) => sum + (item.finalPrice || item.price) * item.quantity, 0);
+      const itemsList = Array.isArray(orderData.items) && orderData.items.length > 0 ? orderData.items : [];
+      const subtotalCalculated = itemsList.reduce((sum, item) => sum + (item.finalPrice || item.price || 0) * (item.quantity || 1), 0);
 
-      const deliveryChargeResult = await calculateDeliveryFee({
-        subtotal: subtotalCalculated,
-        timeSlot: orderData.shippingDetails.timeSlot,
-        userId,
-        email: orderData.shippingDetails.email,
-        phone: orderData.shippingDetails.phone
-      });
-      const deliveryChargeCalculated = deliveryChargeResult.deliveryCharge;
-      const isFirstOrderFreeDelivery = deliveryChargeResult.isFirstOrderFreeDelivery;
-
-      // Validate subtotal if sent
-      if (orderData.subtotal !== undefined && Math.abs(orderData.subtotal - subtotalCalculated) > 1) {
-        return res.status(400).json({
-          success: false,
-          message: `Invalid subtotal. Expected ${subtotalCalculated}, got ${orderData.subtotal}`
+      let deliveryChargeCalculated = 0;
+      let isFirstOrderFreeDelivery = false;
+      try {
+        const deliveryChargeResult = await calculateDeliveryFee({
+          subtotal: subtotalCalculated,
+          timeSlot: orderData.shippingDetails?.timeSlot,
+          userId,
+          email: orderData.shippingDetails?.email || orderData.customerEmail,
+          phone: orderData.shippingDetails?.phone || orderData.customerPhone
         });
+        deliveryChargeCalculated = deliveryChargeResult.deliveryCharge || 0;
+        isFirstOrderFreeDelivery = !!deliveryChargeResult.isFirstOrderFreeDelivery;
+      } catch (delErr) {
+        console.warn('Delivery fee calculation warning:', delErr.message);
+        deliveryChargeCalculated = orderData.deliveryCharge || 0;
       }
 
-      // Validate delivery charge if sent
+      // Log calculation variances as warnings rather than failing captured payments
+      if (orderData.subtotal !== undefined && Math.abs(orderData.subtotal - subtotalCalculated) > 1) {
+        console.warn(`[verifyPayment] Subtotal variance noted: Expected ${subtotalCalculated}, got ${orderData.subtotal}`);
+      }
+
       let expectedDeliveryCharge = deliveryChargeCalculated;
       if (orderData.shippingDetails?.surpriseDelivery || orderData.giftDetails?.surpriseDelivery) {
         expectedDeliveryCharge += 100;
       }
       if (orderData.deliveryCharge !== undefined && Math.abs(orderData.deliveryCharge - expectedDeliveryCharge) > 5) {
-        return res.status(400).json({
-          success: false,
-          message: `Invalid delivery charge. Expected ${expectedDeliveryCharge}, got ${orderData.deliveryCharge}`
-        });
+        console.warn(`[verifyPayment] Delivery charge variance noted: Expected ${expectedDeliveryCharge}, got ${orderData.deliveryCharge}`);
       }
 
       const discount = orderData.discount !== undefined
         ? orderData.discount
-        : Math.max(0, subtotalCalculated + deliveryChargeCalculated - orderData.totalAmount);
+        : Math.max(0, subtotalCalculated + deliveryChargeCalculated - (orderData.totalAmount || 0));
 
-      const finalTotal = subtotalCalculated + deliveryChargeCalculated - discount;
-
-      if (Math.abs(orderData.totalAmount - finalTotal) > 1) {
-        return res.status(400).json({
-          success: false,
-          message: `Total amount mismatch. Calculated ${finalTotal}, got ${orderData.totalAmount}`
-        });
-      }
+      const finalTotal = (orderData.totalAmount !== undefined && orderData.totalAmount !== null)
+        ? orderData.totalAmount
+        : (subtotalCalculated + deliveryChargeCalculated - discount);
 
       // Resolve customer details with robust fallbacks
       const effectiveCustomerEmail = (isValidEmailStr(orderData.customerEmail) && orderData.customerEmail.trim())
@@ -2025,6 +2063,9 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
         || orderData.giftDetails?.recipientPhone 
         || null;
 
+      // Generate order number in YYMM-XXX-DD format using robust sequence calculation
+      const orderNumber = existingOrder?.orderNumber || await generateUniqueOrderNumber();
+
       // Create the order object with all required fields
       const orderDbData = {
         orderNumber,
@@ -2034,39 +2075,39 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
         customerPhone: effectiveCustomerPhone,
         shippingDetails: {
           fullName: effectiveCustomerName,
-          firstName: orderData.shippingDetails.firstName,
-          lastName: orderData.shippingDetails.lastName,
+          firstName: orderData.shippingDetails?.firstName || effectiveCustomerName.split(' ')[0] || '',
+          lastName: orderData.shippingDetails?.lastName || effectiveCustomerName.split(' ').slice(1).join(' ') || '',
           email: effectiveCustomerEmail,
           phone: effectiveCustomerPhone,
-          address: orderData.shippingDetails.address,
-          apartment: orderData.shippingDetails.apartment || '',
-          city: orderData.shippingDetails.city,
-          state: orderData.shippingDetails.state,
-          zipCode: orderData.shippingDetails.zipCode,
-          notes: orderData.shippingDetails.notes || '',
-          cardMessage: orderData.shippingDetails.cardMessage || '',
-          deliverySpecialInstructions: orderData.shippingDetails.deliverySpecialInstructions || '',
-          deliveryDate: orderData.shippingDetails.deliveryDate,
-          timeSlot: orderData.shippingDetails.timeSlot,
-          latitude: orderData.shippingDetails.latitude,
-          longitude: orderData.shippingDetails.longitude,
-          formattedAddress: orderData.shippingDetails.formattedAddress || '',
-          country: orderData.shippingDetails.country || '',
-          pincode: orderData.shippingDetails.pincode || '',
-          landmark: orderData.shippingDetails.landmark || '',
-          houseNo: orderData.shippingDetails.houseNo || '',
-          floor: orderData.shippingDetails.floor || '',
-          deliveryInstructions: orderData.shippingDetails.deliveryInstructions || '',
+          address: orderData.shippingDetails?.address || '',
+          apartment: orderData.shippingDetails?.apartment || '',
+          city: orderData.shippingDetails?.city || 'Hyderabad',
+          state: orderData.shippingDetails?.state || 'Telangana',
+          zipCode: orderData.shippingDetails?.zipCode || orderData.shippingDetails?.pincode || '',
+          notes: orderData.shippingDetails?.notes || '',
+          cardMessage: orderData.shippingDetails?.cardMessage || '',
+          deliverySpecialInstructions: orderData.shippingDetails?.deliverySpecialInstructions || '',
+          deliveryDate: orderData.shippingDetails?.deliveryDate ? new Date(orderData.shippingDetails.deliveryDate) : new Date(),
+          timeSlot: orderData.shippingDetails?.timeSlot || 'Standard Delivery',
+          latitude: orderData.shippingDetails?.latitude,
+          longitude: orderData.shippingDetails?.longitude,
+          formattedAddress: orderData.shippingDetails?.formattedAddress || '',
+          country: orderData.shippingDetails?.country || 'India',
+          pincode: orderData.shippingDetails?.pincode || orderData.shippingDetails?.zipCode || '',
+          landmark: orderData.shippingDetails?.landmark || '',
+          houseNo: orderData.shippingDetails?.houseNo || '',
+          floor: orderData.shippingDetails?.floor || '',
+          deliveryInstructions: orderData.shippingDetails?.deliveryInstructions || '',
         },
-        items: orderData.items.map(item => ({
-          product: item.product,
-          title: item.title || '',
+        items: itemsList.map(item => ({
+          product: item.productId || item.product || item._id,
+          title: item.title || item.productName || item.name || '',
           image: item.image || item.images?.[0] || '',
           images: Array.isArray(item.images) ? item.images : [],
           selectedVariant: item.selectedVariant || null,
-          quantity: item.quantity,
-          price: item.price,
-          finalPrice: item.finalPrice,
+          quantity: item.quantity || 1,
+          price: item.price || 0,
+          finalPrice: item.finalPrice || item.price || 0,
           customizations: item.customizations || null
         })),
         paymentMethod: 'razorpay',
@@ -2080,7 +2121,7 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
         },
         totalAmount: finalTotal,
         subtotal: subtotalCalculated,
-        deliveryCharge: deliveryChargeCalculated,
+        deliveryCharge: orderData.deliveryCharge !== undefined ? orderData.deliveryCharge : deliveryChargeCalculated,
         discount,
         finalTotal,
         isFirstOrderFreeDelivery,
@@ -2096,35 +2137,50 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
         orderDbData.giftDetails = orderData.giftDetails;
       }
 
-      console.log('Creating order with verified payment data:', JSON.stringify(orderDbData, null, 2));
+      console.log('Creating/Saving order with verified payment data:', JSON.stringify(orderDbData, null, 2));
 
-      const order = new Order(orderDbData);
-      const savedOrder = await order.save();
+      let savedOrder;
+      if (existingOrder) {
+        Object.assign(existingOrder, orderDbData);
+        savedOrder = await existingOrder.save();
+      } else {
+        const order = new Order(orderDbData);
+        savedOrder = await order.save();
+      }
 
       // Track campaign conversion if promo code is used
       if (savedOrder.promoCode) {
-        await trackPromoCodeConversion(savedOrder.promoCode);
+        try {
+          await trackPromoCodeConversion(savedOrder.promoCode);
+        } catch (promoErr) {
+          console.warn('Promo conversion error:', promoErr.message);
+        }
       }
 
       console.log('Order saved successfully after payment verification:', JSON.stringify(savedOrder, null, 2));
 
       // Send notifications after order is successfully created
       try {
-        // Get customer details (for logged in, fetch from User, for guest, use shippingDetails)
         const customer = userId 
           ? await User.findById(userId)
           : null;
 
-        const customerName = (customer && customer.name) || savedOrder.shippingDetails?.fullName || 'Customer';
-        const customerEmail = (customer && customer.email) || savedOrder.shippingDetails?.email || '';
-        const customerPhone = (customer && customer.phone) || savedOrder.shippingDetails?.phone || '';
+        const customerName = (customer && customer.name) || savedOrder.shippingDetails?.fullName || savedOrder.customerName || 'Customer';
+        const customerEmail = (customer && customer.email) || savedOrder.shippingDetails?.email || savedOrder.customerEmail || '';
+        const customerPhone = (customer && customer.phone) || savedOrder.shippingDetails?.phone || savedOrder.customerPhone || '';
 
         // Populate product details for notifications
-        const populatedOrder = (await Order.findById(savedOrder._id)
-          .populate({
-            path: 'items.product',
-            select: 'name title price images'
-          })) || savedOrder;
+        let populatedOrder = null;
+        try {
+          populatedOrder = await Order.findById(savedOrder._id || savedOrder.id)
+            .populate({
+              path: 'items.product',
+              select: 'name title price images'
+            });
+        } catch (e) {
+          console.warn('Order populate error:', e.message);
+        }
+        populatedOrder = populatedOrder || savedOrder;
 
         // Prepare notification data
         const notificationData = {
@@ -2144,7 +2200,7 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
         // Create admin notification for real-time updates
         try {
           const adminNotification = await createOrderNotification({
-            orderId: savedOrder._id,
+            orderId: savedOrder._id || savedOrder.id,
             orderNumber: savedOrder.orderNumber,
             customerName: customerName,
             amount: savedOrder.totalAmount,
@@ -2153,7 +2209,7 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
           });
           console.log('✅ Admin notification created successfully for order:', savedOrder.orderNumber);
 
-          // Store in a global variable for real-time polling (optional backup)
+          // Store in a global variable for real-time polling
           global.latestNotifications = global.latestNotifications || [];
           global.latestNotifications.unshift({
             id: adminNotification._id || adminNotification.id || `order-${Date.now()}`,
@@ -2162,7 +2218,7 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
             message: adminNotification.message || `Order ${savedOrder.orderNumber} placed by ${customerName}. Amount: ${savedOrder.currency === 'INR' ? '₹' : '$'}${savedOrder.totalAmount}`,
             createdAt: new Date().toISOString(),
             isRead: false,
-            orderId: savedOrder._id,
+            orderId: savedOrder._id || savedOrder.id,
             orderNumber: savedOrder.orderNumber
           });
 
@@ -2179,7 +2235,7 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
             const fcmResult = await sendToAllAdmins({
               title: adminNotification.title || '🎉 New Order Received!',
               body: adminNotification.message || `Order #${savedOrder.orderNumber} - ${savedOrder.currency === 'INR' ? '₹' : '$'}${savedOrder.totalAmount}`,
-              orderId: savedOrder._id.toString(),
+              orderId: (savedOrder._id || savedOrder.id).toString(),
               orderNumber: savedOrder.orderNumber,
               customerName: customerName,
               amount: savedOrder.totalAmount.toString(),
@@ -2199,19 +2255,23 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
 
       } catch (notificationError) {
         console.error('❌ Error sending order notifications:', notificationError);
-        // Don't fail the order creation if notifications fail
       }
 
       // Populate the order with product details before sending to frontend
-      const populatedOrder = await Order.findById(savedOrder._id)
-        .populate({
-          path: 'items.product',
-          select: 'name title price images sku discount'
-        });
+      let finalPopulatedOrder = null;
+      try {
+        finalPopulatedOrder = await Order.findById(savedOrder._id || savedOrder.id)
+          .populate({
+            path: 'items.product',
+            select: 'name title price images sku discount'
+          });
+      } catch (popErr) {
+        console.warn('Final populate order error:', popErr.message);
+      }
 
       res.json({
         success: true,
-        order: populatedOrder
+        order: finalPopulatedOrder || savedOrder
       });
     } else {
       // If no orderData, just return verification result
@@ -2227,6 +2287,220 @@ const verifyRazorpayPaymentHandler = async (req, res) => {
       message: 'Error verifying payment',
       error: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
+  }
+};
+
+// @desc    Handle Razorpay Webhook (payment.captured, order.paid)
+// @route   POST /api/orders/razorpay-webhook
+// @access  Public (verified via Razorpay webhook signature)
+const handleRazorpayWebhook = async (req, res) => {
+  try {
+    const signature = req.headers['x-razorpay-signature'];
+    const rawBody = req.rawBody || JSON.stringify(req.body);
+
+    const isValid = verifyWebhookSignature(rawBody, signature);
+    if (!isValid) {
+      console.warn('⚠️ Razorpay webhook signature verification failed.');
+      if (process.env.NODE_ENV === 'production' && process.env.RAZORPAY_WEBHOOK_SECRET) {
+        return res.status(400).json({ status: 'error', message: 'Invalid webhook signature' });
+      }
+    } else {
+      console.log('✅ Razorpay webhook signature verified successfully.');
+    }
+
+    const event = req.body?.event;
+    console.log(`🔔 Razorpay Webhook Event Received: ${event}`);
+
+    if (event === 'payment.captured' || event === 'order.paid') {
+      const paymentEntity = req.body?.payload?.payment?.entity;
+      const orderEntity = req.body?.payload?.order?.entity;
+
+      const razorpayOrderId = paymentEntity?.order_id || orderEntity?.id;
+      const razorpayPaymentId = paymentEntity?.id;
+      const amountPaid = (paymentEntity?.amount || orderEntity?.amount || 0) / 100;
+      const customerEmail = paymentEntity?.email || paymentEntity?.notes?.customerEmail || '';
+      const customerContact = paymentEntity?.contact || paymentEntity?.notes?.customerPhone || '';
+      const customerName = paymentEntity?.notes?.customerName || 'Customer';
+
+      console.log(`💳 Webhook payment captured details:`, {
+        razorpayOrderId,
+        razorpayPaymentId,
+        amountPaid,
+        customerEmail,
+        customerContact,
+        customerName
+      });
+
+      if (!razorpayOrderId && !razorpayPaymentId) {
+        return res.json({ status: 'ok', message: 'No order or payment ID in webhook payload' });
+      }
+
+      // Check if order already exists in database
+      let order = null;
+      if (razorpayOrderId) {
+        order = await Order.findOne({ razorpayOrderId });
+      }
+      if (!order && razorpayPaymentId) {
+        order = await Order.findOne({ razorpayPaymentId });
+      }
+
+      if (order) {
+        if (order.paymentStatus === 'completed') {
+          console.log(`✅ Webhook: Order ${order.orderNumber} already marked completed in database.`);
+          return res.json({ status: 'ok', message: 'Order already completed' });
+        }
+
+        console.log(`⚡ Webhook: Finalizing order ${order.orderNumber} to completed status...`);
+        order.paymentStatus = 'completed';
+        order.orderStatus = 'order_placed';
+        if (razorpayPaymentId) order.razorpayPaymentId = razorpayPaymentId;
+        order.paymentDetails = {
+          ...(order.paymentDetails || {}),
+          method: 'razorpay',
+          status: 'completed',
+          razorpayOrderId: razorpayOrderId || order.razorpayOrderId,
+          razorpayPaymentId: razorpayPaymentId || order.razorpayPaymentId
+        };
+        const savedOrder = await order.save();
+
+        try {
+          const populatedOrder = (await Order.findById(savedOrder._id || savedOrder.id).populate({
+            path: 'items.product',
+            select: 'name title price images'
+          })) || savedOrder;
+
+          await sendEmailNotification({
+            order: populatedOrder,
+            customer: {
+              name: order.customerName || customerName,
+              email: order.customerEmail || customerEmail,
+              phone: order.customerPhone || customerContact
+            },
+            items: populatedOrder.items || savedOrder.items
+          });
+
+          const adminNotification = await createOrderNotification({
+            orderId: savedOrder._id || savedOrder.id,
+            orderNumber: savedOrder.orderNumber,
+            customerName: order.customerName || customerName,
+            amount: savedOrder.totalAmount,
+            currency: savedOrder.currency || 'INR',
+            items: populatedOrder.items || savedOrder.items
+          });
+
+          await sendToAllAdmins({
+            title: '🎉 New Order Received (via Webhook)!',
+            body: `Order #${savedOrder.orderNumber} - ₹${savedOrder.totalAmount}`,
+            orderId: (savedOrder._id || savedOrder.id).toString(),
+            orderNumber: savedOrder.orderNumber,
+            customerName: order.customerName || customerName,
+            amount: savedOrder.totalAmount.toString(),
+            type: 'NEW_ORDER'
+          });
+        } catch (notifErr) {
+          console.error('Error dispatching notifications from webhook:', notifErr.message);
+        }
+
+        return res.json({ status: 'ok', message: `Order ${order.orderNumber} completed` });
+      } else {
+        // Disaster Recovery: Order does NOT exist in DB yet, but payment was captured!
+        console.warn(`🚨 UNMATCHED PAYMENT CAPTURED! Auto-recovering order for payment ${razorpayPaymentId}`);
+
+        const orderNumber = await generateUniqueOrderNumber();
+        const notes = paymentEntity?.notes || orderEntity?.notes || {};
+
+        const recoveredOrderData = {
+          orderNumber,
+          user: null,
+          customerName: notes.customerName || customerName || 'Customer',
+          customerEmail: notes.customerEmail || customerEmail || '',
+          customerPhone: notes.customerPhone || customerContact || '',
+          shippingDetails: {
+            fullName: notes.customerName || customerName || 'Customer',
+            email: notes.customerEmail || customerEmail || '',
+            phone: notes.customerPhone || customerContact || '',
+            address: notes.address || 'Address provided during payment',
+            city: notes.city || 'Hyderabad',
+            state: 'Telangana',
+            zipCode: notes.pincode || '',
+            deliveryDate: notes.deliveryDate ? new Date(notes.deliveryDate) : new Date(),
+            timeSlot: notes.timeSlot || 'Standard Delivery',
+            cardMessage: notes.cardMessage || '',
+            notes: notes.specialInstructions || 'Recovered automatically from Razorpay webhook'
+          },
+          items: [
+            {
+              product: null,
+              title: notes.itemSummary || `Florist Order (${razorpayPaymentId})`,
+              quantity: 1,
+              price: amountPaid,
+              finalPrice: amountPaid
+            }
+          ],
+          paymentMethod: 'razorpay',
+          paymentStatus: 'completed',
+          paymentDetails: {
+            method: 'razorpay',
+            status: 'completed',
+            razorpayOrderId: razorpayOrderId,
+            razorpayPaymentId: razorpayPaymentId,
+            recoveredFromWebhook: true
+          },
+          totalAmount: amountPaid,
+          subtotal: amountPaid,
+          deliveryCharge: 0,
+          discount: 0,
+          finalTotal: amountPaid,
+          currency: 'INR',
+          status: 'order_placed'
+        };
+
+        const recoveredOrder = new Order(recoveredOrderData);
+        const savedOrder = await recoveredOrder.save();
+        console.log(`✅ Recovered order #${savedOrder.orderNumber} created from webhook payment.`);
+
+        try {
+          await sendEmailNotification({
+            order: savedOrder,
+            customer: {
+              name: savedOrder.customerName,
+              email: savedOrder.customerEmail,
+              phone: savedOrder.customerPhone
+            },
+            items: savedOrder.items
+          });
+
+          await createOrderNotification({
+            orderId: savedOrder._id || savedOrder.id,
+            orderNumber: savedOrder.orderNumber,
+            customerName: savedOrder.customerName,
+            amount: savedOrder.totalAmount,
+            currency: 'INR',
+            items: savedOrder.items
+          });
+
+          await sendToAllAdmins({
+            title: '⚠️ Order Auto-Recovered via Webhook!',
+            body: `Order #${savedOrder.orderNumber} - ₹${savedOrder.totalAmount} (Auto-recovered from payment)`,
+            orderId: (savedOrder._id || savedOrder.id).toString(),
+            orderNumber: savedOrder.orderNumber,
+            customerName: savedOrder.customerName,
+            amount: savedOrder.totalAmount.toString(),
+            type: 'NEW_ORDER'
+          });
+        } catch (notifErr) {
+          console.error('Error dispatching notifications for recovered order:', notifErr.message);
+        }
+
+        return res.json({ status: 'ok', message: `Order #${savedOrder.orderNumber} recovered and created` });
+      }
+    }
+
+    // Default response for other webhook events
+    res.json({ status: 'ok' });
+  } catch (error) {
+    console.error('❌ Error handling Razorpay webhook:', error);
+    res.status(200).json({ status: 'error_logged', message: error.message });
   }
 };
 
@@ -2678,6 +2952,7 @@ module.exports = {
   updateOrderStatus,
   createRazorpayOrder: createRazorpayOrderHandler,
   verifyRazorpayPayment: verifyRazorpayPaymentHandler,
+  handleRazorpayWebhook,
   getUpcomingDeliveries,
   getDeliveryCalendar,
   testDeliveryEmail,

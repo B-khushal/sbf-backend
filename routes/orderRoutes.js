@@ -13,6 +13,7 @@ const {
   getNextOrderNumber,
   createRazorpayOrder,
   verifyRazorpayPayment,
+  handleRazorpayWebhook,
   getTodayOrders,
   getUpcomingDeliveries,
   getDeliveryCalendar,
@@ -67,6 +68,7 @@ router.post('/next-number', getNextOrderNumber);
 // Razorpay specific routes
 router.post('/create-razorpay-order', optionalProtect, createRazorpayOrder);
 router.post('/verify-payment', optionalProtect, verifyRazorpayPayment);
+router.post('/razorpay-webhook', handleRazorpayWebhook);
 
 // Delivery fee calculation route
 router.post('/calculate-delivery', optionalProtect, calculateDelivery);

@@ -45,6 +45,7 @@ function cleanOrderWhere(where = {}) {
   if (where.userId || where.user) clean.userId = String(where.userId || where.user);
   if (where._id || where.id) clean.id = String(where._id || where.id);
   if (where.razorpayOrderId) clean.razorpayOrderId = String(where.razorpayOrderId);
+  if (where.razorpayPaymentId) clean.razorpayPaymentId = String(where.razorpayPaymentId);
 
   const nameVal = where.customerName || where['shippingDetails.fullName'] || where.fullName;
   if (nameVal) {
@@ -235,15 +236,16 @@ class OrderDocument {
         const itemPrice = parseFloat(item.price ?? item.finalPrice ?? item.unitPrice ?? 0);
         const itemQty = parseInt(item.quantity ?? item.qty ?? 1);
         const itemSub = parseFloat(item.subtotal || (itemPrice * itemQty));
-        const prodId = String(item.productId || (typeof item.product === 'object' ? item.product.id || item.product._id : item.product) || '');
-        const itemTitle = item.productName || item.title || item.name || (typeof item.product === 'object' ? item.product.title || item.product.name : '') || 'Florist Arrangement';
+        const hasProdObj = item.product && typeof item.product === 'object';
+        const prodId = String(item.productId || (hasProdObj ? item.product.id || item.product._id : item.product) || '');
+        const itemTitle = item.productName || item.title || item.name || (hasProdObj ? item.product.title || item.product.name : '') || 'Florist Arrangement';
 
         return {
           _id: item.id || item._id || `item_${Math.random()}`,
           id: item.id || item._id || `item_${Math.random()}`,
           productId: prodId,
           productModel: item.productModel || 'Product',
-          product: typeof item.product === 'object' ? item.product : {
+          product: hasProdObj ? item.product : {
             _id: prodId,
             id: prodId,
             name: itemTitle,
@@ -343,7 +345,9 @@ class OrderDocument {
       }
     }
 
-    const userId = typeof this.user === 'object' ? this.user.id : (this.userId || this.user || null);
+    const userId = (this.user && typeof this.user === 'object')
+      ? (this.user.id || this.user._id)
+      : (this.userId || this.user || null);
 
     const resolvedCustomerEmail = this.customerEmail ? normalizeEmail(this.customerEmail) : (this.shippingDetails?.email ? normalizeEmail(this.shippingDetails.email) : null);
     if (this.shippingDetails && this.shippingDetails.email) {
@@ -362,14 +366,14 @@ class OrderDocument {
         orderStatus: this.status || this.orderStatus || 'pending',
         paymentStatus: this.paymentStatus || this.paymentDetails?.status || 'completed',
         paymentMethod: (this.paymentMethod && this.paymentMethod.toLowerCase() !== 'cod') ? this.paymentMethod : (this.paymentDetails?.method && this.paymentDetails.method.toLowerCase() !== 'cod' ? this.paymentDetails.method : 'razorpay'),
-        razorpayOrderId: this.razorpayOrderId || null,
-        razorpayPaymentId: this.razorpayPaymentId || null,
-        razorpaySignature: this.razorpaySignature || null,
-        totalAmount: this.totalAmount ? parseFloat(this.totalAmount) : 0,
-        subtotal: this.subtotal ? parseFloat(this.subtotal) : 0,
-        shippingFee: this.shippingFee ? parseFloat(this.shippingFee) : 0,
-        taxAmount: this.taxAmount ? parseFloat(this.taxAmount) : 0,
-        discountAmount: this.discountAmount ? parseFloat(this.discountAmount) : 0,
+        razorpayOrderId: this.razorpayOrderId || this.paymentDetails?.razorpayOrderId || null,
+        razorpayPaymentId: this.razorpayPaymentId || this.paymentDetails?.razorpayPaymentId || null,
+        razorpaySignature: this.razorpaySignature || this.paymentDetails?.razorpaySignature || null,
+        totalAmount: (this.totalAmount !== undefined && this.totalAmount !== null) ? parseFloat(this.totalAmount) : (this.finalTotal !== undefined ? parseFloat(this.finalTotal) : 0),
+        subtotal: (this.subtotal !== undefined && this.subtotal !== null) ? parseFloat(this.subtotal) : 0,
+        shippingFee: (this.shippingFee !== undefined && this.shippingFee !== null) ? parseFloat(this.shippingFee) : (this.deliveryCharge !== undefined ? parseFloat(this.deliveryCharge) : 0),
+        taxAmount: (this.taxAmount !== undefined && this.taxAmount !== null) ? parseFloat(this.taxAmount) : 0,
+        discountAmount: (this.discountAmount !== undefined && this.discountAmount !== null) ? parseFloat(this.discountAmount) : (this.discount !== undefined ? parseFloat(this.discount) : 0),
         deliveryDate: this.shippingDetails?.deliveryDate ? new Date(this.shippingDetails.deliveryDate) : undefined,
         deliverySlot: this.shippingDetails?.timeSlot || undefined,
         cardMessage: this.shippingDetails?.cardMessage || undefined,
@@ -377,9 +381,9 @@ class OrderDocument {
         shippingDetails: this.shippingDetails || undefined,
         paymentDetails: this.paymentDetails || undefined,
         giftDetails: this.giftDetails || undefined,
-        deliveryCharge: this.shippingFee ? parseFloat(this.shippingFee) : undefined,
-        discount: this.discountAmount ? parseFloat(this.discountAmount) : undefined,
-        finalTotal: this.totalAmount ? parseFloat(this.totalAmount) : undefined,
+        deliveryCharge: (this.deliveryCharge !== undefined && this.deliveryCharge !== null) ? parseFloat(this.deliveryCharge) : (this.shippingFee !== undefined ? parseFloat(this.shippingFee) : undefined),
+        discount: (this.discount !== undefined && this.discount !== null) ? parseFloat(this.discount) : (this.discountAmount !== undefined ? parseFloat(this.discountAmount) : undefined),
+        finalTotal: (this.finalTotal !== undefined && this.finalTotal !== null) ? parseFloat(this.finalTotal) : (this.totalAmount !== undefined ? parseFloat(this.totalAmount) : undefined),
         trackingHistory: this.trackingHistory || undefined,
         customerName: this.customerName || undefined,
         customerEmail: resolvedCustomerEmail || undefined,
@@ -393,17 +397,17 @@ class OrderDocument {
         customerName: this.customerName || this.shippingDetails?.fullName || 'Customer',
         customerEmail: resolvedCustomerEmail,
         customerPhone: this.customerPhone || this.shippingDetails?.phone || null,
-        totalAmount: this.totalAmount ? parseFloat(this.totalAmount) : 0,
-        subtotal: this.subtotal ? parseFloat(this.subtotal) : 0,
-        shippingFee: this.shippingFee ? parseFloat(this.shippingFee) : 0,
-        taxAmount: this.taxAmount ? parseFloat(this.taxAmount) : 0,
-        discountAmount: this.discountAmount ? parseFloat(this.discountAmount) : 0,
+        totalAmount: (this.totalAmount !== undefined && this.totalAmount !== null) ? parseFloat(this.totalAmount) : (this.finalTotal !== undefined ? parseFloat(this.finalTotal) : 0),
+        subtotal: (this.subtotal !== undefined && this.subtotal !== null) ? parseFloat(this.subtotal) : 0,
+        shippingFee: (this.shippingFee !== undefined && this.shippingFee !== null) ? parseFloat(this.shippingFee) : (this.deliveryCharge !== undefined ? parseFloat(this.deliveryCharge) : 0),
+        taxAmount: (this.taxAmount !== undefined && this.taxAmount !== null) ? parseFloat(this.taxAmount) : 0,
+        discountAmount: (this.discountAmount !== undefined && this.discountAmount !== null) ? parseFloat(this.discountAmount) : (this.discount !== undefined ? parseFloat(this.discount) : 0),
         orderStatus: this.status || this.orderStatus || 'pending',
         paymentStatus: this.paymentStatus || this.paymentDetails?.status || 'completed',
         paymentMethod: (this.paymentMethod && this.paymentMethod.toLowerCase() !== 'cod') ? this.paymentMethod : (this.paymentDetails?.method && this.paymentDetails.method.toLowerCase() !== 'cod' ? this.paymentDetails.method : 'razorpay'),
-        razorpayOrderId: this.razorpayOrderId || null,
-        razorpayPaymentId: this.razorpayPaymentId || null,
-        razorpaySignature: this.razorpaySignature || null,
+        razorpayOrderId: this.razorpayOrderId || this.paymentDetails?.razorpayOrderId || null,
+        razorpayPaymentId: this.razorpayPaymentId || this.paymentDetails?.razorpayPaymentId || null,
+        razorpaySignature: this.razorpaySignature || this.paymentDetails?.razorpaySignature || null,
         deliveryDate: this.shippingDetails?.deliveryDate ? new Date(this.shippingDetails.deliveryDate) : undefined,
         deliverySlot: this.shippingDetails?.timeSlot || undefined,
         cardMessage: this.shippingDetails?.cardMessage || undefined,
@@ -411,9 +415,9 @@ class OrderDocument {
         shippingDetails: this.shippingDetails || undefined,
         paymentDetails: this.paymentDetails || undefined,
         giftDetails: this.giftDetails || undefined,
-        deliveryCharge: this.shippingFee ? parseFloat(this.shippingFee) : 0,
-        discount: this.discountAmount ? parseFloat(this.discountAmount) : 0,
-        finalTotal: this.totalAmount ? parseFloat(this.totalAmount) : 0,
+        deliveryCharge: (this.deliveryCharge !== undefined && this.deliveryCharge !== null) ? parseFloat(this.deliveryCharge) : (this.shippingFee !== undefined ? parseFloat(this.shippingFee) : 0),
+        discount: (this.discount !== undefined && this.discount !== null) ? parseFloat(this.discount) : (this.discountAmount !== undefined ? parseFloat(this.discountAmount) : 0),
+        finalTotal: (this.finalTotal !== undefined && this.finalTotal !== null) ? parseFloat(this.finalTotal) : (this.totalAmount !== undefined ? parseFloat(this.totalAmount) : 0),
         trackingHistory: this.trackingHistory || undefined
       }
     });
@@ -424,7 +428,8 @@ class OrderDocument {
         await prisma.orderItem.deleteMany({ where: { orderId: updated.id } });
         for (const item of this.items) {
           if (!item) continue;
-          const prodId = String(item.productId || (typeof item.product === 'object' ? item.product.id || item.product._id : item.product) || '');
+          const hasProdObj = item.product && typeof item.product === 'object';
+          const prodId = String(item.productId || (hasProdObj ? item.product.id || item.product._id : item.product) || '');
           const pExists = prodId ? await prisma.product.findUnique({ where: { id: prodId }, select: { id: true } }) : null;
           
           const cakeDetails = [];
@@ -588,7 +593,7 @@ class OrderModel {
       data: {
         id: orderId,
         orderNumber: data.orderNumber || `ORD-${orderId}`,
-        userId: typeof data.user === 'object' ? data.user.id : (data.userId || data.user || null),
+        userId: (data.user && typeof data.user === 'object') ? (data.user.id || data.user._id) : (data.userId || data.user || null),
         customerName: data.customerName || data.shippingDetails?.fullName || null,
         customerEmail: data.customerEmail || data.shippingDetails?.email || null,
         customerPhone: data.customerPhone || data.shippingDetails?.phone || null,
@@ -713,9 +718,10 @@ class OrderModel {
             if (o.orderStatus === 'cancelled') continue;
             const items = Array.isArray(o.items) ? o.items : [];
             for (const item of items) {
-              const prodId = String(item.productId || (typeof item.product === 'object' ? item.product.id || item.product._id : item.product) || '');
+              const hasProdObj = item.product && typeof item.product === 'object';
+          const prodId = String(item.productId || (hasProdObj ? item.product.id || item.product._id : item.product) || '');
               if (!prodId) continue;
-              const itemName = item.productName || item.title || item.name || (typeof item.product === 'object' ? item.product.title || item.product.name : 'Product');
+              const itemName = item.productName || item.title || item.name || (hasProdObj ? item.product.title || item.product.name : 'Product');
               const itemPrice = parseFloat(item.price || item.finalPrice || 0);
               const itemQty = parseInt(item.quantity || item.qty || 1);
 

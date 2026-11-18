@@ -1,5 +1,11 @@
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
+const path = require('path');
+
+// Ensure environment variables are loaded
+if (!process.env.RAZORPAY_KEY_ID) {
+  require('dotenv').config({ path: path.join(__dirname, '../.env') });
+}
 
 // Validate environment variables
 if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
@@ -18,19 +24,19 @@ console.log('RAZORPAY_KEY_SECRET from env:', process.env.RAZORPAY_KEY_SECRET ? '
 console.log('Using Key ID:', RAZORPAY_KEY_ID);
 console.log('Using Key Secret (first 4 chars):', RAZORPAY_KEY_SECRET ? RAZORPAY_KEY_SECRET.substring(0, 4) + '***' : 'NONE');
 
-// Check if using live mode
+// Check if using live mode safely
 const isLiveMode = () => {
-  return RAZORPAY_KEY_ID.startsWith('rzp_live_');
+  return !!(RAZORPAY_KEY_ID && typeof RAZORPAY_KEY_ID === 'string' && RAZORPAY_KEY_ID.startsWith('rzp_live_'));
 };
 
 // Validate key formats - separate validation for ID and Secret
 const isValidRazorpayKeyId = (keyId) => {
-  return keyId && keyId.startsWith('rzp_') && keyId.length > 10 && keyId !== 'YOUR_KEY_ID' && keyId !== 'rzp_live_YOUR_LIVE_KEY_ID';
+  return typeof keyId === 'string' && keyId.startsWith('rzp_') && keyId.length > 10 && keyId !== 'YOUR_KEY_ID' && keyId !== 'rzp_live_YOUR_LIVE_KEY_ID';
 };
 
 const isValidRazorpayKeySecret = (keySecret) => {
   // Razorpay secrets are alphanumeric strings, typically 24 characters
-  return keySecret && /^[A-Za-z0-9]{20,}$/.test(keySecret) && keySecret !== 'YOUR_KEY_SECRET' && keySecret !== 'YOUR_LIVE_KEY_SECRET';
+  return typeof keySecret === 'string' && /^[A-Za-z0-9]{20,}$/.test(keySecret) && keySecret !== 'YOUR_KEY_SECRET' && keySecret !== 'YOUR_LIVE_KEY_SECRET';
 };
 
 if (!isValidRazorpayKeyId(RAZORPAY_KEY_ID)) {
@@ -66,12 +72,15 @@ if (isValidRazorpayKeyId(RAZORPAY_KEY_ID) && isValidRazorpayKeySecret(RAZORPAY_K
   console.log('❌ Razorpay configuration has errors - payment processing may fail');
 }
 
-const razorpay = new Razorpay({
-  key_id: RAZORPAY_KEY_ID,
-  key_secret: RAZORPAY_KEY_SECRET
-});
+let razorpay = null;
+if (isValidRazorpayKeyId(RAZORPAY_KEY_ID) && isValidRazorpayKeySecret(RAZORPAY_KEY_SECRET)) {
+  razorpay = new Razorpay({
+    key_id: RAZORPAY_KEY_ID,
+    key_secret: RAZORPAY_KEY_SECRET
+  });
+}
 
-const createOrder = async (amount, currency = 'INR') => {
+const createOrder = async (amount, currency = 'INR', customNotes = {}) => {
   try {
     // Validate Razorpay instance
     if (!isValidRazorpayKeyId(RAZORPAY_KEY_ID) || !isValidRazorpayKeySecret(RAZORPAY_KEY_SECRET)) {
@@ -103,15 +112,25 @@ const createOrder = async (amount, currency = 'INR') => {
       isLive: isLiveMode()
     });
     
+    // Clean and truncate custom notes to comply with Razorpay limits (max 15 key-value pairs, max 256 chars each)
+    const cleanNotes = {
+      environment: process.env.NODE_ENV || 'development',
+      timestamp: new Date().toISOString(),
+      originalAmount: amount
+    };
+    if (customNotes && typeof customNotes === 'object') {
+      Object.keys(customNotes).forEach(k => {
+        if (customNotes[k] !== undefined && customNotes[k] !== null) {
+          cleanNotes[k] = String(customNotes[k]).substring(0, 250);
+        }
+      });
+    }
+
     const options = {
       amount: amountInPaise,
       currency: currency,
       receipt: `order_${Date.now()}`,
-      notes: {
-        environment: process.env.NODE_ENV || 'development',
-        timestamp: new Date().toISOString(),
-        originalAmount: amount
-      }
+      notes: cleanNotes
     };
 
     console.log('Razorpay options:', {
@@ -185,9 +204,57 @@ const verifyPayment = (razorpay_order_id, razorpay_payment_id, razorpay_signatur
   }
 };
 
+const verifyWebhookSignature = (rawBody, signature) => {
+  if (!signature || !rawBody) return false;
+  const candidates = [
+    process.env.RAZORPAY_WEBHOOK_SECRET,
+    process.env.RAZORPAY_KEY_SECRET
+  ].filter(Boolean);
+
+  const rawBuffer = Buffer.isBuffer(rawBody)
+    ? rawBody
+    : Buffer.from(typeof rawBody === 'string' ? rawBody : JSON.stringify(rawBody), 'utf8');
+
+  for (const secret of candidates) {
+    try {
+      const expected = crypto.createHmac('sha256', secret).update(rawBuffer).digest('hex');
+      const sigBuffer = Buffer.from(signature, 'utf8');
+      const expBuffer = Buffer.from(expected, 'utf8');
+      if (sigBuffer.length === expBuffer.length && crypto.timingSafeEqual(expBuffer, sigBuffer)) {
+        return true;
+      }
+    } catch (e) {
+      console.warn('Webhook signature check candidate error:', e.message);
+    }
+  }
+  return false;
+};
+
+const fetchPayment = async (paymentId) => {
+  try {
+    return await razorpay.payments.fetch(paymentId);
+  } catch (error) {
+    console.error('Error fetching Razorpay payment:', error);
+    throw error;
+  }
+};
+
+const fetchOrder = async (orderId) => {
+  try {
+    return await razorpay.orders.fetch(orderId);
+  } catch (error) {
+    console.error('Error fetching Razorpay order:', error);
+    throw error;
+  }
+};
+
 module.exports = {
   createOrder,
   verifyPayment,
+  verifyWebhookSignature,
+  fetchPayment,
+  fetchOrder,
+  razorpay,
   isValidRazorpayKeyId,
   isValidRazorpayKeySecret,
   isLiveMode,
