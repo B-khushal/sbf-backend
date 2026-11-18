@@ -1127,20 +1127,23 @@ const generateInvoiceHTML = (orderData) => {
 // Generate delivery confirmation email template with invoice
 const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
   const { order, customer, partner, proofImageUrl } = orderData;
-  const items = order.items || [];
+  const items = Array.isArray(orderData.items) ? orderData.items : (Array.isArray(order.items) ? order.items : []);
 
   // Calculate proper subtotal from items
   const itemsSubtotal = items.reduce((sum, item) => {
-    return sum + ((item.finalPrice || item.price) * item.quantity);
+    return sum + ((Number(item.finalPrice ?? item.price) || 0) * (Number(item.quantity) || 1));
   }, 0);
 
-  const shippingCharges = order.shippingFee || order.shippingCharges || 0;
+  const shippingCharges = Number(order.deliveryCharge ?? order.shippingFee ?? order.shippingCharges ?? 0) || 0;
+  const promoDiscount = Number(order.discountAmount || order.promoDiscount || order.promoCode?.discountAmount || order.promoCode?.discount || order.discount || 0) || 0;
+  const hasPromo = promoDiscount > 0;
 
   // Only calculate GST if there are shipping charges
   const hasShipping = shippingCharges > 0;
   const cgst = hasShipping ? shippingCharges * 0.025 : 0; // 2.5% CGST only on shipping
   const sgst = hasShipping ? shippingCharges * 0.025 : 0; // 2.5% SGST only on shipping
-  const grandTotal = itemsSubtotal + shippingCharges + cgst + sgst;
+  const rawTotal = Number(order.finalTotal ?? order.totalAmount);
+  const grandTotal = !isNaN(rawTotal) && rawTotal > 0 ? rawTotal : Math.max(0, itemsSubtotal + shippingCharges - promoDiscount);
 
   const invoiceNumber = `INV-${order.orderNumber}`;
   const orderDate = formatDate(order.createdAt);
@@ -1150,7 +1153,7 @@ const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
   const rawMethod = order.paymentDetails?.method || order.paymentMethod;
   const paymentMethod = formatPaymentMethod(rawMethod);
   const paymentStatus = order.paymentDetails?.status || order.paymentStatus || 'Completed';
-  const paymentId = order.paymentDetails?.paymentId || order.paymentDetails?.razorpayPaymentId;
+  const paymentId = order.paymentDetails?.paymentId || order.paymentDetails?.razorpayPaymentId || order.razorpayPaymentId;
 
   const deliveryName = order.shippingDetails?.fullName || customer.name || 'Customer';
   const deliveryPhone = order.shippingDetails?.phone || customer.phone || 'N/A';
@@ -1161,9 +1164,9 @@ const generateDeliveryConfirmationWithInvoiceEmail = (orderData) => {
   const deliveryZip = order.shippingDetails?.zipCode || '';
 
   const itemRows = items.map((item) => {
-    const productName = item.product?.name || item.product?.title || item.title || 'Product';
-    const unitPrice = item.finalPrice || item.price || 0;
-    const lineTotal = unitPrice * item.quantity;
+    const productName = item.product?.name || item.product?.title || item.productName || item.title || item.name || 'Product';
+    const unitPrice = Number(item.finalPrice ?? item.price) || 0;
+    const lineTotal = unitPrice * (Number(item.quantity) || 1);
     const customTextHTML = formatItemCustomizationHTML(item, { isCompact: true });
 
     return `
@@ -1660,7 +1663,7 @@ const sendDeliveryConfirmationWithInvoice = async (orderData) => {
     }
 
     // 2. Fallback to linked User record
-    const targetUserId = typeof order.user === 'object' ? (order.user?._id || order.user?.id) : (order.userId || order.user);
+    const targetUserId = (order.user && typeof order.user === 'object') ? (order.user._id || order.user.id) : (order.userId || order.user);
     if ((!resolvedEmail || !resolvedName) && targetUserId) {
       try {
         const User = require('../models/User');
@@ -1696,7 +1699,7 @@ const sendDeliveryConfirmationWithInvoice = async (orderData) => {
             resolvedEmail = dbOrder.shippingDetails.email.trim();
           }
 
-          const dbUserId = typeof dbOrder.user === 'object' ? (dbOrder.user?._id || dbOrder.user?.id) : (dbOrder.userId || dbOrder.user);
+          const dbUserId = (dbOrder.user && typeof dbOrder.user === 'object') ? (dbOrder.user._id || dbOrder.user.id) : (dbOrder.userId || dbOrder.user);
           if (!resolvedEmail && dbUserId) {
             const User = require('../models/User');
             const dbUser = await User.findById(dbUserId);

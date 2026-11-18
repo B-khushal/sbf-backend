@@ -609,14 +609,45 @@ class OrderModel {
   }
 
   static async findByIdAndUpdate(id, update, options = {}) {
-    const dataToUpdate = update.$set ? update.$set : update;
+    const rawUpdate = update.$set ? update.$set : update;
+    if (!rawUpdate || typeof rawUpdate !== 'object') return null;
+
+    const dataToUpdate = {};
+    const nestedUpdates = {};
+
+    for (const [key, value] of Object.entries(rawUpdate)) {
+      if (key.includes('.')) {
+        const [parent, ...rest] = key.split('.');
+        nestedUpdates[parent] = nestedUpdates[parent] || {};
+        nestedUpdates[parent][rest.join('.')] = value;
+      } else if (key === 'status') {
+        dataToUpdate.orderStatus = value;
+      } else {
+        dataToUpdate[key] = value;
+      }
+    }
+
     try {
+      if (Object.keys(nestedUpdates).length > 0) {
+        const existing = await prisma.order.findUnique({ where: { id: String(id) } });
+        if (existing) {
+          for (const [parent, fields] of Object.entries(nestedUpdates)) {
+            if (['shippingDetails', 'shippingAddress', 'paymentDetails', 'giftDetails'].includes(parent)) {
+              const baseObj = (existing[parent] && typeof existing[parent] === 'object') ? { ...existing[parent] } : {};
+              Object.assign(baseObj, fields);
+              dataToUpdate[parent] = baseObj;
+            }
+          }
+        }
+      }
+
       const updated = await prisma.order.update({
         where: { id: String(id) },
         data: dataToUpdate
       });
       return new OrderDocument(updated);
     } catch (e) {
+      console.warn('[Order.findByIdAndUpdate] Update failed:', e.message);
       return null;
     }
   }
